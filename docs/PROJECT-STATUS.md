@@ -5,6 +5,15 @@ A clean-room reimplementation of the 1995-2000 4X space strategy game "Stars!" i
 The original `stars.exe` is closed, commercial, abandoned software (not open source, not public domain —
 the maker stopped selling it and released activation serials for free, but that does not waive copyright).
 
+**2026-09-04 pivot:** rather than continuing the from-scratch `Stars.Core` effort, this project is now
+a fork of **Stars! Nova** (github.com/ekolis/stars-nova, GPL v2), an existing open-source Stars! clone,
+adopted as the base and evolved from here — the intent is to fix/complete it against this project's
+clean-room behavior specs and contribute improvements back to that community. The original from-scratch
+work is preserved under `archive/clean-room-stars-core/` rather than deleted. See "Layout" below for
+where Nova's own source lives (it occupies most of the repo root: `Common/`, `Nova/`, `ServerState/`,
+etc.) and "Working on Nova" for how this session builds/tests it and the punch list of fixed vs.
+still-open items.
+
 ## Ground rule (read before touching anything)
 This implementation is written **only** from documented external behavior — the manual, community
 FAQs/wikis, and our own empirical play-testing of the running original game. It must **never** be
@@ -15,20 +24,85 @@ reimplementation defensible; collapsing it turns the code into a derivative work
 
 ## Layout
 - `docs/behavior-specs/*.md` — six behavior specs, each documenting one subsystem in original wording,
-  cited to public sources, with worked numeric examples. **All six are complete.**
+  cited to public sources, with worked numeric examples. **All six are complete**, and several open
+  questions have since been resolved by direct empirical testing (see below) or by reading Stars!
+  Nova's own source as a secondary cross-check.
   - `population-growth.md` — habitability, population growth, mineral mining
   - `production-queue.md` — production queues, resource allocation
   - `research-tech-tree.md` — tech fields, research point allocation, cost curve
   - `combat-resolution.md` — battle mechanics, targeting, damage
   - `fleet-movement-scanning-cargo.md` — warp/fuel, scanning, cargo
   - `race-traits.md` — PRTs, LRTs, race customization sliders
-- `Stars.Core` (`src/Stars.Core`) / `Stars.Core.Tests` (`tests/Stars.Core.Tests`) — C#/.NET 9 class
-  library + xUnit test project, scaffolded and building (`dotnet test` from the repo root; solution
-  file is `StarsClone.sln`). Pure domain logic, no UI.
-  - `Population/` — habitability (`Habitability`), population growth (`PopulationGrowth`), and
-    mineral concentration/mining (`MineralMining`) implemented from `population-growth.md`, with
-    unit tests built from that spec's worked examples (28 tests passing). No other subsystem's
-    domain code exists yet.
+- `docs/ui-reference/*.png` — reference screenshots of the real game's UI, gathered via the
+  automation harness (see "Testing setup" below), for later front-end design work.
+- `tools/game-automation/` — the PowerShell + Win32 API harness used to drive the real game.
+- `archive/clean-room-stars-core/` — the original from-scratch `Stars.Core` (.NET 9 class library) +
+  xUnit tests, parked as of the 2026-09-04 pivot to Stars! Nova. Still builds (`dotnet test`); kept
+  for reference and in case any of its clean-room-derived formulas are useful again later.
+- **Everything else at the repo root** (`Common/`, `Nova/`, `ServerState/`, `ControlLibrary/`,
+  `GameFiles/`, `Documentation/`, `Tests/`, etc.) is Stars! Nova's own source tree, forked in whole
+  with its git history intact (`git log` shows commits from the original project before this fork's
+  first commit). `Common/` is the shared domain model (game objects, production, research, race
+  definitions — the layer most of this session's fixes touched); `Nova/` is the WinForms
+  client+AI+server-hosting exe; `ServerState/` is turn-processing/persistence logic.
+
+## Working on Nova
+**Build**: old-style (non-SDK) `.csproj` files targeting .NET Framework 4.8. On this session's
+machine (no Visual Studio, no NuGet cache), the working build command was the legacy Framework
+MSBuild directly on `Nova\Nova.csproj` (which pulls in `Common`, `ControlLibrary`, and `ServerState`
+via project references):
+```
+& "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe" Nova\Nova.csproj /p:Configuration=Debug
+```
+Building from the `Z:\StarsClone` network-share path itself hit a spurious `MSB3821` ("mark of the
+web"/zone) error on `.resx` files that `Unblock-File` didn't fix (no actual Zone.Identifier stream
+was present — looked like an MSBuild/UNC-path quirk, not a real per-file block). Worked around by
+building from a local copy (`robocopy` mirror) instead of changing any system zone-security settings.
+`Tests\Tests.csproj` additionally needs `NuGet Package Restore` for `NUnit3TestAdapter` (not attempted
+this session — no NuGet access).
+
+**Fixed this session (2026-09-04), each as its own commit** — see `git log` for full detail per item:
+mineral concentration depletion (was a stub using `12500/concentration` uniformly instead of the real
+tiered curve), two dead-code trait-string bugs (Hyper Expansion growth bonus, No Ram Scoop Engines
+component gating), the research tech-cost table (was a wrong Fibonacci formula, up to ~16x too
+expensive at high levels), Generalized Research (was comment-only, never applied), War
+Monger/Claim Adjuster missing starting-tech bonuses (both empirically confirmed against the real
+game), a bug where completed research never actually deducted its cost, the production-queue
+population-cap incorrectly blocking construction instead of just idling it, a cost-undercharging bug
+on every production unit after the first in a batch, Mineral Alchemy and Terraforming (both were
+`NotImplementedException` stubs), the ExtraTech LRT applying to every field instead of just
+"Expensive" ones, the growth-rate slider's minimum, Alternate Reality's entire distinct
+resource/scan-range formula (was silently using the standard formulas), a planetary-scanner-upgrade
+bug (type upgraded but not range), cloak reduction of fleet detection range (was set but never read),
+warp-10 destruction risk and ramscoop fuel generation (both entirely absent), War
+Monger/Inner-Strength weapon cost modifiers and Inner Strength's defense discount, Improved
+Starbases' cost discount (was dead commented-out code), No Advanced Scanners' range doubling, and
+tech trading via scrapping/invasion (entirely absent; the battle-triggered variant is deferred to the
+combat rework below).
+
+**Still open / deferred** (roughly in the order they're likely worth tackling):
+- **Combat resolution — the big one.** Nova has a real end-to-end battle loop (10x10 grid, 16-round
+  cap, move-then-fire) but almost every quantitative formula `combat-resolution.md` cares about is
+  either a stub, dead/commented-out code, or missing outright: the attractiveness/targeting formula,
+  initiative-based firing order (currently sorts by raw weapon initiative *ascending*, i.e.
+  backwards, ignoring hull/computer bonuses), beam range falloff and deflector stacking (written but
+  commented out), capital-missile double damage, the accuracy formula (computer/jammer contributions
+  are a bare TODO), all six movement tactics (only one hardcoded behavior exists), the 256-token cap,
+  and salvage. This needs a dedicated pass, likely the single largest remaining piece of work.
+- Auto-build production orders: the `IsAutoBuild` plumbing exists but nothing (AI or GUI) ever
+  actually creates one — every real order is a manual one-shot that blocks the queue if unaffordable.
+- Slow Tech Advance (doubles research cost) and Bleeding Edge Technology: no game-setting/mechanic
+  exists for either.
+- Most remaining PRT/LRT mechanics beyond what's listed as fixed above: Super Stealth's cloak/passive
+  research, Space Demolition's mine mechanics, Packet Physics, Interstellar Traveler's stargate perks,
+  Regenerating Shields, Ultimate Recycling (implemented — worth double-checking its exact
+  percentages), Advanced Remote Mining's starting units.
+- Stargates (data stub only, no teleport/overgating-damage logic) and wormholes (absent entirely).
+- Conditional cargo load/unload ("load up to X" / "unload down to X") — only fixed-amount transfers
+  exist.
+- Fleet-wide scanner range combination: deliberately left as-is (best single ship, not 4th-root
+  combined) after determining the spec only sources that formula for combining scanners *within one
+  ship design*, not *across* different ships in a fleet — flagged in code rather than guessed at.
 
 ## Open empirical questions (from cross-referencing public sources — need real testing to resolve)
 Each spec flags its own open items in detail; the cross-cutting ones worth testing first in an actual
@@ -117,15 +191,16 @@ described below, which turned out to be unreachable from this session):
   Serial number: see the user, do not commit it anywhere.
 
 ## Next steps
-1. Continue the empirical punch list above (items 1, 4-7) using the now-working automation harness
-   at `C:\StarsGame\automation.ps1` on ROBSAMD.
-2. Keep building out `docs/ui-reference/` screenshots as a UI/UX reference for eventually building
-   a real front-end for `Stars.Core` (user request, 2026-09-03) — capture every distinct screen
-   (Score, Production queue, Battle VCR, Fleet waypoints, Planet report detail, etc.), not just the
-   ones needed for empirical questions.
-3. Implement the remaining five specs into `Stars.Core`, each with worked-example-derived xUnit
-   tests, following the pattern established by `Population/`: production-queue, research-tech-tree,
-   combat-resolution, fleet-movement-scanning-cargo, race-traits (race-traits is mostly data/config
-   feeding the other four rather than its own formulas).
-4. Not yet a git repository — consider `git init` once there's a shared remote to push to. If/when
-   that happens, make sure `C:\StarsGame\` and any stray copies of the game zip are never added.
+1. **Combat resolution rework** — see the "Still open" list above. Largest remaining piece.
+2. Continue the empirical punch list above (items 1, 4, 6-7) using the automation harness at
+   `C:\StarsGame\automation.ps1` on ROBSAMD — items 2, 3, 5 are resolved.
+3. Work through the rest of the "Still open / deferred" list above (auto-build wiring, Slow Tech
+   Advance, BET, remaining PRT/LRT mechanics, stargates/wormholes, conditional cargo transfers).
+4. Keep building out `docs/ui-reference/` screenshots as a UI/UX reference for Nova's own (currently
+   WinForms) front-end, or a future rewrite of it.
+5. Set up a real GitHub fork of ekolis/stars-nova (this repo currently just has it as a `nova` git
+   remote with its history merged in locally) so work here can actually be contributed back, per the
+   2026-09-04 decision to evolve Nova rather than replace it. Needs the user's GitHub auth — not set
+   up this session (no `gh` CLI available on ROBSAMD).
+6. Get `Tests\Tests.csproj` building (NuGet restore for `NUnit3TestAdapter`) so Nova's existing test
+   suite can actually run and catch regressions from this session's changes going forward.
