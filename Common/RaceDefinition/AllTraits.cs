@@ -99,7 +99,7 @@ namespace Nova.Common
             // 10 PRTs
             "HE", "SS", "WM", "CA", "IS", "SD", "PP", "IT", "AR", "JOAT",
             // 14 LRTs
-            "IFE", "TT", "ARM", "ISB", "GR", "UR", "MA", "NRSE", "OBRM", "CE", "NAS", "LSP", "BET", "RS"
+            "IFE", "TT", "ARM", "ISB", "GR", "UR", "MA", "NRS", "OBRM", "CE", "NAS", "LSP", "BET", "RS"
         };
 
         /// <summary>

@@ -146,8 +146,9 @@ namespace Nova.Common
             {
                 star.ResourcesOnHand -= RemainingCost;
                 star.Defenses++;
+                RemainingCost = Cost;
                 return true;
-            }  
+            }
 
         }
                 

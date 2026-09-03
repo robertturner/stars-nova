@@ -175,6 +175,7 @@ namespace Nova.Common
             else
             {
                 star.ResourcesOnHand -= remainingCost;
+                remainingCost = cost;
                 return true;
             }
         }

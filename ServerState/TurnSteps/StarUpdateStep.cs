@@ -90,65 +90,55 @@ namespace Nova.Server.TurnSteps
         /// <summary>
         /// Contributes allocated research from the star.
         /// </summary>
-        /// <param name="race">Star's owner race.</param>
         /// <param name="star">Star to process.</param>
         /// <remarks>
         /// Note that stars which contribute only leftovers are not accounted for.
         /// </remarks>
         private void ContributeAllocatedResearch(Star star)
-        {   
+        {
             if (star.Owner == Global.Nobody)
             {
                 return;
             }
 
-            EmpireData empire = serverState.AllEmpires[star.Owner];
-
-            TechLevel targetAreas = empire.ResearchTopics;
-            TechLevel.ResearchField targetArea = TechLevel.ResearchField.Energy; // default to Energy.
-            
-            // Find the first research priority
-            // TODO: Implement a proper hierarchy of research ("next research field") system.
-            foreach (TechLevel.ResearchField area in Enum.GetValues(typeof(TechLevel.ResearchField)))
-            {
-                if (targetAreas[area] == 1)
-                {
-                    targetArea = area;
-                    break;        
-                }
-            }
-            
-            // Consume resources for research for added paranoia.
-            empire.ResearchResources[targetArea] = empire.ResearchResources[targetArea] + star.ResearchAllocation;
-            star.ResearchAllocation = 0;            
-            
-            while (true)
-            {
-                int cost = Research.Cost(targetArea, empire.Race, empire.ResearchLevels, empire.ResearchLevels[targetArea] + 1);
-                
-                if (empire.ResearchResources[targetArea] >= cost)
-                {
-                    TechLevelUp(targetArea, empire);
-                }
-                else
-                {
-                    break;
-                }
-            }
+            int amount = star.ResearchAllocation;
+            star.ResearchAllocation = 0;
+            ContributeResearch(star, amount);
         }
-        
+
         private void ContributeLeftoverResearch(Star star)
         {
             if (star.Owner == Global.Nobody)
             {
                 return;
             }
-            
+
+            int amount = star.ResourcesOnHand.Energy;
+            star.ResourcesOnHand.Energy = 0;
+            ContributeResearch(star, amount);
+        }
+
+        /// <summary>
+        /// Splits a pool of research resources across tech fields and applies any level-ups
+        /// this immediately affords. Normally all of <paramref name="amount"/> goes to the
+        /// empire's single selected field. With the Generalized Research (GR) trait, only half
+        /// goes to the selected field, and 15% of the same amount is additionally applied to
+        /// each of the other five fields — see docs/behavior-specs/race-traits.md §3 and
+        /// research-tech-tree.md §4. This yields 125% total research value for the same
+        /// resource spend, at the cost of not being able to rush a single field.
+        /// </summary>
+        private void ContributeResearch(Star star, int amount)
+        {
+            if (amount <= 0)
+            {
+                return;
+            }
+
             EmpireData empire = serverState.AllEmpires[star.Owner];
-            
+
             TechLevel targetAreas = empire.ResearchTopics;
             TechLevel.ResearchField targetArea = TechLevel.ResearchField.Energy; // default to Energy.
-            
+
             // Find the first research priority
             // TODO: Implement a proper hierarchy of research ("next research field") system.
             foreach (TechLevel.ResearchField area in Enum.GetValues(typeof(TechLevel.ResearchField)))
@@ -156,25 +146,44 @@ namespace Nova.Server.TurnSteps
                 if (targetAreas[area] == 1)
                 {
                     targetArea = area;
-                    break;        
+                    break;
                 }
             }
-            
-            // Consume resources for research for added paranoia.
-            empire.ResearchResources[targetArea] = empire.ResearchResources[targetArea] + star.ResourcesOnHand.Energy;
-            star.ResourcesOnHand.Energy = 0;
-            
+
+            if (empire.Race.HasTrait("GR"))
+            {
+                foreach (TechLevel.ResearchField area in Enum.GetValues(typeof(TechLevel.ResearchField)))
+                {
+                    double share = (area == targetArea) ? 0.5 : 0.15;
+                    empire.ResearchResources[area] += (int)(amount * share);
+                    ApplyLevelUps(area, empire);
+                }
+            }
+            else
+            {
+                empire.ResearchResources[targetArea] += amount;
+                ApplyLevelUps(targetArea, empire);
+            }
+        }
+
+        /// <summary>
+        /// Applies as many tech-level-ups in <paramref name="area"/> as the empire's banked
+        /// research resources for that field can currently afford.
+        /// </summary>
+        private void ApplyLevelUps(TechLevel.ResearchField area, EmpireData empire)
+        {
             while (true)
             {
-                int cost = Research.Cost(targetArea, empire.Race, empire.ResearchLevels, empire.ResearchLevels[targetArea] + 1);
-                
-                if (empire.ResearchResources[targetArea] >= cost)
+                int cost = Research.Cost(area, empire.Race, empire.ResearchLevels, empire.ResearchLevels[area] + 1);
+
+                if (empire.ResearchResources[area] >= cost)
                 {
-                    TechLevelUp(targetArea, empire);
+                    empire.ResearchResources[area] -= cost;
+                    TechLevelUp(area, empire);
                 }
                 else
                 {
-                  break;
+                    break;
                 }
             }
         }

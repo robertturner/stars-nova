@@ -92,13 +92,15 @@ namespace Nova.Common
         /// <summary>
         /// Return true if this item will be skipped in production.
         /// </summary>
+        /// <remarks>
+        /// Mines may be built beyond the population-based operable cap (see
+        /// Star.GetOperableMines()) — the real game lets a colony "grow into" idle
+        /// infrastructure rather than refusing to build it. The operable cap only limits how
+        /// many built mines actually produce minerals (Star.GetMinesInUse()); it is not a
+        /// construction limit. See docs/behavior-specs/production-queue.md §3.
+        /// </remarks>
         public bool IsSkipped(Star star)
         {
-            if (star.Mines >= star.GetOperableMines())
-            {
-                return true;
-            }
-
             if (star.ResourcesOnHand.Energy <= 0)
             {
                 return true;
@@ -137,8 +139,9 @@ namespace Nova.Common
             {
                 star.ResourcesOnHand -= remainingCost;
                 star.Mines++;
+                remainingCost = cost;
                 return true;
-            }  
+            }
         }
         
                 

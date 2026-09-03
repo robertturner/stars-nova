@@ -34,12 +34,26 @@ namespace Nova.Common
     public class Research
     {
         /// <summary>
-        /// Return the total energy cost for researching a level (taking into account
-        /// the cost factor specified in the race designer). Note that we skip the first
-        /// few turns of the Fibonacci series as they are too close together.
+        /// Base cost (before the totalLevels surcharge and per-field cost factor) to reach each
+        /// tech level, indexed 1-26. Index 0 is unused/zero. Sourced from starsfaq.com's "Guts of
+        /// research costs" (credited to Bob Martin) — see docs/behavior-specs/research-tech-tree.md
+        /// §3. The sequence approximates Fibonacci growth through ~level 12, then flattens.
         /// </summary>
-        /// <param name="level">The level to be researched.</param>
-        /// <returns>The energy cost to reach that level.</returns>
+        private static readonly int[] BaseCost =
+        {
+            0,
+            50, 80, 130, 210, 340, 550, 890, 1440, 2330, 3770,
+            6100, 9870, 13850, 18040, 22440, 27050, 31870, 36900, 42140, 47590,
+            53250, 59120, 65200, 71490, 77990, 84700
+        };
+
+        /// <summary>
+        /// Return the total resource cost for researching a level (taking into account
+        /// the cost factor specified in the race designer and the empire's total tech
+        /// investment across all fields).
+        /// </summary>
+        /// <param name="level">The level to be researched (1-26).</param>
+        /// <returns>The resource cost to reach that level.</returns>
         public static int Cost(TechLevel.ResearchField field, Race race, TechLevel totalLevels, int level)
         {
             int techAjustment = 0;
@@ -49,32 +63,10 @@ namespace Nova.Common
                 techAjustment += levelAttained * 10;
             }
 
-            // The research cost is based on a Fionacci series (starting) at 5
-            // multimplied by 10 then 10 points per tech-level reached in all
-            // fields is added. Finally, the cost factor specified in the Race
-            // Designer is then added.
-            // ??? (priority 3) is this the Stars! costs, or some approximation? Need a reference.
-
-            int baseCost = (Fibonacci(level + 5) * 10) + techAjustment;
+            int baseCost = BaseCost[level] + techAjustment;
             int costFactor = race.ResearchCosts[field];
 
             return (baseCost * costFactor) / 100;
-        }
-
-        /// <summary>
-        /// The resources required for each level are based on a Fibonacci series (the
-        /// result of which is multiplied by a factor (TBD) to get the actual number
-        /// required).
-        /// </summary>
-        /// <param name="n">The Nth term of the series.</param>
-        /// <returns>The value of the Nth term.</returns>
-        private static int Fibonacci(int n)
-        {
-            if (n < 2)
-            {
-                return n;
-            }
-            return Fibonacci(n - 1) + Fibonacci(n - 2);
         }
     }
 }

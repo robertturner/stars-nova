@@ -39,6 +39,12 @@ namespace Nova.Common
         public ProductionQueue ManufacturingQueue;
         public Resources MineralConcentration;
         public Resources ResourcesOnHand;
+
+        /// <summary>
+        /// kT mined so far toward the next 1-point drop in concentration, per mineral. Tracked
+        /// across turns so partial progress isn't lost/re-derived each year (see Mine()).
+        /// </summary>
+        public Resources MineralMiningProgress;
         public Fleet Starbase;
 
         /// <summary>
@@ -82,6 +88,7 @@ namespace Nova.Common
             this.ManufacturingQueue = new ProductionQueue();
             this.MineralConcentration = new Resources();
             this.ResourcesOnHand = new Resources();
+            this.MineralMiningProgress = new Resources();
             Type = ItemType.Star;
         }
 
@@ -269,12 +276,9 @@ namespace Nova.Common
         /// <returns>Capacity in the range 1 - 100 (%).</returns>
         public int Capacity(Race race)
         {
+            // race.MaxPopulation already applies the Hyper Expansion population-cap halving
+            // (checking trait code "HE"), so it is not reapplied here.
             double maxPopulation = race.MaxPopulation;
-            
-            if (race.HasTrait("HyperExpansion"))
-            {
-                maxPopulation *= Global.PopulationFactorHyperExpansion;
-            }
 
             // handle negative hab worlds
             if (race.HabValue(this) < 0.0)
@@ -300,7 +304,7 @@ namespace Nova.Common
             double habitalValue = race.HabValue(this);
             double growthRate = race.GrowthRate;
 
-            if (race.HasTrait("HyperExpansion"))
+            if (race.HasTrait("HE"))
             {
                 growthRate *= Global.GrowthFactorHyperExpansion;
             }
@@ -419,28 +423,57 @@ namespace Nova.Common
         /// See UpdateResources().
         /// </remarks>
         public void UpdateMinerals()
-        {            
-            this.ResourcesOnHand.Ironium += this.Mine(ref this.MineralConcentration.Ironium);
-            this.ResourcesOnHand.Boranium += this.Mine(ref this.MineralConcentration.Boranium);
-            this.ResourcesOnHand.Germanium += this.Mine(ref this.MineralConcentration.Germanium);
+        {
+            this.ResourcesOnHand.Ironium += this.Mine(ref this.MineralConcentration.Ironium, ref this.MineralMiningProgress.Ironium);
+            this.ResourcesOnHand.Boranium += this.Mine(ref this.MineralConcentration.Boranium, ref this.MineralMiningProgress.Boranium);
+            this.ResourcesOnHand.Germanium += this.Mine(ref this.MineralConcentration.Germanium, ref this.MineralMiningProgress.Germanium);
+        }
+
+        /// <summary>
+        /// kT of a mineral that must be mined to drop concentration by one point, starting from
+        /// <paramref name="concentration"/>. Sourced from the original game's documented depletion
+        /// curve (starsfaq.com "Mineral Concentration And Mining" by Jason Cawley): 12500/concentration
+        /// for concentration >= 27, a flat 462 from 5 to 26, 1000 for the 4-&gt;3 and 3-&gt;2 drops, and
+        /// 2000 for the 2-&gt;1 drop. Concentration never drops below 1 (no cost defined there).
+        /// </summary>
+        private static int KtToDropOnePoint(int concentration)
+        {
+            if (concentration >= 27)
+            {
+                return 12500 / concentration;
+            }
+            else if (concentration >= 5)
+            {
+                return 462;
+            }
+            else if (concentration >= 3)
+            {
+                return 1000;
+            }
+            else
+            {
+                return 2000;
+            }
         }
 
         /// <summary>
         /// Mine minerals.
         /// </summary>
-        /// <param name="concentration">The mineral concentration in this system, (1.0 = 100%). 
+        /// <param name="concentration">The mineral concentration in this system, (1.0 = 100%).
         /// Mining alters the concentration of minerals.</param>
+        /// <param name="miningProgress">kT mined so far toward the next 1-point drop in
+        /// concentration, carried forward across turns.</param>
         /// <returns>The number of minerals mined.</returns>
         /// <remarks>
         /// Mining rate = Number of Mines * Efficiency * Mineral Concentration %.
         ///
         /// Mining efficiency is a race parameter (MineProductionRate per 10 mines)
         /// Concentration is in % and is normalized so that 1.0 = 100%
-        /// 
+        ///
         /// Note also that this method does not actually modify the Star's minerals. It
         /// merely returns the amount mined and decreases concentration.
         /// </remarks>
-        private int Mine(ref int concentration)
+        private int Mine(ref int concentration, ref int miningProgress)
         {
             // As with factories, mines must be manned to be able to produce.
             // Again this is set in the Race Deigner with a default of 1k
@@ -454,18 +487,14 @@ namespace Nova.Common
 
             int mined = GetMiningRate(concentration);
 
-            // Reduce the mineral concentration. This is just an approximation of
-            // the Stars! algorithm for now. Concentration will drop by 1 point
-            // after 12500/concentration kT have been mined. So we just reduce the
-            // concentration by a proportion according to how much has been mined
-            // this year.
-            // TODO (priority 3) - implement the Stars! algorithm for concentration reduction.
-            // TODO - A better approach would be to store the cumulative value of minerals mined
-            // and drop the concentration when the 12500/concentration threshold is breached. Also,
-            // The partial algorithm from 99 to 27 is amount/(12500/concentration)*mine efficiency.
-            // Below 27 the curve is linear with around 1000 until 2 and 2000 for the last point.
-
-            concentration -= mined / (12500 / concentration);
+            // Concentration drops by one point each time the cumulative kT mined toward it
+            // (carried across turns) crosses the threshold for the current concentration level.
+            miningProgress += mined;
+            while (concentration > 1 && miningProgress >= KtToDropOnePoint(concentration))
+            {
+                miningProgress -= KtToDropOnePoint(concentration);
+                concentration--;
+            }
 
             if (concentration < 1)
             {
@@ -558,6 +587,7 @@ namespace Nova.Common
             : base(node)
         {
             Starbase = null;
+            MineralMiningProgress = new Resources();
 
             XmlNode mainNode = node.FirstChild;
 
@@ -579,6 +609,9 @@ namespace Nova.Common
                             break;
                         case "resourcesonhand":
                             ResourcesOnHand = new Resources(mainNode);
+                            break;
+                        case "mineralminingprogress":
+                            MineralMiningProgress = new Resources(mainNode);
                             break;
                         case "colonists":
                             Colonists = int.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -673,6 +706,8 @@ namespace Nova.Common
             xmlelStar.AppendChild(MineralConcentration.ToXml(xmldoc, "MineralConcentration"));
 
             xmlelStar.AppendChild(ResourcesOnHand.ToXml(xmldoc, "ResourcesOnHand"));
+
+            xmlelStar.AppendChild(MineralMiningProgress.ToXml(xmldoc, "MineralMiningProgress"));
 
             Global.SaveData(xmldoc, xmlelStar, "HasFleetsInOrbit", HasFleetsInOrbit.ToString());
   

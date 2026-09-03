@@ -87,13 +87,15 @@ namespace Nova.Common
         /// <summary>
         /// Returns true if this production item will be skipped.
         /// </summary>
+        /// <remarks>
+        /// Factories may be built beyond the population-based operable cap (see
+        /// Star.GetOperableFactories()) — the real game lets a colony "grow into" idle
+        /// infrastructure rather than refusing to build it. The operable cap only limits how
+        /// many built factories actually generate resources (Star.GetFactoriesInUse()); it is
+        /// not a construction limit. See docs/behavior-specs/production-queue.md §3.
+        /// </remarks>
         public bool IsSkipped(Star star)
         {
-            if (star.Factories >= star.GetOperableFactories())
-            {
-                return true;
-            }
-
             if (star.ResourcesOnHand.Energy <= 0 || star.ResourcesOnHand.Germanium <= 0)
             {
                 return true;
@@ -137,8 +139,9 @@ namespace Nova.Common
             {
                 star.ResourcesOnHand -= remainingCost;
                 star.Factories++;
+                remainingCost = cost;
                 return true;
-            }  
+            }
         }
         
                 

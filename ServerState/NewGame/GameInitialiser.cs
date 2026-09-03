@@ -200,6 +200,10 @@ namespace Nova.Server.NewGame
                 case "WM":
                     empire.ResearchLevels[TechLevel.ResearchField.Propulsion] = 1;
                     empire.ResearchLevels[TechLevel.ResearchField.Energy] = 1;
+                    // Confirmed 2026-09-04 against the real game (Stars! v2.70j): the Race
+                    // Wizard's own description text reads "Tech 6 weapons and Tech 1 in
+                    // energy and propulsion" — Weapons was previously left at the default 0.
+                    empire.ResearchLevels[TechLevel.ResearchField.Weapons] = 6;
                     // Start with one armed scout + one colony ship.
                     break;
 
@@ -208,6 +212,10 @@ namespace Nova.Server.NewGame
                     empire.ResearchLevels[TechLevel.ResearchField.Propulsion] = 1;
                     empire.ResearchLevels[TechLevel.ResearchField.Energy] = 1;
                     empire.ResearchLevels[TechLevel.ResearchField.Biotechnology] = 6;
+                    // Confirmed 2026-09-04 against the real game (Stars! v2.70j): the in-game
+                    // Research screen for a fresh Claim Adjuster race reads Construction 2 —
+                    // this was previously left at the default 0.
+                    empire.ResearchLevels[TechLevel.ResearchField.Construction] = 2;
                     // Start with an orbital terraforming ship
                     break;
 
