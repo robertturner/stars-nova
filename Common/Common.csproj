@@ -295,6 +295,7 @@
     <Compile Include="SpaceAllocator.cs" />
     <Compile Include="..\VersionInfo.cs" />
     <Compile Include="Research.cs" />
+    <Compile Include="TechTrading.cs" />
     <Compile Include="DataStructures\EmpireData.cs" />
     <Compile Include="DataStructures\StarIntel.cs" />
     <Compile Include="DataStructures\FleetIntel.cs" />

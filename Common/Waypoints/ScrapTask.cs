@@ -135,8 +135,25 @@ namespace Nova.Common.Waypoints
                 returned *= amount/100;
                 fleet.TotalCost.Energy = (int)totalResources;
                 star.ResourcesOnHand += fleet.TotalCost;
+
+                // Scrapping at one of your own starbases is a tech-trading opportunity if the
+                // fleet was built with components requiring higher tech than you currently have
+                // (e.g. a gifted ship). See docs/behavior-specs/research-tech-tree.md §6.
+                if (star.Starbase != null && fleet.Composition.Count > 0)
+                {
+                    TechLevel sourceRequiredTech = TechTrading.HighestRequiredTech(fleet);
+                    TechLevel.ResearchField? learned = TechTrading.AttemptTechGain(sender, sourceRequiredTech);
+                    if (learned != null)
+                    {
+                        Message techMessage = new Message();
+                        techMessage.Audience = sender.Id;
+                        techMessage.Text = "Scrapping " + fleet.Name + " has taught your scientists Tech Level "
+                            + sender.ResearchLevels[learned.Value] + " in the " + learned.Value + " field.";
+                        Messages.Add(techMessage);
+                    }
+                }
             }
-            
+
             fleet.Composition.Clear(); // disapear the ships. The (now empty) fleet will be cleaned up latter.
             return true;
         }

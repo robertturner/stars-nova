@@ -58,9 +58,17 @@ namespace Nova.Common
         public bool         TurnSubmitted           = false;
 
         /// <summary>
-        /// The last game year for which a turn was submitted. Should be the previous game year until the current year is submitted. May be several years previous if turns were skipped. 
+        /// The last game year for which a turn was submitted. Should be the previous game year until the current year is submitted. May be several years previous if turns were skipped.
         /// </summary>
-        public int          LastTurnSubmitted       = 0;             
+        public int          LastTurnSubmitted       = 0;
+
+        /// <summary>
+        /// Whether this empire has already picked up a traded tech level this turn (from
+        /// scrapping, battle, or invasion — only one such gain is allowed per turn regardless of
+        /// how many qualifying events occur). Reset at the start of each turn. See
+        /// docs/behavior-specs/research-tech-tree.md §6.
+        /// </summary>
+        public bool         TechGainedThisTurn      = false;
 
         private Race        race                    = new Race(); // This empire's race.
         

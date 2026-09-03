@@ -214,6 +214,16 @@ namespace Nova.Common.Waypoints
                             + attackersKilled +
                             " troops were killed in the attack.";
 
+                // Invading a planet belonging to a player who leads in one or more fields is a
+                // tech-trading opportunity for the invader. See
+                // docs/behavior-specs/research-tech-tree.md §6.
+                TechLevel.ResearchField? learned = TechTrading.AttemptTechGain(sender, receiver.ResearchLevels);
+                if (learned != null)
+                {
+                    messageText += " Capturing the planet has also taught your scientists Tech Level "
+                        + sender.ResearchLevels[learned.Value] + " in the " + learned.Value + " field.";
+                }
+
                 wolfMessage.Text = messageText;
                 Messages.Add(wolfMessage);
 

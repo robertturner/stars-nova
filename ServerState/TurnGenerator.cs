@@ -105,6 +105,13 @@ namespace Nova.Server
             // for WaypointCommand: Add Waypoints to Fleets.
             ParseCommands();
 
+            // Only one traded tech level (scrapping/battle/invasion) is allowed per empire per
+            // turn — see docs/behavior-specs/research-tech-tree.md §6.
+            foreach (EmpireData empire in serverState.AllEmpires.Values)
+            {
+                empire.TechGainedThisTurn = false;
+            }
+
             // Do all fleet movement and actions 
             // TODO (priority 4) - split this up into waypoint zero and waypoint 1 actions
 
