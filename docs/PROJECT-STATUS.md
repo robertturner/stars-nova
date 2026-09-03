@@ -58,8 +58,24 @@ Building from the `Z:\StarsClone` network-share path itself hit a spurious `MSB3
 web"/zone) error on `.resx` files that `Unblock-File` didn't fix (no actual Zone.Identifier stream
 was present — looked like an MSBuild/UNC-path quirk, not a real per-file block). Worked around by
 building from a local copy (`robocopy` mirror) instead of changing any system zone-security settings.
-`Tests\Tests.csproj` additionally needs `NuGet Package Restore` for `NUnit3TestAdapter` (not attempted
-this session — no NuGet access).
+
+**Running the tests**: `Tests\Tests.csproj` uses old-style `packages.config` NuGet restore (NUnit
+3.12.0 + NUnit3TestAdapter 3.16.1), which `dotnet restore` doesn't handle — no NuGet.exe or Visual
+Studio was present on this session's machine, so both `nuget.exe` (from
+`dist.nuget.org/win-x86-commandline/latest/nuget.exe`) and the `NUnit.ConsoleRunner` NuGet package
+(no vstest/VS available to run tests otherwise) had to be fetched to actually execute anything:
+```
+nuget.exe restore Nova.sln -PackagesDirectory packages
+& "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe" Tests\Tests.csproj /p:Configuration=Debug
+nunit3-console.exe Build\Debug\Nova.Tests.dll
+```
+As of 2026-09-04, **65/67 tests pass** (up from a 59/67 baseline on the original pre-fork Nova code,
+confirmed by building and running that exact commit for comparison — this session's changes fixed
+6 previously-non-running tests and introduced zero regressions). Two pre-existing failures remain,
+not investigated further as out of scope: `BattleEngineTest.Test4SelectTargets` (some fixture
+asymmetry) and `RaceAdvantagePointCalculatorTest.calculateAdvantagePointsForStandardJoat` (in code
+untouched this session). See the `ec90e63` commit message for the full story, including a genuine
+shared-mutable-test-state isolation bug found and fixed in `StarTest.cs` along the way.
 
 **Fixed this session (2026-09-04), each as its own commit** — see `git log` for full detail per item:
 mineral concentration depletion (was a stub using `12500/concentration` uniformly instead of the real
@@ -218,10 +234,11 @@ described below, which turned out to be unreachable from this session):
   Serial number: see the user, do not commit it anywhere.
 
 ## Next steps
-1. Get `Tests\Tests.csproj` building (NuGet restore for `NUnit3TestAdapter`) so Nova's existing test
-   suite can actually run and catch regressions from this session's large batch of changes — nothing
-   in this session was verified in an actual running game, only by compiling; playtesting the changes
-   (especially combat) is the highest-priority follow-up.
+1. ~~Get `Tests\Tests.csproj` building~~ **DONE 2026-09-04** — see "Running the tests" above (65/67
+   passing). Still nothing in this session was verified in an *actual running game* though, only by
+   compiling and unit tests — playtesting the changes (especially combat) is the highest-priority
+   follow-up. Worth adding real unit-test coverage for combat/production/research specifically,
+   since the existing suite barely touches what this session changed.
 2. Work through the "Still open in combat" and "Still open / deferred elsewhere" lists above —
    auto-build wiring, Slow Tech Advance, BET, remaining PRT/LRT mechanics, stargates/wormholes,
    conditional cargo transfers, per-missile independent resolution.
