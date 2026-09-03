@@ -976,9 +976,7 @@ namespace Nova.Server
 
             // If we still have some Armor then the stack hasn't been destroyed
             // yet so this is the end of this shot.
-
-            // FIXME (Priority 7) What about losses of a single ship within the token???
-            if (target.Token.Armor <= 0) 
+            if (target.Token.Quantity <= 0 || target.Token.Armor <= 0)
             {
                 DestroyStack(attacker, target);
             }
@@ -994,11 +992,18 @@ namespace Nova.Server
         private void DestroyStack(Stack attacker, Stack target)
         {
             // report the losses
-            battle.Losses[target.Owner] = battle.Losses[target.Owner] + target.Token.Quantity;
+            // Ships destroyed by earlier shots this battle (whole-ship kills within a shot that
+            // didn't finish off the whole token) were already counted in DamageArmor as they
+            // happened; only the remaining stragglers are counted here, to avoid double-counting.
+            if (target.Token.Quantity > 0)
+            {
+                battle.Losses[target.Owner] = battle.Losses[target.Owner] + target.Token.Quantity;
 
-            // Destroyed ships leave salvage equal to 1/3 of their total mineral cost, deposited
-            // at the end of the battle. See docs/behavior-specs/combat-resolution.md §7.
-            totalSalvage += target.Token.Design.Cost * target.Token.Quantity;
+                // Destroyed ships leave salvage equal to 1/3 of their total mineral cost,
+                // deposited at the end of the battle. See
+                // docs/behavior-specs/combat-resolution.md §7.
+                totalSalvage += target.Token.Design.Cost * target.Token.Quantity;
+            }
 
             // for the battle viewer / report
             BattleStepDestroy destroy = new BattleStepDestroy();
@@ -1143,8 +1148,32 @@ namespace Nova.Server
         /// <param name="hitPower">Weapon damage.</param>
         private void DamageArmor(Stack attacker, Stack target, double hitPower)
         {
-            // FIXME (Priority 6) - damage is being spread over all ships in the stack. Should destroy whole ships first, then spread remaining damage.
+            // Destroy whole ships first (floor(shot damage / current armor per ship)), then
+            // spread any remaining non-lethal damage evenly across the survivors. Current armor
+            // per ship is approximated as the token's pooled remaining armor divided by its ship
+            // count (rather than the spec's exact 1/512-of-total-armor cumulative-damage
+            // quantization, which isn't tracked here). See
+            // docs/behavior-specs/combat-resolution.md §6.
+            if (target.Token.Quantity > 0)
+            {
+                double currentArmorPerShip = (double)target.Token.Armor / target.Token.Quantity;
+                if (currentArmorPerShip > 0)
+                {
+                    int shipsDestroyed = Math.Min(target.Token.Quantity, (int)Math.Floor(hitPower / currentArmorPerShip));
+                    if (shipsDestroyed > 0)
+                    {
+                        target.Token.Quantity -= shipsDestroyed;
+                        battle.Losses[target.Owner] = battle.Losses[target.Owner] + shipsDestroyed;
+                        totalSalvage += target.Token.Design.Cost * shipsDestroyed;
+                    }
+                }
+            }
+
             target.Token.Armor -= (int)hitPower;
+            if (target.Token.Armor < 0)
+            {
+                target.Token.Armor = 0;
+            }
 
             BattleStepWeapons battleStepReport = new BattleStepWeapons();
             battleStepReport.Damage = hitPower;
@@ -1168,7 +1197,12 @@ namespace Nova.Server
         /// <returns>Damage weapon is able to do.</returns>
         private double CalculateWeaponPower(Stack attacker, Weapon weapon, Stack target)
         {
-            double weaponPower = weapon.Power;
+            // ShotDamage = WeaponsInSlot * ShipsInToken * WeaponDamagePerHit (see
+            // docs/behavior-specs/combat-resolution.md §6). weapon.Power already folds in
+            // WeaponsInSlot (multiple identical weapon components in the same hull slot are
+            // summed when the ship design is built); ShipsInToken (every ship in the stack fires
+            // this slot together) was previously not applied at all here.
+            double weaponPower = weapon.Power * attacker.Token.Quantity;
 
             if (!weapon.IsMissile)
             {
