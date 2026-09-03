@@ -281,8 +281,17 @@ namespace Nova.Common
         
         /// <summary>
         /// Return the penetrating range scan capability of the fleet.
-        /// FIXME (priority 4) - scanning capability can be additive (but the formula is non-linear).
         /// </summary>
+        /// <remarks>
+        /// This previously carried a FIXME suggesting fleet-wide scan ranges should combine
+        /// additively across ships via the documented fourth-root formula (see
+        /// ShipDesign.cs / Scanner.cs operator+, and
+        /// docs/behavior-specs/fleet-movement-scanning-cargo.md §3). That formula is sourced
+        /// only for combining multiple scanner *components on one ship design* — no source found
+        /// documents combining scan range *across different ships in a fleet* the same way, so
+        /// taking the best single ship's range (as below) is left as-is rather than guessing at
+        /// an unsourced fleet-wide combination rule.
+        /// </remarks>
         public int PenScanRange
         {
             get
@@ -302,7 +311,7 @@ namespace Nova.Common
         
         /// <summary>
         /// Return the non penetrating range scan capability of the fleet.
-        /// FIXME (priority 4) - scanning capability can be additive (but the formula is non-linear).
+        /// See the remarks on PenScanRange above regarding fleet-wide combination.
         /// </summary>
         public int ScanRange
         {

@@ -162,7 +162,12 @@ namespace Nova.Server.TurnSteps
                     {
                         // Fleets are simple as scan levels (PenScan for example) won't affect them. We only
                         // care for non penetrating distance scans.
-                        if (range > scanRange)
+                        // A cloak reduces the effective detection range by its percentage — e.g. an
+                        // 80%-cloaked fleet is only detectable within 20% of the scanner's normal
+                        // rated range. See docs/behavior-specs/fleet-movement-scanning-cargo.md §3.
+                        double effectiveScanRange = scanRange * (100 - (scanned as Fleet).Cloaked) / 100.0;
+
+                        if (range > effectiveScanRange)
                         {
                             continue;
                         }
