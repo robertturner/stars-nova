@@ -25,43 +25,107 @@ namespace Nova.Common
     using System;
     using System.Xml;
 
-
+    /// <summary>
+    /// Converts resources directly into minerals. See
+    /// docs/behavior-specs/production-queue.md §7: "Each unit of mineral alchemy will turn a
+    /// mere 100 of your resources (25 if you have the Mineral Alchemy trait) into 1 kT of each
+    /// of the three minerals."
+    /// </summary>
     public class AlchemyProductionUnit : IProductionUnit
     {
+        private Resources cost;
+        private Resources remainingCost;
+
         public Resources Cost
         {
-            private set;
-            get;
+            get { return cost; }
         }
-                
+
         public Resources RemainingCost
         {
-            private set;
-            get;
+            get { return remainingCost; }
         }
-        
+
         public string Name
         {
-            get { return "Alchemy";}
-        }
-                
-        public AlchemyProductionUnit()
-        {
+            get { return "Mineral Alchemy"; }
         }
 
+        /// <summary>
+        /// initializing constructor.
+        /// </summary>
+        /// <param name="race">Race performing the conversion (Mineral Alchemy trait lowers the cost).</param>
+        public AlchemyProductionUnit(Race race)
+        {
+            int resourceCost = race.HasTrait("MA") ? 25 : 100;
+            cost = new Resources(0, 0, 0, resourceCost);
+            remainingCost = cost;
+        }
+
+        /// <summary>
+        /// Load: Read in a ProductionUnit from and XmlNode representation.
+        /// </summary>
+        /// <param name="node">An XmlNode containing a representation of a ProductionUnit</param>
+        public AlchemyProductionUnit(XmlNode node)
+        {
+            XmlNode mainNode = node.FirstChild;
+            while (mainNode != null)
+            {
+                switch (mainNode.Name.ToLower())
+                {
+                    case "cost":
+                        cost = new Resources(mainNode);
+                        break;
+
+                    case "remainingcost":
+                        remainingCost = new Resources(mainNode);
+                        break;
+                }
+
+                mainNode = mainNode.NextSibling;
+            }
+        }
+
+        /// <summary>
+        /// Returns true if this production item will be skipped (no resources to convert).
+        /// </summary>
         public bool IsSkipped(Star star)
         {
-            throw new NotImplementedException();
+            return star.ResourcesOnHand.Energy <= 0;
         }
 
+        /// <summary>
+        /// Convert resources into 1 kT of each mineral. Like the other production units,
+        /// a turn that can't fully afford one unit banks partial progress toward it.
+        /// </summary>
         public bool Construct(Star star)
         {
-            throw new NotImplementedException();
+            if (star.ResourcesOnHand.Energy < remainingCost.Energy)
+            {
+                remainingCost.Energy -= star.ResourcesOnHand.Energy;
+                star.ResourcesOnHand.Energy = 0;
+                return false;
+            }
+            else
+            {
+                star.ResourcesOnHand.Energy -= remainingCost.Energy;
+                star.ResourcesOnHand.Ironium += 1;
+                star.ResourcesOnHand.Boranium += 1;
+                star.ResourcesOnHand.Germanium += 1;
+                remainingCost = cost;
+                return true;
+            }
         }
-        
+
         public XmlElement ToXml(XmlDocument xmldoc)
         {
-            throw new NotImplementedException();
+            XmlElement xmlelUnit = xmldoc.CreateElement("AlchemyUnit");
+
+            xmlelUnit.AppendChild(cost.ToXml(xmldoc, "Cost"));
+
+            xmlelUnit.AppendChild(remainingCost.ToXml(xmldoc, "RemainingCost"));
+
+            return xmlelUnit;
         }
     }
 }

@@ -90,6 +90,16 @@ namespace Nova.WinForms.Gui
             item.Tag = new DefenseProductionUnit();
             designList.Items.Add(item);
 
+            item = new ListViewItem();
+            item.Text = "Mineral Alchemy";
+            item.Tag = new AlchemyProductionUnit(clientState.EmpireState.Race);
+            designList.Items.Add(item);
+
+            item = new ListViewItem();
+            item.Text = "Terraform";
+            item.Tag = new TerraformProductionUnit(clientState.EmpireState.Race);
+            designList.Items.Add(item);
+
             Fleet starbase = queueStar.Starbase;
             int dockCapacity = 0;
 

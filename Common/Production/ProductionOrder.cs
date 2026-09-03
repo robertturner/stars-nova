@@ -161,6 +161,14 @@ namespace Nova.Common
                         case "shipunit":
                             Unit = new ShipProductionUnit(subnode);
                         break;
+
+                        case "alchemyunit":
+                            Unit = new AlchemyProductionUnit(subnode);
+                        break;
+
+                        case "terraformunit":
+                            Unit = new TerraformProductionUnit(subnode);
+                        break;
                     }
                 }
                 catch (Exception e)
