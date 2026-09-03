@@ -77,18 +77,45 @@ bug (type upgraded but not range), cloak reduction of fleet detection range (was
 warp-10 destruction risk and ramscoop fuel generation (both entirely absent), War
 Monger/Inner-Strength weapon cost modifiers and Inner Strength's defense discount, Improved
 Starbases' cost discount (was dead commented-out code), No Advanced Scanners' range doubling, and
-tech trading via scrapping/invasion (entirely absent; the battle-triggered variant is deferred to the
-combat rework below).
+tech trading via scrapping/invasion (entirely absent; the battle-triggered variant is deferred, see
+below).
 
-**Still open / deferred** (roughly in the order they're likely worth tackling):
-- **Combat resolution — the big one.** Nova has a real end-to-end battle loop (10x10 grid, 16-round
-  cap, move-then-fire) but almost every quantitative formula `combat-resolution.md` cares about is
-  either a stub, dead/commented-out code, or missing outright: the attractiveness/targeting formula,
-  initiative-based firing order (currently sorts by raw weapon initiative *ascending*, i.e.
-  backwards, ignoring hull/computer bonuses), beam range falloff and deflector stacking (written but
-  commented out), capital-missile double damage, the accuracy formula (computer/jammer contributions
-  are a bare TODO), all six movement tactics (only one hardcoded behavior exists), the 256-token cap,
-  and salvage. This needs a dedicated pass, likely the single largest remaining piece of work.
+**Combat resolution rework (2026-09-04), also done this session** — was the single largest gap:
+Nova had a real end-to-end battle loop (10x10 grid, 16-round cap, move-then-fire) but almost every
+quantitative formula was a stub, dead/commented-out code, or missing outright. Fixed/implemented:
+the real attractiveness/targeting formula (was a placeholder), initiative-based firing order (was
+sorting by raw weapon initiative *ascending* — backwards — and ignoring hull/computer bonuses), beam
+range falloff and deflector stacking (written but entirely commented out, and inverted — subtraction
+instead of multiplication — even in the dead code), capital-missile double damage (was a bare FIXME),
+an accuracy approximation for computer/jammer effects (previously ignored entirely; explicitly
+documented as unverified since no source states the original formula precisely), all six movement
+tactics (previously one hardcoded "always close to point-blank" behavior — Disengage/Disengage-if-
+Challenged/Minimise-Damage-to-Self now actually retreat), the 256-token cap (absent), and salvage
+(absent; deposited on-planet only, deep-space decay isn't modeled). Also found and fixed two
+consequential bugs while doing this: `Fleet.TotalCost` didn't multiply by ship quantity per token
+(unlike the otherwise-identical `Mass` property), and — the big one — `CalculateWeaponPower` never
+multiplied by the firing stack's ship count at all, so a 10-ship stack dealt exactly the same damage
+per shot as a single ship of that design; fixing it made the pre-existing "whole token dies the
+instant pooled armor hits zero" bug much more consequential, so whole-ship kill accounting (destroy
+whole ships first via floor(damage/current-armor-per-ship), spread remainder across survivors) was
+implemented alongside it.
+
+**Still open in combat**: torpedoes/missiles resolve a whole weapon slot's damage as one hit/miss
+roll rather than each individual missile independently (spec: "Each individual missile/torpedo in a
+shot is resolved as an independent hit/miss check") — not fixed because Nova's data model collapses
+multiple identical weapons in a slot into one combined `Power` value, losing the per-missile count
+needed to loop over them; would need a small data-model change first. The persistent-tie-break-stays-
+fixed-for-the-rest-of-the-battle rule for identical-initiative firing order isn't tracked (falls back
+to whatever order the sort produces). The three "close toward target" movement tactics (Maximise
+Damage / Net Damage / Damage Ratio) are all treated identically rather than modeling their documented
+differences. Per-shot dynamic retargeting (a shot can hit a different target than the stack's overall
+movement target if the intended one drifted out of range) isn't modeled — Nova tracks one target per
+stack, not per weapon slot. Energy capacitors' beam-damage bonus isn't modeled (no source found gives
+the exact percentage). The tech-trading-via-battle-kill trigger (§6 of research-tech-tree.md) still
+isn't wired up, since it needs a hook into per-kill tech comparison that didn't exist before this pass
+either.
+
+**Still open / deferred elsewhere** (roughly in the order they're likely worth tackling):
 - Auto-build production orders: the `IsAutoBuild` plumbing exists but nothing (AI or GUI) ever
   actually creates one — every real order is a manual one-shot that blocks the queue if unaffordable.
 - Slow Tech Advance (doubles research cost) and Bleeding Edge Technology: no game-setting/mechanic
@@ -191,16 +218,20 @@ described below, which turned out to be unreachable from this session):
   Serial number: see the user, do not commit it anywhere.
 
 ## Next steps
-1. **Combat resolution rework** — see the "Still open" list above. Largest remaining piece.
-2. Continue the empirical punch list above (items 1, 4, 6-7) using the automation harness at
-   `C:\StarsGame\automation.ps1` on ROBSAMD — items 2, 3, 5 are resolved.
-3. Work through the rest of the "Still open / deferred" list above (auto-build wiring, Slow Tech
-   Advance, BET, remaining PRT/LRT mechanics, stargates/wormholes, conditional cargo transfers).
+1. Get `Tests\Tests.csproj` building (NuGet restore for `NUnit3TestAdapter`) so Nova's existing test
+   suite can actually run and catch regressions from this session's large batch of changes — nothing
+   in this session was verified in an actual running game, only by compiling; playtesting the changes
+   (especially combat) is the highest-priority follow-up.
+2. Work through the "Still open in combat" and "Still open / deferred elsewhere" lists above —
+   auto-build wiring, Slow Tech Advance, BET, remaining PRT/LRT mechanics, stargates/wormholes,
+   conditional cargo transfers, per-missile independent resolution.
+3. Continue the empirical punch list below (items 1, 4, 6-7) using the automation harness at
+   `C:\StarsGame\automation.ps1` on ROBSAMD — items 2, 3, 5 are resolved. Item 7 (combat accuracy)
+   is especially worth prioritizing now, to check the approximation added this session against the
+   real game's actual behavior.
 4. Keep building out `docs/ui-reference/` screenshots as a UI/UX reference for Nova's own (currently
    WinForms) front-end, or a future rewrite of it.
 5. Set up a real GitHub fork of ekolis/stars-nova (this repo currently just has it as a `nova` git
    remote with its history merged in locally) so work here can actually be contributed back, per the
    2026-09-04 decision to evolve Nova rather than replace it. Needs the user's GitHub auth — not set
    up this session (no `gh` CLI available on ROBSAMD).
-6. Get `Tests\Tests.csproj` building (NuGet restore for `NUnit3TestAdapter`) so Nova's existing test
-   suite can actually run and catch regressions from this session's changes going forward.
