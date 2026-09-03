@@ -576,6 +576,13 @@ namespace Nova.Common
             int fuelUsed = (int)(fuelConsumptionRate * travelTime);
             FuelAvailable -= fuelUsed;
 
+            double distanceTravelled = speed * travelTime;
+            FuelAvailable += FuelGeneration(warpFactor, distanceTravelled);
+            if (FuelAvailable > TotalFuelCapacity)
+            {
+                FuelAvailable = TotalFuelCapacity;
+            }
+
             // Added check if fleet run out of full it's speed will be changed 
             // to free warp speed.
             if (arrived == TravelStatus.InTransit && fuelConsumptionRate > this.FuelAvailable)
@@ -610,10 +617,65 @@ namespace Nova.Common
 
             foreach (ShipToken token in tokens.Values)
             {
-                fuelConsumption += token.Design.FuelConsumption(warpFactor, race, (int)(token.Design.CargoCapacity * cargoFullness)); 
+                fuelConsumption += token.Design.FuelConsumption(warpFactor, race, (int)(token.Design.CargoCapacity * cargoFullness));
             }
 
             return fuelConsumption;
+        }
+
+        /// <summary>
+        /// Fuel generated this move by ramscoop engines running below their "free" warp
+        /// threshold. Per docs/behavior-specs/fleet-movement-scanning-cargo.md §2: 0 above the
+        /// free-travel warp, distance-for-distance at exactly the free-travel warp, then 3x/6x/10x
+        /// distance for 1/2/3-or-more warp factors below it. This is per engine, so scales with
+        /// the number of ships in each token.
+        /// </summary>
+        /// <remarks>
+        /// This is a simplified, rule-based approximation. The spec's own sourced generation
+        /// table gives specific mg values per named engine per warp speed rather than a clean
+        /// formula, and isn't reproduced here — this formula is the documented general step
+        /// pattern, not a verbatim per-engine table.
+        /// </remarks>
+        private double FuelGeneration(int warpFactor, double distance)
+        {
+            double generated = 0;
+
+            foreach (ShipToken token in tokens.Values)
+            {
+                Engine engine = token.Design.Engine;
+                if (engine == null || !engine.RamScoop)
+                {
+                    continue;
+                }
+
+                int belowFreeWarp = engine.FreeWarpSpeed - warpFactor;
+                double perEngineFactor;
+
+                if (belowFreeWarp < 0)
+                {
+                    perEngineFactor = 0;
+                }
+                else if (belowFreeWarp == 0)
+                {
+                    perEngineFactor = 1;
+                }
+                else if (belowFreeWarp == 1)
+                {
+                    perEngineFactor = 3;
+                }
+                else if (belowFreeWarp == 2)
+                {
+                    perEngineFactor = 6;
+                }
+                else
+                {
+                    perEngineFactor = 10;
+                }
+
+                generated += perEngineFactor * distance * token.Quantity;
+            }
+
+            return generated;
         }
 
         /// <summary>

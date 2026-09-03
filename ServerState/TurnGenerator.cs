@@ -199,7 +199,7 @@ namespace Nova.Server
         protected virtual void CleanupOrders()
         {
             // Delete orders on turn generation.
-            // Copy each file into it’s new directory.
+            // Copy each file into itï¿½s new directory.
             DirectoryInfo source = new DirectoryInfo(serverState.GameFolder);
             foreach (FileInfo fi in source.GetFiles())
             {
@@ -232,7 +232,7 @@ namespace Nova.Server
                     Directory.CreateDirectory(target.FullName);
                 }
 
-                // Copy each file into it’s new directory.
+                // Copy each file into itï¿½s new directory.
                 foreach (FileInfo fi in source.GetFiles())
                 {
                     fi.CopyTo(Path.Combine(target.ToString(), fi.Name), true);
@@ -403,6 +403,15 @@ namespace Nova.Server
                 // Move
                 // -------------------
 
+                // Warp 10 can be ordered on any ship, but unless its engine is specifically
+                // rated safe at that speed (Engine.FastestSafeSpeed == 10), each individual ship
+                // faces a 10% chance per year of being destroyed, rolled independently per ship
+                // (not per fleet). See docs/behavior-specs/fleet-movement-scanning-cargo.md Â§1.
+                if (waypointZero.WarpFactor == 10 && CheckWarp10Destruction(fleet))
+                {
+                    return true;
+                }
+
                 // Check for Cheap Engines failing to start
                 if (waypointZero.WarpFactor > 6 && race.Traits.Contains("CE") && rand.Next(10) == 1)
                 {
@@ -489,7 +498,64 @@ namespace Nova.Server
             // ??? (priority 4) - why does this always return false.
             return false;
         }
-        
+
+        /// <summary>
+        /// Rolls the Warp 10 destruction risk for each ship in the fleet that isn't warp-10-safe,
+        /// removing any ships destroyed. See docs/behavior-specs/fleet-movement-scanning-cargo.md Â§1.
+        /// </summary>
+        /// <returns>True if the whole fleet was destroyed.</returns>
+        private bool CheckWarp10Destruction(Fleet fleet)
+        {
+            List<long> destroyedTokenKeys = new List<long>();
+
+            foreach (KeyValuePair<long, ShipToken> entry in fleet.Composition)
+            {
+                ShipToken token = entry.Value;
+                Engine engine = token.Design.Engine;
+
+                if (engine == null || engine.FastestSafeSpeed >= 10)
+                {
+                    continue;
+                }
+
+                int survivors = 0;
+                for (int i = 0; i < token.Quantity; i++)
+                {
+                    if (rand.Next(10) != 0)
+                    {
+                        survivors++;
+                    }
+                }
+
+                if (survivors < token.Quantity)
+                {
+                    Message message = new Message();
+                    message.Audience = fleet.Owner;
+                    message.Text = (token.Quantity - survivors) + " of your " + token.Design.Name
+                        + " in fleet " + fleet.Name + " were destroyed attempting Warp 10 travel.";
+                    message.Type = "Warp 10";
+                    message.Event = this;
+                    serverState.AllMessages.Add(message);
+                }
+
+                if (survivors <= 0)
+                {
+                    destroyedTokenKeys.Add(entry.Key);
+                }
+                else
+                {
+                    token.Quantity = survivors;
+                }
+            }
+
+            foreach (long key in destroyedTokenKeys)
+            {
+                fleet.Composition.Remove(key);
+            }
+
+            return fleet.Composition.Count == 0;
+        }
+
         /// <summary>
         /// This is a utility function. Sets intel for the first turn.
         /// </summary>
