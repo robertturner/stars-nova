@@ -84,6 +84,13 @@ namespace Nova.Server
         private int battleRound = 0;
 
         /// <summary>
+        /// Running total of the mineral cost of ships destroyed in the battle currently being
+        /// processed, reset per battle location. 1/3 of this is deposited as salvage once the
+        /// battle at that location ends. See docs/behavior-specs/combat-resolution.md §7.
+        /// </summary>
+        private Resources totalSalvage = new Resources();
+
+        /// <summary>
         /// Creates a new battle engine.
         /// </summary>
         /// <param name="serverState">
@@ -172,8 +179,21 @@ namespace Nova.Server
                     battle.Stacks[stack.Key] = new Stack(stack);
                 }
 
+                totalSalvage = new Resources();
+
                 DoBattle(battlingStacks);
-                
+
+                // Destroyed ships leave salvage equal to 1/3 of their total mineral cost. If the
+                // battle happened over a planet, it's deposited there; otherwise the real game
+                // leaves it as a decaying deep-space mineral concentration, which isn't modeled
+                // here (no deep-space mineral cache object exists yet), so it's simply lost. See
+                // docs/behavior-specs/combat-resolution.md §7.
+                Star battleStar = sample.InOrbit as Star;
+                if (battleStar != null)
+                {
+                    battleStar.ResourcesOnHand += totalSalvage * (1.0 / 3.0);
+                }
+
                 ReportBattle();
             }
         }
@@ -695,12 +715,12 @@ namespace Nova.Server
 
             // Identify the attack parameters that have to take into account
             // factors other than the base values (e.g. jammers, capacitors, etc.)
-            double hitPower = CalculateWeaponPower(attacker.Token.Design, attack.Weapon, target.Token.Design);
-            double accuracy = CalculateWeaponAccuracy(attacker.Token.Design, attack.Weapon, target.Token.Design);
+            double hitPower = CalculateWeaponPower(attacker, attack.Weapon, target);
+            double accuracy = CalculateWeaponAccuracy(attacker, attack.Weapon, target);
 
             if (attack.Weapon.IsMissile)
             {
-                FireMissile(attacker, target, hitPower, accuracy);
+                FireMissile(attacker, target, hitPower, accuracy, attack.Weapon);
             }
             else
             {
@@ -727,7 +747,11 @@ namespace Nova.Server
         private void DestroyStack(Stack attacker, Stack target)
         {
             // report the losses
-            battle.Losses[target.Owner] = battle.Losses[target.Owner] + target.Token.Quantity; 
+            battle.Losses[target.Owner] = battle.Losses[target.Owner] + target.Token.Quantity;
+
+            // Destroyed ships leave salvage equal to 1/3 of their total mineral cost, deposited
+            // at the end of the battle. See docs/behavior-specs/combat-resolution.md §7.
+            totalSalvage += target.Token.Design.Cost * target.Token.Quantity;
 
             // for the battle viewer / report
             BattleStepDestroy destroy = new BattleStepDestroy();
@@ -787,10 +811,10 @@ namespace Nova.Server
         /// <remarks>
         /// FIXME (priority 3) - Missile accuracy is not calculated this way in Stars! The effect of computers and jammers must be considered at the same time.
         /// </remarks>
-        private void FireMissile(Stack attacker, Stack target, double hitPower, double accuracy)
+        private void FireMissile(Stack attacker, Stack target, double hitPower, double accuracy, Weapon weapon)
         {
             // First, determine if this missile is going to hit or miss (based on
-            // it's accuracy. 
+            // it's accuracy.
             // FIXME (priority 4) - This algorithm for determining hit or miss is crude. We need a better one.
 
             int probability = random.Next(0, 100);
@@ -798,8 +822,21 @@ namespace Nova.Server
             if (accuracy >= probability)
             {      // A hit
                 double shieldsHit = hitPower / 2;
+                double directArmorHit = hitPower / 2;
 
-                double armorHit = (hitPower / 2) + DamageShields(attacker, target, shieldsHit); // FIXME (Priority 5) - do double damage if it is a capital ship missile and all shields have been depleted.
+                double armorHit = directArmorHit + DamageShields(attacker, target, shieldsHit);
+
+                // Capital ship missiles deal double damage to armor for any portion of a shot
+                // that lands after the target's shields are fully depleted. Simplified here as:
+                // if this shot leaves shields at (or already found them at) zero, the shot's
+                // whole armor-bound damage counts as "post-depletion" rather than precisely
+                // prorating the instant shields actually hit zero mid-shot. See
+                // docs/behavior-specs/combat-resolution.md §6, Example 3.
+                if (weapon.Group == WeaponType.missile && target.Token.Shields <= 0)
+                {
+                    armorHit *= 2;
+                }
+
                 DamageArmor(attacker, target, armorHit);
             }
             else
@@ -866,64 +903,65 @@ namespace Nova.Server
         }
 
         /// <summary>
-        /// Calculate weapon power. For beam weapons, this damage will dissipate over
-        /// the range of the beam (no dissipation at range 0, 5% dissipation at range 1,
-        /// 10% dissipation at range 2 and 15% at range 3). Also capacitors and
-        /// deflectors will modify the weapon power.
-        ///
-        /// For missiles, the power is simply the base power.
+        /// Calculate weapon power. Beam weapon damage falls off linearly with range, losing up
+        /// to 10% of its damage at the weapon's own maximum range, and is reduced by the
+        /// target's beam deflectors (0.9^n for n deflectors, tracked as a combined percentage on
+        /// ShipDesign.BeamDeflectors). Missile/torpedo power is the unmodified base power — their
+        /// hit/miss and shield/armor split is handled separately in FireMissile. See
+        /// docs/behavior-specs/combat-resolution.md §6.
         /// </summary>
-        /// <param name="ship">Firing ship.</param>
+        /// <param name="attacker">Firing stack.</param>
         /// <param name="weapon">Firing weapon.</param>
-        /// <param name="target">Ship being fired on.</param>
+        /// <param name="target">Stack being fired on.</param>
         /// <returns>Damage weapon is able to do.</returns>
-        private double CalculateWeaponPower(ShipDesign ship, Weapon weapon, ShipDesign target)
+        private double CalculateWeaponPower(Stack attacker, Weapon weapon, Stack target)
         {
-            // TODO (priority 5) Stub - just return the base power of weapon. Also need to comment the return value of this function with what defenses have been considered by this (when done).
-            return weapon.Power;
-            /*
-           double weaponPower = weapon.GetPower(ship);
+            double weaponPower = weapon.Power;
 
-           if (weapon.WeaponType == "Beam") {
-              weaponPower -= Math.Pow(0.9, target.Design.BeamDeflectors);
+            if (!weapon.IsMissile)
+            {
+                weaponPower *= (1.0 - (target.Token.Design.BeamDeflectors / 100.0));
 
-              switch (weapon.Range) {
-              case 1:
-                 weaponPower *= 0.95;             // 5% reduction
-                 break;
-              case 2:
-                 weaponPower *= 0.9;              // 10% reduction
-                 break;
-              case 3:
-                 weaponPower *= 0.85;             // 15% reduction
-                 break;
-              default:
-                 Report.Error("Unexpected beam range");
-                 break;
-              }
-           }
+                if (weapon.Range > 0)
+                {
+                    double distance = PointUtilities.Distance(attacker.Position, target.Position);
+                    double rangeFraction = Math.Min(1.0, distance / weapon.Range);
+                    weaponPower *= (1.0 - (0.1 * rangeFraction));
+                }
+            }
 
-           return weaponPower;
-             * */
+            // Energy capacitors are documented to boost beam damage, but no source found gives
+            // the exact percentage or stacking rule — not modeled. See combat-resolution.md's
+            // Open Questions.
+
+            return weaponPower;
         }
 
         /// <summary>
-        /// Calculate weapon accuracy. For beam weapons, this is 100%.
-        ///
-        /// For missiles, the chance to hit is based on the base accuracy, the computers
-        /// on the ship and the enemy jammers.
+        /// Calculate weapon accuracy. Beam weapons always hit (accuracy is only meaningful for
+        /// missiles/torpedoes). For missiles, the chance to hit is based on the base accuracy,
+        /// the firing ship's computers, and the target's jammers.
         /// </summary>
-        /// <param name="ship">Attacking ship.</param>
+        /// <remarks>
+        /// No source found during this project's research states the original game's precise
+        /// formula combining base accuracy/computers/jammers — see combat-resolution.md's Open
+        /// Questions, which recommends treating any candidate formula as unverified. This is a
+        /// best-effort, directionally-correct approximation (computers add accuracy, jammers
+        /// reduce it proportionally), not a confirmed match to the original game.
+        /// </remarks>
+        /// <param name="attacker">Attacking stack.</param>
         /// <param name="weapon">Firing weapon.</param>
-        /// <param name="target">Ship being fired on.</param>
-        /// <returns>Chance that weapon will hit.</returns>
-        private double CalculateWeaponAccuracy(ShipDesign ship, Weapon weapon, ShipDesign target)
+        /// <param name="target">Stack being fired on.</param>
+        /// <returns>Chance that weapon will hit, 0-100.</returns>
+        private double CalculateWeaponAccuracy(Stack attacker, Weapon weapon, Stack target)
         {
             double weaponAccuracy = weapon.Accuracy;
 
             if (weapon.IsMissile)
             {
-                // TODO (priority 6) - computers and jammer stuff needs to go here *************
+                weaponAccuracy += attacker.Token.Design.ComputerAccuracy;
+                weaponAccuracy *= (1.0 - (target.Token.Design.Jammer / 100.0));
+                weaponAccuracy = Math.Max(0, Math.Min(100, weaponAccuracy));
             }
 
             return weaponAccuracy;

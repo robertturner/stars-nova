@@ -347,6 +347,43 @@ namespace Nova.Common.Components
         }
 
         /// <summary>
+        /// Get the total jamming capability (combined percentage reduction in an attacker's
+        /// missile/torpedo accuracy).
+        /// </summary>
+        public double Jammer
+        {
+            get
+            {
+                if (Summary.Properties.ContainsKey("Jammer"))
+                {
+                    return ((ProbabilityProperty)Summary.Properties["Jammer"]).Value;
+                }
+                else
+                {
+                    return 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Get the total accuracy bonus from fitted computers.
+        /// </summary>
+        public double ComputerAccuracy
+        {
+            get
+            {
+                if (Summary.Properties.ContainsKey("Computer"))
+                {
+                    return ((Computer)Summary.Properties["Computer"]).Accuracy;
+                }
+                else
+                {
+                    return 0;
+                }
+            }
+        }
+
+        /// <summary>
         /// Get a count of the number of engines. Assumes there is only one engine stack.
         /// </summary>
         public int Number_of_Engines

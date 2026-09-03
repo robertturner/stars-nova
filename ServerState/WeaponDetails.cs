@@ -37,12 +37,35 @@ namespace Nova.Server
         public Stack SourceStack;
         public Weapon Weapon;
 
+        /// <summary>
+        /// Total initiative for this weapon slot: hull base initiative + computer bonus (both
+        /// carried by the firing ship design) + the weapon's own initiative. See
+        /// docs/behavior-specs/combat-resolution.md §5.
+        /// </summary>
+        public int TotalInitiative
+        {
+            get { return SourceStack.Token.Design.Initiative + Weapon.Initiative; }
+        }
+
+        /// <summary>
+        /// Slots are ordered by total initiative, highest first. Slots tied on total initiative
+        /// fire the shorter-ranged weapon first. A true remaining tie is meant to be broken by a
+        /// coin flip that then stays fixed for the rest of the battle (docs/behavior-specs/
+        /// combat-resolution.md §5) — that per-pair persistence isn't tracked here, so a
+        /// still-tied comparison is left at 0 (List.Sort is not guaranteed stable, so this
+        /// residual case is effectively an unpersisted random order rather than a fixed one).
+        /// </summary>
         public int CompareTo(object rightHandSide)
         {
             WeaponDetails rhs = (WeaponDetails)rightHandSide;
-            return this.Weapon.Initiative.CompareTo(rhs.Weapon.Initiative);
-        }
 
+            int initiativeComparison = rhs.TotalInitiative.CompareTo(this.TotalInitiative);
+            if (initiativeComparison != 0)
+            {
+                return initiativeComparison;
+            }
+
+            return this.Weapon.Range.CompareTo(rhs.Weapon.Range);
+        }
     }
 }
-

@@ -381,7 +381,7 @@ namespace Nova.Common
 
                 foreach (ShipToken token in tokens.Values)
                 {
-                    cost += token.Design.Cost;
+                    cost += token.Design.Cost * token.Quantity;
                 }
 
                 return cost;
