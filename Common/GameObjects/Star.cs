@@ -77,6 +77,15 @@ namespace Nova.Common
         /// </summary>
         public Race ThisRace = null;
 
+        /// <summary>
+        /// The owning empire's current Energy tech level, kept in sync alongside ThisRace
+        /// wherever that is (re-)linked. Needed for Alternate Reality's distinct resource-rate
+        /// and scan-range formulas (see GetResourceRate()), since a Star has no other access to
+        /// its owner's live research state. Not itself persisted; recomputed on load like
+        /// ThisRace is.
+        /// </summary>
+        public int EnergyTechLevel = 0;
+
         private HashSet<IStarObserver> observerList = new HashSet<IStarObserver>();
 
         /// <summary>
@@ -194,13 +203,35 @@ namespace Nova.Common
             {
                 return 0;
             }
-            
+
+            if (ThisRace.HasTrait("AR"))
+            {
+                return GetAlternateRealityResourceRate();
+            }
+
             int factoriesInUse = GetFactoriesInUse();
-            
+
             int rate = (int)((double)Colonists / ThisRace.ColonistsPerResource);
             rate += (int)(((double)factoriesInUse / Global.FactoriesPerFactoryProductionUnit) * ThisRace.FactoryProduction);
-            
+
             return rate;
+        }
+
+        /// <summary>
+        /// Alternate Reality does not use the standard population/habitability-driven resource
+        /// formula at all: Resources = HabitabilityValue * sqrt(Population * EnergyTechLevel /
+        /// EfficiencyCoefficient), where EfficiencyCoefficient is the same Step-5 "factory
+        /// efficiency" dial (ThisRace.FactoryProduction) every race sets. See
+        /// docs/behavior-specs/race-traits.md §5. Negative habitability is clamped to 0 here
+        /// (not itself specified — AR planets going hostile isn't documented) so this never
+        /// returns a nonsensical negative resource rate.
+        /// </summary>
+        private int GetAlternateRealityResourceRate()
+        {
+            double habValue = Math.Max(0.0, ThisRace.HabValue(this));
+            double efficiencyCoefficient = ThisRace.FactoryProduction > 0 ? ThisRace.FactoryProduction : 1;
+
+            return (int)(habValue * Math.Sqrt(Colonists * EnergyTechLevel / efficiencyCoefficient));
         }
         
         /// <summary>

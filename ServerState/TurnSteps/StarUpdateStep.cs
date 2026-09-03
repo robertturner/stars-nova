@@ -78,8 +78,16 @@ namespace Nova.Server.TurnSteps
                     serverState.AllMessages.Add(message);
                 }
                 
+                if (serverState.AllEmpires[star.Owner].Race.HasTrait("AR"))
+                {
+                    // Alternate Reality's scan range is population-derived, not tech/component
+                    // driven, and so is recomputed every turn rather than only on tech unlock.
+                    // See docs/behavior-specs/race-traits.md §5.
+                    star.ScanRange = (int)Math.Sqrt(star.Colonists / 10.0);
+                }
+
                 manufacture.Items(star);
-                
+
                 ContributeLeftoverResearch(star);
                 
                 star.UpdateResearch(serverState.AllEmpires[star.Owner].ResearchBudget);
@@ -223,12 +231,22 @@ namespace Nova.Server.TurnSteps
                             "NewComponentMessage",
                             null);
                         
+                        Scanner newScanner = component.Properties["Scanner"] as Scanner;
+
                         foreach (Star star in empire.OwnedStars.Values)
                         {
                             if (star.Owner == empire.Id &&
                                 star.ScannerType != string.Empty)
                             {
                                 star.ScannerType = component.Name;
+
+                                // Upgrading a planetary scanner's type without also updating its
+                                // range left the old (or default) range in effect. See
+                                // docs/behavior-specs/fleet-movement-scanning-cargo.md §3.
+                                if (newScanner != null)
+                                {
+                                    star.ScanRange = newScanner.NormalScan;
+                                }
                             }
                         }
                     }

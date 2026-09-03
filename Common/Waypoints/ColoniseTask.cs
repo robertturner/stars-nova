@@ -120,6 +120,7 @@ namespace Nova.Common.Waypoints
             star.Colonists = fleet.Cargo.ColonistNumbers;
             star.Owner = fleet.Owner;
             star.ThisRace = sender.Race;
+            star.EnergyTechLevel = sender.ResearchLevels[TechLevel.ResearchField.Energy];
             
             fleet.TotalCost.Energy = 0;            
             star.ResourcesOnHand += fleet.TotalCost * 0.75;

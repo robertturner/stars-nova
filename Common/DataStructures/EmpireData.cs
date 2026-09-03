@@ -662,6 +662,7 @@ namespace Nova.Common
                 if (star.Owner == Id)
                 {
                     star.ThisRace = Race;
+                    star.EnergyTechLevel = ResearchLevels[TechLevel.ResearchField.Energy];
                 }
                 else
                 {

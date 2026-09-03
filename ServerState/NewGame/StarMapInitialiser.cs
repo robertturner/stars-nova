@@ -434,6 +434,7 @@ namespace Nova.Server.NewGame
             // starting resources.
             star.Owner = empire.Id;
             star.ThisRace = empire.Race;
+            star.EnergyTechLevel = empire.ResearchLevels[TechLevel.ResearchField.Energy];
 
             // Set the habital values for this star to the optimum for each race.
             // This should allTurnedIn in a planet value of 100% for this race's home

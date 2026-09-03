@@ -378,6 +378,7 @@ namespace Nova.Server
                     if (star.Owner == AllEmpires[star.Owner].Id)
                     {
                         star.ThisRace = AllRaces[star.ThisRace.Name];
+                        star.EnergyTechLevel = AllEmpires[star.Owner].ResearchLevels[TechLevel.ResearchField.Energy];
                     }
                     else
                     {
@@ -428,6 +429,7 @@ namespace Nova.Server
                         if (star.Owner == empire.Id)
                         {
                             star.ThisRace = empire.Race;
+                            star.EnergyTechLevel = empire.ResearchLevels[TechLevel.ResearchField.Energy];
                         }
                         else
                         {
