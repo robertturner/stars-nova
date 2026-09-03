@@ -599,7 +599,7 @@ namespace Nova.Server
                     if (stack.Target != null & !stack.IsStarbase)
                     {
                         NovaPoint from = stack.Position;
-                        NovaPoint to = stack.Target.Position;
+                        NovaPoint to = ChooseMoveTarget(stack, battlingStacks);
 
                         int movesThisRound = 1; // FIXME (priority 6) - kludge until I implement the above table 
                         if (stack.BattleSpeed <= 0.5)
@@ -665,6 +665,11 @@ namespace Nova.Server
                         {
                             stack.Position = PointUtilities.BattleMoveTo(from, to);
 
+                            if (IsDisengaging(stack))
+                            {
+                                stack.DisengageDistanceAccumulated += PointUtilities.Distance(from, stack.Position);
+                            }
+
                             // Update the battle report with these movements.
                             BattleStepMovement report = new BattleStepMovement();
                             report.StackKey = stack.Key;
@@ -675,6 +680,111 @@ namespace Nova.Server
                     // TODO (priority 7) - shouldn't stacks without targets flee the battle if their strategy says to do so? they're sitting ducks now!
                 }
             }
+        }
+
+        /// <summary>
+        /// The stack's Battle Plan, looked up from its owning empire.
+        /// </summary>
+        private BattlePlan GetBattlePlan(Stack stack)
+        {
+            return serverState.AllEmpires[stack.Owner].BattlePlans[stack.BattlePlan];
+        }
+
+        /// <summary>
+        /// Whether a stack is currently running away under a Disengage-style tactic (either
+        /// plain Disengage, or Disengage if Challenged after it has taken its first hit).
+        /// </summary>
+        private bool IsDisengaging(Stack stack)
+        {
+            string tactic = GetBattlePlan(stack).Tactic;
+            return tactic == "Disengage" || (tactic == "Disengage if Challenged" && stack.HasTakenDamage);
+        }
+
+        /// <summary>
+        /// True if any enemy stack currently has a weapon in range of this stack's position.
+        /// </summary>
+        private bool IsThreatened(Stack self, List<Stack> battlingStacks)
+        {
+            return FindNearestThreat(self, battlingStacks) != null;
+        }
+
+        /// <summary>
+        /// The closest enemy stack that has a weapon able to reach this stack's current
+        /// position, or null if none does.
+        /// </summary>
+        private Stack FindNearestThreat(Stack self, List<Stack> battlingStacks)
+        {
+            Stack nearest = null;
+            double nearestDistance = double.MaxValue;
+
+            foreach (Stack other in battlingStacks)
+            {
+                if (other.IsDestroyed || !AreEnemies(other, self) || other.Token.Design.Weapons.Count == 0)
+                {
+                    continue;
+                }
+
+                double distance = PointUtilities.Distance(self.Position, other.Position);
+                int maxEnemyRange = 0;
+                foreach (Weapon weapon in other.Token.Design.Weapons)
+                {
+                    maxEnemyRange = Math.Max(maxEnemyRange, weapon.Range);
+                }
+
+                if (distance <= maxEnemyRange && distance < nearestDistance)
+                {
+                    nearest = other;
+                    nearestDistance = distance;
+                }
+            }
+
+            return nearest;
+        }
+
+        /// <summary>
+        /// Picks the square a stack should move toward this phase, based on its Battle Plan's
+        /// tactic. See docs/behavior-specs/combat-resolution.md §3 for the six documented
+        /// tactics.
+        /// </summary>
+        /// <remarks>
+        /// Simplifications from the documented behavior: "Maximise Net Damage" and "Maximise
+        /// Damage Ratio" are both treated the same as "Maximise Damage" here (close to point-blank
+        /// for beam ships; the finer distinctions between optimizing net damage ratio vs. using
+        /// only the single longest-ranged weapon aren't modeled). "Minimise Damage to Self"'s
+        /// "close in without moving toward the enemy" nuance when unthreatened is approximated as
+        /// simply closing toward the target. Random movement (used when Disengage can't increase
+        /// or hold distance, or has no enemy in range) is approximated as holding position rather
+        /// than picking a random square, since Nova's board-boundary handling for random moves
+        /// wasn't established.
+        /// </remarks>
+        private NovaPoint ChooseMoveTarget(Stack stack, List<Stack> battlingStacks)
+        {
+            string tactic = GetBattlePlan(stack).Tactic;
+            bool disengaging = IsDisengaging(stack);
+            bool minimisingSelfDamage = tactic == "Minimise Damage to Self" && IsThreatened(stack, battlingStacks);
+
+            if (disengaging || minimisingSelfDamage)
+            {
+                Stack threat = FindNearestThreat(stack, battlingStacks);
+                if (threat == null)
+                {
+                    return stack.Position; // no enemy in range: "move randomly" approximated as holding
+                }
+
+                int dx = Math.Sign(stack.Position.X - threat.Position.X);
+                int dy = Math.Sign(stack.Position.Y - threat.Position.Y);
+
+                if (dx == 0 && dy == 0)
+                {
+                    return stack.Position; // can't increase distance from directly on top of the threat: hold
+                }
+
+                return new NovaPoint(stack.Position.X + dx, stack.Position.Y + dy);
+            }
+
+            // Maximise Damage / Maximise Net Damage / Maximise Damage Ratio (and Minimise Damage
+            // to Self when not currently threatened): close on the current target.
+            return stack.Target.Position;
         }
 
         /// <summary>
@@ -907,6 +1017,11 @@ namespace Nova.Server
         /// <returns>Residual damage after shields or zero.</returns>
         private double DamageShields(Stack attacker, Stack target, double hitPower)
         {
+            if (hitPower > 0)
+            {
+                target.HasTakenDamage = true;
+            }
+
             if (target.Token.Shields <= 0)
             {
                 return hitPower;

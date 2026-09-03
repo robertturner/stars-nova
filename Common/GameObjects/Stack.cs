@@ -43,6 +43,31 @@ namespace Nova.Common
             get;
             set;
         }
+
+        /// <summary>
+        /// Whether this stack has taken any damage yet this battle — used by the "Disengage if
+        /// Challenged" tactic, which behaves like "Maximise Damage" until the first hit, then
+        /// switches to "Disengage" for the rest of the battle. See
+        /// docs/behavior-specs/combat-resolution.md §3.
+        /// </summary>
+        public bool HasTakenDamage
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// Total squares moved so far this battle while under a Disengage-style tactic.
+        /// Successfully retreating off the board requires accumulating 7 squares of movement.
+        /// Not itself used to remove a stack from the board (that isn't modeled), but tracked so
+        /// that behavior can be added later without re-deriving it. See
+        /// docs/behavior-specs/combat-resolution.md §3, §7.
+        /// </summary>
+        public double DisengageDistanceAccumulated
+        {
+            get;
+            set;
+        }
         
         /// <summary>
         /// The Key of the Fleet which originated this Stack.
