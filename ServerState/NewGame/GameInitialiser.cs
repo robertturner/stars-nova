@@ -21,6 +21,7 @@
 
 namespace Nova.Server.NewGame
 {
+    using System;
     using System.Collections.Generic;
     using System.IO;
     
@@ -362,24 +363,18 @@ namespace Nova.Server.NewGame
             }
             if (empire.Race.Traits.Contains("ExtraTech"))
             {
-                // All extra technologies start on level 3 or 4 with JOAT
-                if (empire.Race.Traits.Primary.Code == "JOAT")
+                // Only fields actually set to "Costs 75% extra" (the "Expensive" cost factor,
+                // stored as 175) start elevated — not every field. Starting level is a floor
+                // (Tech 3, or Tech 4 for JOAT), not a stack on top of any other PRT bonus for
+                // that field. See docs/behavior-specs/race-traits.md §6.
+                int startingLevel = (empire.Race.Traits.Primary.Code == "JOAT") ? 4 : 3;
+
+                foreach (TechLevel.ResearchField field in Enum.GetValues(typeof(TechLevel.ResearchField)))
                 {
-                    empire.ResearchLevels[TechLevel.ResearchField.Propulsion] += 1;
-                    empire.ResearchLevels[TechLevel.ResearchField.Construction] += 1;
-                    empire.ResearchLevels[TechLevel.ResearchField.Biotechnology] += 1;
-                    empire.ResearchLevels[TechLevel.ResearchField.Electronics] += 1;
-                    empire.ResearchLevels[TechLevel.ResearchField.Energy] += 1;
-                    empire.ResearchLevels[TechLevel.ResearchField.Weapons] += 1;
-                }
-                else
-                {
-                    empire.ResearchLevels[TechLevel.ResearchField.Propulsion] += 3;
-                    empire.ResearchLevels[TechLevel.ResearchField.Construction] += 3;
-                    empire.ResearchLevels[TechLevel.ResearchField.Biotechnology] += 3;
-                    empire.ResearchLevels[TechLevel.ResearchField.Electronics] += 3;
-                    empire.ResearchLevels[TechLevel.ResearchField.Energy] += 3;
-                    empire.ResearchLevels[TechLevel.ResearchField.Weapons] += 3;
+                    if (empire.Race.ResearchCosts[field] == 175 && empire.ResearchLevels[field] < startingLevel)
+                    {
+                        empire.ResearchLevels[field] = startingLevel;
+                    }
                 }
             }
         }

@@ -63,7 +63,7 @@ namespace Nova.Common
 
         public string LeftoverPointTarget;
 
-        // Growth goes from 3 to 20 and is not normalized here.
+        // Growth goes from 1 to 20 (percent) and is not normalized here.
         public double GrowthRate;
 
         // required for searializable class

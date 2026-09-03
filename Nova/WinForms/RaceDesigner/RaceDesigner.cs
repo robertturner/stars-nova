@@ -896,6 +896,13 @@ namespace Nova.WinForms.RaceDesigner
             0,
             0,
             0});
+            // Growth rate range is 1%-20% per the manual (a stray code comment on
+            // Race.GrowthRate claims 3-20, but that isn't sourced/enforced anywhere real).
+            this.maxGrowth.Minimum = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
             this.maxGrowth.Name = "maxGrowth";
             this.maxGrowth.Size = new System.Drawing.Size(94, 20);
             this.maxGrowth.TabIndex = 4;
@@ -1374,7 +1381,7 @@ namespace Nova.WinForms.RaceDesigner
             this.temperatureTolerance.Name = "temperatureTolerance";
             this.temperatureTolerance.RangeBarColor = System.Drawing.Color.FromArgb(((int)(((byte)(255)))), ((int)(((byte)(128)))), ((int)(((byte)(128)))));
             this.temperatureTolerance.RangeTitle = "Temperature";
-            this.temperatureTolerance.RangeUnits = "°C";
+            this.temperatureTolerance.RangeUnits = "ï¿½C";
             this.temperatureTolerance.Size = new System.Drawing.Size(324, 95);
             this.temperatureTolerance.TabIndex = 1;
             this.temperatureTolerance.RangeChanged += new Nova.ControlLibrary.Range.RangeChangedHandler(this.Tolerance_RangeChanged);
