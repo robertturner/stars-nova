@@ -143,7 +143,7 @@ namespace Nova.Server
 
             foreach (List<Fleet> battlingFleets in engagements)
             {
-                List<Stack> battlingStacks = GenerateStacks(battlingFleets);
+                List<Stack> battlingStacks = ApplyTokenCap(GenerateStacks(battlingFleets));
 
                 // If no targets get selected (for whatever reason) then there is
                 // no battle so we can give up here.
@@ -316,6 +316,91 @@ namespace Nova.Server
             }
 
             return battlingStacks;
+        }
+
+        /// <summary>
+        /// Enforces the hard cap of 256 tokens per battle. Slots are allocated fairly, split
+        /// evenly per race, with unused shares redistributed to races that need more; within a
+        /// race, tokens from the fleets with the highest fleet ID numbers are dropped first. See
+        /// docs/behavior-specs/combat-resolution.md §2.
+        /// </summary>
+        public List<Stack> ApplyTokenCap(List<Stack> battlingStacks)
+        {
+            const int maxTokens = 256;
+
+            if (battlingStacks.Count <= maxTokens)
+            {
+                return battlingStacks;
+            }
+
+            Dictionary<int, List<Stack>> byRace = new Dictionary<int, List<Stack>>();
+            foreach (Stack stack in battlingStacks)
+            {
+                if (!byRace.ContainsKey(stack.Owner))
+                {
+                    byRace[stack.Owner] = new List<Stack>();
+                }
+
+                byRace[stack.Owner].Add(stack);
+            }
+
+            // Keep the lowest fleet IDs (highest IDs are dropped first) within each race.
+            foreach (List<Stack> raceStacks in byRace.Values)
+            {
+                raceStacks.Sort((a, b) => a.ParentKey.CompareTo(b.ParentKey));
+            }
+
+            Dictionary<int, int> allocation = new Dictionary<int, int>();
+            foreach (int owner in byRace.Keys)
+            {
+                allocation[owner] = 0;
+            }
+
+            int slotsRemaining = maxTokens;
+            List<int> owners = new List<int>(byRace.Keys);
+
+            // Repeatedly split whatever's left evenly among races that can still use more,
+            // so an even split with leftovers gets redistributed rather than wasted.
+            while (slotsRemaining > 0)
+            {
+                List<int> wanting = owners.FindAll(o => allocation[o] < byRace[o].Count);
+                if (wanting.Count == 0)
+                {
+                    break;
+                }
+
+                int share = Math.Max(1, slotsRemaining / wanting.Count);
+                bool anyGiven = false;
+
+                foreach (int owner in wanting)
+                {
+                    if (slotsRemaining <= 0)
+                    {
+                        break;
+                    }
+
+                    int give = Math.Min(share, Math.Min(slotsRemaining, byRace[owner].Count - allocation[owner]));
+                    if (give > 0)
+                    {
+                        allocation[owner] += give;
+                        slotsRemaining -= give;
+                        anyGiven = true;
+                    }
+                }
+
+                if (!anyGiven)
+                {
+                    break;
+                }
+            }
+
+            List<Stack> capped = new List<Stack>();
+            foreach (int owner in byRace.Keys)
+            {
+                capped.AddRange(byRace[owner].GetRange(0, allocation[owner]));
+            }
+
+            return capped;
         }
 
         /// <summary>
