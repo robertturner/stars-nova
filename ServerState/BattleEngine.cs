@@ -562,12 +562,24 @@ namespace Nova.Server
         /// </remarks>
         public double GetAttractiveness(Stack wolf, Stack target)
         {
-            if (target == null || target.IsDestroyed || wolf.Token.Design.Weapons.Count == 0)
+            if (target == null || target.IsDestroyed)
             {
                 return 0;
             }
 
             double cost = target.Token.Design.Cost.Boranium + target.Token.Design.Cost.Energy;
+
+            if (wolf.Token.Design.Weapons.Count == 0)
+            {
+                // Fleet.IsArmed (which gates whether SelectTargets calls this at all) relies on
+                // ShipDesign.HasWeapons, which — a pre-existing Nova quirk — is always true
+                // (it checks the Weapons list for null, but it's initialized to an empty list,
+                // never null). So a stack can reach here with no actual weapon to derive APN
+                // from. Fall back to a simple cost-vs-defense ratio rather than reporting zero
+                // attractiveness, which would make such a stack unable to ever pick a target.
+                double fallbackDefense = target.Token.Armor + target.Token.Shields;
+                return fallbackDefense > 0 ? cost / fallbackDefense : double.MaxValue;
+            }
 
             Weapon weapon = wolf.Token.Design.Weapons[0];
 

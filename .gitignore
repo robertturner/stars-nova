@@ -4,3 +4,7 @@ obj
 build
 nova.conf
 packages
+TestResult.xml
+BattleReportTest.xml
+IntelTest.xml
+unit_test.sstate
