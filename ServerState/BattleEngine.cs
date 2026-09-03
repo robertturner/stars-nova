@@ -440,7 +440,7 @@ namespace Nova.Server
                 {
                     if (AreEnemies(wolf, lamb))
                     {
-                        double attractiveness = GetAttractiveness(lamb);
+                        double attractiveness = GetAttractiveness(wolf, lamb);
                         if (attractiveness > maxAttractiveness)
                         {
                             wolf.Target = lamb;
@@ -459,22 +459,74 @@ namespace Nova.Server
         }
 
         /// <summary>
-        /// Determine how attractive a fleet is to attack.
+        /// Determine how attractive a target stack is to attack, from a specific attacking
+        /// stack's point of view (the formula depends on the attacker's weapon type).
+        /// Attractiveness = Cost / APN, where Cost is the target ship design's Boranium +
+        /// resource cost (ironium/germanium excluded) and APN ("Attack Power Needed") is
+        /// weapon-type-specific — roughly how much punishment the target can soak up against
+        /// that weapon type. A lower APN relative to cost means a "softer" target and higher
+        /// attractiveness. Credited to community researcher Art Lathrop's testing; see
+        /// docs/behavior-specs/combat-resolution.md §4.
         /// </summary>
-        /// <param name="target">A stack.</param>
-        /// <returns>A measure of attractiveness.</returns>
-        /// FIXME (priority 3) - Implement the Stars! attractiveness model (and possibly others as options). Provide a reference to the source of the algorithm.
-        public double GetAttractiveness(Stack target)
+        /// <remarks>
+        /// Uses the wolf's first weapon as a representative weapon for this score — the real
+        /// game evaluates attractiveness per shot against whichever weapon is actually firing,
+        /// which isn't modeled here since Nova tracks one target per stack, not per weapon slot.
+        /// The beam APN's range term is explicitly flagged by the source article as an inference
+        /// it could not confirm; included here on the same best-effort basis.
+        /// </remarks>
+        public double GetAttractiveness(Stack wolf, Stack target)
         {
-            if (target == null || target.IsDestroyed) 
-            { 
-                return 0; 
+            if (target == null || target.IsDestroyed || wolf.Token.Design.Weapons.Count == 0)
+            {
+                return 0;
             }
 
-            double cost = target.Mass + target.TotalCost.Energy;
-            double dp = target.Defenses;
+            double cost = target.Token.Design.Cost.Boranium + target.Token.Design.Cost.Energy;
 
-            return cost / dp;
+            Weapon weapon = wolf.Token.Design.Weapons[0];
+
+            int quantity = Math.Max(1, target.Token.Quantity);
+            double currentArmor = (double)target.Token.Armor / quantity;
+            double currentShields = (double)target.Token.Shields / quantity;
+
+            double apn;
+
+            if (!weapon.IsMissile)
+            {
+                double deflectorFactor = 1.0 - (target.Token.Design.BeamDeflectors / 100.0); // 0.9^n
+                double distance = PointUtilities.Distance(wolf.Position, target.Position);
+                double rangeModifier = weapon.Range > 0 ? (1.0 - (0.1 * (distance / weapon.Range))) : 1.0;
+
+                double defense = (weapon.Group == WeaponType.shieldSapper) ? currentShields : (currentArmor + currentShields);
+                apn = (deflectorFactor > 0) ? (defense / deflectorFactor) * rangeModifier : double.MaxValue;
+            }
+            else
+            {
+                double accuracy = CalculateWeaponAccuracy(wolf, weapon, target) / 100.0;
+                if (accuracy <= 0)
+                {
+                    return 0; // can't effectively hit this target with this weapon at all
+                }
+
+                int weaponTypeFactor = (weapon.Group == WeaponType.missile) ? 2 : 1;
+
+                if (currentShields >= currentArmor)
+                {
+                    apn = (currentArmor * 2) / accuracy;
+                }
+                else
+                {
+                    apn = ((currentShields * 2) / accuracy) + ((currentArmor - currentShields) / (accuracy * weaponTypeFactor));
+                }
+            }
+
+            if (apn <= 0)
+            {
+                return double.MaxValue;
+            }
+
+            return cost / apn;
         }
 
         /// <summary>
