@@ -311,7 +311,7 @@ Are you sure you want to do this?";
         /// <param name="design">The <see cref="ShipDesign"/> to display.</param>
         private void DisplayDesign(ShipDesign design)
         {
-            design.Update();
+            design.Update(clientState.EmpireState.Race);
             Hull hullProperties = design.Hull;
             this.hullGrid.ActiveModules = hullProperties.Modules;
             this.hullImage.Image = design.Blueprint.ComponentImage;

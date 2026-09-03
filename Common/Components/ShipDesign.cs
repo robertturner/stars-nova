@@ -550,6 +550,17 @@ namespace Nova.Common.Components
         /// </summary>
         public void Update()
         {
+            Update(null);
+        }
+
+        /// <summary>
+        /// As <see cref="Update()"/>, but also applies the owning race's weapon-cost PRT
+        /// modifiers (War Monger: 25% cheaper; Inner Strength: 25% more expensive) — see
+        /// docs/behavior-specs/race-traits.md §2. Pass null to skip these (e.g. for an enemy
+        /// design scanned from another empire, whose race traits aren't reliably known).
+        /// </summary>
+        public void Update(Race race)
+        {
             if (Blueprint == null)
             {
                 return; // not much of a ship yet
@@ -591,7 +602,24 @@ namespace Nova.Common.Components
                 {
                     // Sumarise the mass & cost
                     Summary.Mass += module.AllocatedComponent.Mass;
-                    Summary.Cost += module.AllocatedComponent.Cost;
+
+                    Resources componentCost = module.AllocatedComponent.Cost;
+                    bool isWeapon = module.AllocatedComponent.Type == ItemType.BeamWeapons
+                        || module.AllocatedComponent.Type == ItemType.Torpedoes;
+
+                    if (race != null && isWeapon)
+                    {
+                        if (race.HasTrait("WM"))
+                        {
+                            componentCost = componentCost * 0.75;
+                        }
+                        else if (race.HasTrait("IS"))
+                        {
+                            componentCost = componentCost * 1.25;
+                        }
+                    }
+
+                    Summary.Cost += componentCost;
                     // Summarise the properties
                     foreach (string key in module.AllocatedComponent.Properties.Keys)
                     {

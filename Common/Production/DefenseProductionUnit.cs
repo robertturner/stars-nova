@@ -75,10 +75,17 @@ namespace Nova.Common
         /// <summary>
         /// initializing constructor.
         /// </summary>
-        /// <param name="star">The <see cref="Star"/> to create the defense on.</param>
-        public DefenseProductionUnit()
+        /// <param name="race">The race building the defense (Inner Strength costs 40% less).</param>
+        public DefenseProductionUnit(Race race)
         {
-            Cost = RemainingCost = new Resources(Global.DefenseIroniumCost, Global.DefenseBoraniumCost, Global.DefenseGermaniumCost, Global.DefenseEnergyCost);
+            Resources baseCost = new Resources(Global.DefenseIroniumCost, Global.DefenseBoraniumCost, Global.DefenseGermaniumCost, Global.DefenseEnergyCost);
+
+            if (race != null && race.HasTrait("IS"))
+            {
+                baseCost = baseCost * 0.6;
+            }
+
+            Cost = RemainingCost = baseCost;
         }
 
         /// <summary>

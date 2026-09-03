@@ -87,7 +87,7 @@ namespace Nova.WinForms.Gui
 
             item = new ListViewItem();
             item.Text = "Defense";
-            item.Tag = new DefenseProductionUnit();
+            item.Tag = new DefenseProductionUnit(clientState.EmpireState.Race);
             designList.Items.Add(item);
 
             item = new ListViewItem();

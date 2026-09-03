@@ -131,7 +131,7 @@ namespace Nova.Ai
             int defenseToBuild = Global.MaxDefenses - this.planet.Defenses;
             if (defenseToBuild > 0)
             {
-                ProductionOrder defenseOrder = new ProductionOrder(defenseToBuild, new DefenseProductionUnit(), false);
+                ProductionOrder defenseOrder = new ProductionOrder(defenseToBuild, new DefenseProductionUnit(clientState.EmpireState.Race), false);
                 ProductionCommand defenseCommand = new ProductionCommand(CommandMode.Add, defenseOrder, this.planet.Key, productionIndex);
                 productionIndex++;
                 if (defenseCommand.IsValid(clientState.EmpireState))

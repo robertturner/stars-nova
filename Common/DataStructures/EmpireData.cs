@@ -577,8 +577,8 @@ namespace Nova.Common
                     }
                 }
                 
-                design.Update();
-                
+                design.Update(Race);
+
                 if (design.Id >= designCounter)
                 {
                     designCounter = design.Id + 1;
