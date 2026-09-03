@@ -543,6 +543,14 @@ namespace Nova.Common.Components
         }
 
         /// <summary>
+        /// The race last passed to <see cref="Update(Race)"/>, remembered so that the many
+        /// internal callers of the parameterless <see cref="Update()"/> (every property getter
+        /// that lazily recomputes Summary) don't silently discard race-based cost modifiers
+        /// applied by an earlier Update(race) call.
+        /// </summary>
+        private Race raceForCostModifiers;
+
+        /// <summary>
         /// The ship design object has all information that could be found from a scan
         /// of the the ship hull modules. However scanning these for a particular piece
         /// of information is inefficient. This method reorganizes the information
@@ -550,17 +558,21 @@ namespace Nova.Common.Components
         /// </summary>
         public void Update()
         {
-            Update(null);
+            Update(raceForCostModifiers);
         }
 
         /// <summary>
-        /// As <see cref="Update()"/>, but also applies the owning race's weapon-cost PRT
-        /// modifiers (War Monger: 25% cheaper; Inner Strength: 25% more expensive) — see
-        /// docs/behavior-specs/race-traits.md §2. Pass null to skip these (e.g. for an enemy
-        /// design scanned from another empire, whose race traits aren't reliably known).
+        /// As <see cref="Update()"/>, but also applies the owning race's weapon/starbase-cost
+        /// PRT modifiers (War Monger: weapons 25% cheaper; Inner Strength: weapons 25% more
+        /// expensive; Improved Starbases/Alternate Reality: starbases 20% cheaper) — see
+        /// docs/behavior-specs/race-traits.md §2-3. Pass null to skip these (e.g. for an enemy
+        /// design scanned from another empire, whose race traits aren't reliably known). The
+        /// race passed here is remembered for subsequent parameterless Update() calls.
         /// </summary>
         public void Update(Race race)
         {
+            raceForCostModifiers = race;
+
             if (Blueprint == null)
             {
                 return; // not much of a ship yet
@@ -625,6 +637,26 @@ namespace Nova.Common.Components
                     {
                         SumProperty(module.AllocatedComponent.Properties[key], key, module.ComponentCount);
                     }
+                }
+            }
+
+            // Improved Starbases and Alternate Reality both give starbases a 20% cost discount;
+            // the two don't stack. See docs/behavior-specs/race-traits.md §2-3.
+            if (race != null && Hull.IsStarbase && (race.HasTrait("ISB") || race.HasTrait("AR")))
+            {
+                Summary.Cost = Summary.Cost * 0.8;
+            }
+
+            // No Advanced Scanners doubles conventional scanner range (in exchange for losing
+            // access to penetrating-scanner components entirely, which is handled separately by
+            // race/component restrictions, not here). See
+            // docs/behavior-specs/fleet-movement-scanning-cargo.md §3.
+            if (race != null && race.HasTrait("NAS") && Summary.Properties.ContainsKey("Scanner"))
+            {
+                Scanner scanner = Summary.Properties["Scanner"] as Scanner;
+                if (scanner != null)
+                {
+                    scanner.NormalScan *= 2;
                 }
             }
         }

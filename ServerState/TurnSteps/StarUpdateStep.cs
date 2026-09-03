@@ -245,7 +245,7 @@ namespace Nova.Server.TurnSteps
                                 // docs/behavior-specs/fleet-movement-scanning-cargo.md §3.
                                 if (newScanner != null)
                                 {
-                                    star.ScanRange = newScanner.NormalScan;
+                                    star.ScanRange = empire.Race.HasTrait("NAS") ? newScanner.NormalScan * 2 : newScanner.NormalScan;
                                 }
                             }
                         }

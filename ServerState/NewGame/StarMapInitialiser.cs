@@ -462,7 +462,7 @@ namespace Nova.Server.NewGame
 
             star.ScannerType = "Scoper 150"; // TODO (priority 4) get from component list
             star.DefenseType = "SDI"; // TODO (priority 4) get from component list
-            star.ScanRange = 50; // TODO (priority 4) get from component list
+            star.ScanRange = empire.Race.HasTrait("NAS") ? 100 : 50; // TODO (priority 4) get from component list
 
             HomeStarLeftoverpointsAdjuster.Adjust(star, empire.Race);
         }

@@ -297,26 +297,12 @@ namespace Nova.Server.NewGame
             {
                 // Two additional starbase designs (space dock & ultra station) : implemented in component definitions.
                 // Starbases have built in 20% cloacking : TODO ??? (priority 4)
-
-                // Improved Starbases gives a 20% discount to starbase hulls.
-                /*
-                foreach (Component component in ClientState.Data.AvailableComponents.Values)
-                {
-                    // TODO (priority 3) - work out why it sometimes is null.
-                    if (component == null || component.Type != "Hull") continue;
-                    Hull hull = component.Properties["Hull"] as Hull;
-                    if (hull == null || !hull.IsStarbase) continue;
-
-                    Resources cost = component.Cost;
-                    cost *= 0.8;
-                }
-                */
+                // The 20% starbase cost discount is applied in ShipDesign.Update(Race).
             }
 
-            if (empire.Race.Traits.Contains("GR"))
-            {
-                // 50% resources go to selected research field. 15% to each other field. 115% total. TODO ??? (priority 4)
-            }
+            // Generalized Research (50% to the selected field, 15% to each other field) is
+            // applied per-turn in StarUpdateStep.ContributeResearch — it isn't a starting-tech
+            // effect, so there's nothing to set up here at race initialization time.
             if (empire.Race.Traits.Contains("UR"))
             {
                 // Affects minerals and resources returned due to scrapping. TODO ??? (priority 4).
