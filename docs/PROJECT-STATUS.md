@@ -226,6 +226,337 @@ described below, which turned out to be unreachable from this session):
   (confirmed again this session via `mcp__ccd_session_mgmt__list_sessions` finding nothing) — don't
   rely on it; coordinate via files and direct conversation with the user instead.
 
+## Live playtesting findings (2026-09-04)
+
+Built `Nova.exe` (legacy MSBuild, see "Building" above), launched it for real, and drove it with a
+new message-based Win32 automation harness (`C:\StarsGame\nova_automation.ps1`, local machine only,
+not committed — mirrors `tools/game-automation/automation.ps1` but targets `Nova.exe` and clicks
+child controls directly via `SendMessage`/`BM_CLICK` rather than cursor coordinates).
+
+**Why message-based clicking instead of cursor clicks:** partway through the session the RDP
+session's display detached (a multi-hour idle period was involved) and `CopyFromScreen` /
+cursor-based `mouse_event` clicks stopped working entirely (screenshots came back blank/errored,
+clicks landed nowhere). Reconnecting the RDP session fixed real cursor input and `CopyFromScreen`
+again, but the message-based approach (`SendMessage`/`PostMessage` straight to a control's HWND,
+`PrintWindow` for screenshots) turned out to be more reliable regardless and is worth keeping:
+- `BM_CLICK` on a native BUTTON HWND reliably fires its Click handler — use this for buttons,
+  checkboxes, and radio buttons. Safe even mid-session.
+- **Do not** send synthetic `WM_LBUTTONDOWN`/`WM_LBUTTONUP` to a `SysListView32` via `SendMessage`
+  (synchronous). ListView's internal mouse-tracking logic waits for a real button-up before the
+  down-message's `SendMessage` call returns, so two sequential synchronous calls from the same
+  script deadlock (the down call never returns, so the script never gets to send the up). Fix:
+  either use `PostMessage` (async) for both, or if already stuck, `PostMessage` a `WM_LBUTTONUP`
+  from a *separate* process/call to break the deadlock. Once unstuck, item selection itself worked
+  fine and is safe to repeat.
+- A synthetic `WM_LBUTTONDBLCLK` sent directly to a `SysListView32` (without real mouse-move/hover
+  priming first) crashed `Nova.exe` outright — see bug below. Avoid double-clicking list views this
+  way; single-click plus a separate action (Enter key, or a dedicated button) is safer where the UI
+  offers one.
+- Menu bars (`MenuStrip`) and their dropdowns are ordinary child/popup HWNDs — `PostMessage` a
+  click on the menu bar at the item's pixel position to open the dropdown, find the resulting
+  popup's HWND via `EnumWindows` (class `WindowsForms10.Window.20808...` = `ToolStripDropDown`),
+  `PrintWindow` it to read the item positions, then `PostMessage` a click on the item. Works
+  reliably; just get the pixel math right (zoom into a `PrintWindow` capture first) or you'll open
+  the wrong menu item (Battle Plans instead of Research, in one instance here — harmless, just
+  close it with a `WM_CLOSE` and retry).
+- A native `NumericUpDown`'s edit portion doesn't reliably pick up `WM_SETTEXT` +
+  `WM_KILLFOCUS` (reverted to the old value in testing). Driving it via real cursor click + focus +
+  `SendKeys` (Ctrl+A, type digits, Tab) worked correctly instead. Clicking its spinner buttons via
+  synthetic mouse messages did *not* register at all (control ignores them, presumably because it
+  checks real button state, not just the message content) — don't rely on that path.
+- `ShowDialog()`-opened modal dialogs and open menus block the calling `SendMessage`/`BM_CLICK`
+  call until they close — this is normal, not a hang. Run the click in the background, then poll
+  `EnumWindows` for the new top-level window from a *separate* command while it's open.
+- **A `MessageBox.Show(..., MessageBoxOptions.DefaultDesktopOnly)` fatal-error dialog is easy to
+  miss** if you're only checking `EnumWindows`/process CPU rather than actually looking — one
+  showed up on screen the whole time during what looked like a hung process (near-zero CPU,
+  `Wait`/`LpcReply` thread state) with nothing found by `EnumWindows` in one investigation pass.
+  Turned out to be an ordinary path-quoting bug (see below), not an environment/display problem at
+  all. **Lesson: take an actual screenshot before concluding a WinForms process is "hung"** — a
+  blocked modal message pump looks identical to a real hang from the outside.
+
+**Bug found — path-quoting truncation, not Nova's fault:** `Start-Process -ArgumentList @(...)` in
+Windows PowerShell 5.1 does **not** quote array elements containing spaces when it joins them into
+the child process's command line. `C:\Users\Robert\Documents\Stars! Nova\Feel the Nova\Rabbitoid.intel`
+got silently truncated at the space after `Stars!`, which `Nova.exe --gui` correctly rejected with a
+fatal-error dialog ("Could not locate .intel file"). Fix: wrap any argument containing spaces in
+its own literal escaped quotes before adding it to the `-ArgumentList` array, e.g.
+`` "`"$intelPath`"" ``.
+
+**Follow-up 2026-09-04 (later session): not a real bug — confirmed testing artifact.**
+Double-clicking a row in the Nova Console's player list (`PlayerList_DoubleClick`,
+[NovaConsole.cs:237](../Nova/WinForms/NovaConsole.cs#L237)) had crashed the whole process with an
+`AccessViolationException` inside `ListView.WndProc` → native `comctl32.dll` when triggered by a
+*synthetic* `WM_LBUTTONDBLCLK` message sent directly via `SendMessage` (no preceding real
+mouse-down/hover state). Retested with **genuine** mouse input once the RDP session's display was
+healthy again (real `SetCursorPos` + `mouse_event` double-clicks): it did not crash once, including
+8 repeated real double-clicks on the same row spaced across multiple 2.5s `consoleTimer` ticks (to
+rule out a `SetPlayerList()`/timer race, which was the other suspected cause — also ruled out). Each
+real double-click correctly opened a `NovaGUI` window for that player, exactly as designed. No code
+change made — there is nothing to fix. **Lesson for future automation sessions:** never synthesize
+`WM_LBUTTONDBLCLK` directly into a native `SysListView32` via `SendMessage`/`PostMessage`; it can
+crash comctl32 even though the exact same user action via real input is completely safe. See the
+warning already in `tools/game-automation/nova_automation.ps1`. Launching the GUI directly via
+`Nova.exe --gui -r <race> -t <turn> -i <intel file>` remains a convenient way to open a specific
+player's turn for testing without going through the Console UI at all, but is no longer needed as a
+crash workaround.
+
+## Follow-up fix (2026-09-04, later session): Scrap Fleet was genuinely unreachable + payout bug
+
+User asked where the "scrap fleet" command was — couldn't find it in the UI while actually playing.
+Turned out **it wasn't a "where do I look" problem — the control was completely unreachable**, a
+real, longstanding upstream layout bug (not introduced this session). Scrapping is a Waypoint Task,
+same category as Colonise/Invade/Lay Mines, exposed via a "Waypoint Task" dropdown at the bottom of
+[FleetDetail](../Nova/WinForms/Gui/Controls/FleetDetail.cs)'s left column. Two independent bugs
+combined to hide it entirely, in every build, regardless of window size:
+
+1. **Clipped by an undersized container.** `FleetDetail`'s own designed content is 453px tall (its
+   last group, "Waypoint Task", sits at y=392-452), but its host container `selectionDetail`
+   ([NovaGUI.cs:86](../Nova/WinForms/Gui/NovaGUI.cs#L86)) was only sized 406px tall. Since
+   `FleetDetail` is docked `Fill` inside it, everything past y=406 - the entire Waypoint Task group
+   - was silently cut off. No scrollbar, no error, nothing suggesting content was missing.
+2. **Painted over anyway, even where it did fit.** The `messages` panel ("Year XXXX - Message",
+   `Location = Point(8, 412)` in
+   [NovaGui.Designer.cs](../Nova/WinForms/Gui/NovaGui.Designer.cs#L225) - note the filename casing
+   difference from `NovaGUI.cs`, easy to miss when searching) directly overlapped where the Waypoint
+   Task group would sit, and was added to the form's `Controls` collection *before* `selectionDetail`
+   - lower index = higher z-order in WinForms = painted in front - so even a hypothetically-tall-enough
+   `selectionDetail` would have had its Waypoint Task group painted over by the message panel.
+
+Fixed by growing `selectionDetail` to its full needed 453px and shifting `messages` and
+`selectionSummary` down by the same +47px (and growing the form's `ClientSize`/`MinimumSize` and the
+Star Map panel to match), preserving the original tight spacing between sections rather than
+introducing new overlaps. Verified live: the "Waypoint Task" dropdown is now visible, selectable,
+and correctly drives `Waypoint.LoadTask()`/`WaypointCommand` exactly as the (previously unreachable)
+code already supported. **To scrap a fleet**: select it, select its *first* waypoint (its current
+position - only waypoint index 0 is checked at turn-processing time, see `ScrapFleetStep.cs`) in the
+Waypoints list, then set "Waypoint Task" to **Scrap**. Takes effect on turn generation, not
+immediately.
+
+While verifying that path, found a real bug in the payout math:
+[ScrapTask.cs](../Common/Waypoints/ScrapTask.cs) `Perform()` computed the correctly-scaled
+`returned` `Resources` (33%/45%/80%/90% of the fleet's mineral cost depending on starbase presence
+and the Ultimate Recycling trait, per the doc comment already on the method) into a local variable
+— and then never used it. Instead it re-read `fleet.TotalCost` (a *computed property* that
+rebuilds a brand-new `Resources` object from `Composition` on every single access — see
+[Fleet.cs:376](../Common/GameObjects/Fleet.cs#L376)) two more times: once to set `.Energy` on a
+throwaway temporary (no effect at all), and once more to add to `star.ResourcesOnHand` — meaning
+the star was credited with the fleet's **full, unscaled** mineral cost every time, regardless of
+location or race trait. Net effect: scrapping was far more generous than intended (100% mineral
+recovery everywhere, including scrapping at a bare planet with no starbase, which should only give
+33%/45%). Fixed by reading `fleet.TotalCost` into a local once and actually using the scaled
+`returned` value. Verified: `Tests/UnitTests/TurnGeneratorTest.cs`'s two scrap-related tests still
+pass (they only assert the fleet disappears, not the exact payout — worth adding a payout-amount
+assertion there at some point). Full test suite still at the same 65/67 baseline (the 2 failures are
+pre-existing and unrelated — `BattleEngineTest.Test4SelectTargets` and
+`RaceAdvantagePointCalculatorTest.calculateAdvantagePointsForStandardJoat`).
+
+## Follow-up fix (2026-09-04, same day, third pass): Waypoint Task selection never actually worked
+
+User reported that after finally being able to see and select "Scrap" (previous fix), the fleet
+was untouched after the next turn, and re-selecting the waypoint afterward showed the task had
+reverted to "None". Root cause was much more fundamental than either prior fix:
+
+**`WaypointTasks.SelectedIndexChanged` was never wired to anything.**
+[FleetDetail.cs](../Nova/WinForms/Gui/Controls/FleetDetail.cs) has a complete, correct
+`WaypointTaskChanged` handler that builds a `WaypointCommand` and applies it - but nothing in
+[FleetDetail.Designer.cs](../Nova/WinForms/Gui/Controls/FleetDetail.Designer.cs) ever subscribed it
+to the combo box's event. Selecting a value visually changed the dropdown (that's just the native
+control's own display state) but had **zero effect on game state** - not "forgot to submit", not
+"got reset somehow" - the click literally never reached any code that mattered. This means Scrap,
+Colonise, Invade, Unload Cargo, and Lay Mines have likely never worked via this dropdown in any
+build of Nova, ever, independent of the visibility bug fixed earlier today. Fixed by adding
+`this.WaypointTasks.SelectedIndexChanged += new System.EventHandler(this.WaypointTaskChanged);`.
+Verified live: selected Scrap, navigated to a different selection and back, waypoint task correctly
+still showed "Scrap" (previously always reverted to "None", since the underlying fleet data was
+genuinely never touched). Also verified `WaypointCommand` correctly serializes to `<ScrapTask />`
+XML in the `.orders` file on submit - the whole pipeline (dropdown -> command -> apply -> serialize)
+now works end to end.
+
+Also added, per user request: a confirmation prompt on closing the GUI
+([NovaGUI.cs](../Nova/WinForms/Gui/NovaGUI.cs), `NovaGUI_FormClosing`) when
+`clientState.Commands.Count` has grown since the last successful "Save & Submit Turn" - previously
+closing the window (including via the X button) silently discarded any pending orders with zero
+warning, which is exactly how the user's first scrap attempt was lost. The check is a simple
+before/after count comparison, not a true diff, so it can theoretically miss a same-count
+edit-that-replaced-an-edit (the existing "minimizing clutter" dedup logic in `WaypointTaskChanged`
+pops and replaces the last command for the same waypoint) - a rare, low-severity edge case, not
+worth the complexity of real dirty-tracking to close.
+
+**Caution for future sessions testing this GUI**: verifying this fix (selecting Scrap, then testing
+the close-confirmation dialog) accidentally left a stray `Robsters.orders` file in the user's real
+"Feel the Nova" save, containing a live `<ScrapTask />` command, when the new confirmation dialog
+got dismissed by some stray queued input from earlier test clicks rather than an intentional
+choice - a reminder that automated input against a *live* save can have live side effects, not just
+against disposable test saves. User was notified and asked to review/remove the stray order before
+generating another turn.
+
+## New feature (2026-09-04, same day, fourth pass): insert a waypoint mid-route
+
+User wanted to add a waypoint ahead of or in the middle of an existing route (e.g. a fleet already
+en route to several stars), rather than only being able to append to the end - previously the only
+workaround was appending past the target, then adding another waypoint back near the desired
+insertion point, then deleting the now out-of-order original, since there was also no way to
+reorder waypoints once added.
+
+Root cause of the limitation: `WaypointCommand.ApplyToState`'s `CommandMode.Add` case always calls
+`Waypoints.Add(...)` (append), completely ignoring its own `Index` field - this is the *only* way
+new waypoints were ever created (`StarMap.cs`'s `LeftShiftMouse`, the Shift+Click handler). Several
+existing call sites (`DefaultFleetAI.cs`, `CargoDialog.cs`, `FleetDetail.cs`'s split/merge path)
+already pass an `Index` value that `Add` has always silently ignored, so simply making `Add` respect
+`Index` risked silently changing behavior for all of them in ways not possible to fully audit with
+confidence. Instead, added a new `CommandMode.Insert` ([ICommand.cs](../Common/Commands/ICommand.cs))
+handled only by `WaypointCommand.ApplyToState`
+([WaypointCommand.cs](../Common/Commands/WaypointCommand.cs)) - `Waypoints.Insert(Index, Waypoint)` -
+leaving every existing `Add` call site completely untouched. Also added bounds-checking to
+`IsValid()` for the new mode (an out-of-range `Insert` throws and would otherwise crash *all* turn
+processing, not just this one order - `ApplyToState` runs identically on both the client, for
+immediate GUI feedback, and the server, via `TurnGenerator.ParseCommands()`, since it's shared code
+in `Common/`).
+
+For the actual UX: [FleetDetail.cs](../Nova/WinForms/Gui/Controls/FleetDetail.cs) gained a
+`SelectedWaypointIndex` getter (whichever row is selected in the Waypoints list, or -1).
+[StarMap.cs](../Nova/WinForms/Gui/Controls/StarMap.cs) gained a `GetWaypointInsertIndex` delegate
+that `LeftShiftMouse` consults: if a waypoint *other than the last one* is selected, Shift+Click now
+inserts the new waypoint immediately after it instead of appending to the end; selecting nothing or
+the last waypoint preserves the original append-at-end behavior exactly. Wired up once in
+[NovaGUI.cs](../Nova/WinForms/Gui/NovaGUI.cs)'s constructor
+(`MapControl.GetWaypointInsertIndex = () => SelectionDetail.FleetDetail.SelectedWaypointIndex;`).
+Also had to extend the existing "minimizing clutter" dedup logic in `FleetDetail.cs` (two near-
+identical blocks, `WaypointSpeedChanged` and `WaypointTaskChanged`) to also protect `Insert`
+commands from being popped/discarded, the same way it already protected `Add` - otherwise
+immediately adjusting a freshly-inserted waypoint's speed or task would silently erase the insert.
+
+**To insert a waypoint**: select the fleet, select the waypoint it should follow in the Waypoints
+list (not the last one), then Shift+Click the new destination on the map - same gesture as adding a
+waypoint normally, the destination just depends on what's selected first.
+
+**Verification**: added
+[Tests/UnitTests/WaypointCommandTest.cs](../Tests/UnitTests/WaypointCommandTest.cs) - 6 new tests
+directly covering `CommandMode.Insert` (mid-list insert, insert-at-count behaves like append,
+insert-at-zero, `IsValid` rejecting negative/past-end indices, confirming `Add` is completely
+unaffected). All pass; full suite now 71/73 (same 2 pre-existing, unrelated failures as always -
+`BattleEngineTest.Test4SelectTargets` and
+`RaceAdvantagePointCalculatorTest.calculateAdvantagePointsForStandardJoat`).
+
+**Not verified live end-to-end this session.** Attempted to verify in a fresh, fully isolated
+throwaway game (`C:\StarsGame\WaypointTestGame` - deliberately *not* the user's real save, precisely
+to avoid a repeat of the earlier stray-orders incident) but hit an environment-level regression
+partway through: `GetForegroundWindow()` started returning null and synthetic `keybd_event`
+modifier-key state (needed to simulate Shift+Click) stopped being observable by the target process's
+`Control.ModifierKeys`, even via synchronous `SendMessage` timed to hold Shift throughout. This
+matches the same intermittent display/input-desktop degradation documented earlier in "Live
+playtesting findings" (that time affecting `CopyFromScreen`/real cursor clicks; this time
+`GetForegroundWindow` and synthetic keyboard state) - `query session` showed the RDP session number
+had incremented (`rdp-tcp#1`, previously `#0`), consistent with a reconnect leaving old processes'
+input-desktop attachment in a bad state. Was able to work around it for plain clicks (found and
+clicked the actual inner `mapControl` UserControl rather than its outer decorative GroupBox, which
+looks identical in a raw window dump - class `WindowsForms10.BUTTON...`, text "Star Map" - a mistake
+worth flagging for future map-clicking automation), but not for the Shift modifier specifically.
+Given the core logic is solidly covered by the new unit tests and the wiring is a small, direct,
+carefully-traced change, confidence is high, but this specific feature has not been clicked through
+by a human or a working automated session yet - worth an actual playtest before considering it fully
+closed out.
+
+## New feature (2026-09-05): fleets no longer fly through multiple waypoints in one turn
+
+User reported a scout sent to a planet "left the planet unexplored," and separately recalled that
+in the original game, arriving at a planet uses up all of a fleet's movement for that turn. Both
+point at the same bug: `TurnGenerator.cs`'s `UpdateFleet` loops `while (fleet.Waypoints.Count > 0)`,
+calling `Fleet.Move()` once per iteration and immediately continuing to the *next* waypoint in the
+same turn if any of that turn's movement budget (`availableTime`, starting at 1.0 per year) was
+left over after arriving at the first one. A fast enough fleet with closely-spaced waypoints could
+therefore fly through several stars - including ones it was only passing by, never meant to
+linger at - in a single turn, before anything (a scan report, an "explored" flag) ever registered
+having been there. `docs/behavior-specs/fleet-movement-scanning-cargo.md` §5 already said as much
+("... executes that waypoint's task once it actually arrives, then proceeds to the following
+waypoint the next turn"), just without enough emphasis to have been caught as a discrepancy until
+directly observed in play.
+
+Fixed with one targeted `break` in `TurnGenerator.cs`'s `UpdateFleet`: after a real arrival (the
+fleet's position actually changed to get there), stop processing further waypoints this turn.
+Snapshot `fleet.Position` before calling `Move()`, compare after - if unchanged, don't stop. That
+last part matters: this loop already has a legitimate zero-distance case it must keep allowing to
+continue in the same turn - when a fleet is left `InTransit`, the loop re-inserts a "resume from
+here" placeholder waypoint (`Position` set to wherever the fleet actually stopped) ahead of the
+real remaining route; next turn, arriving at that placeholder costs no real distance and must be
+consumed for free before continuing on with that turn's actual movement, or an in-transit fleet
+would need two turns to make any further progress at all. Position-before/after comparison cleanly
+tells the two cases apart without needing to touch that mechanism.
+
+**Verification**: added `TurnGeneratorTest.Generate_StopsAtFirstWaypoint_EvenWithLeftoverMovement`
+- a fleet at warp 9 (81 ly/year) given two waypoints 1 ly apart each; confirmed the test fails
+without the fix (fleet ends up at the second star) and passes with it (stops at the first, second
+waypoint still pending). Full suite now 72/74 (same 2 pre-existing, unrelated failures as always).
+
+## New feature (2026-09-05): Packet Physics / Interstellar Traveler second starting planet
+
+User noticed Interstellar Traveler didn't get its documented second starting planet, and asked for
+a broader pass over racial-trait implementation. Traced to a genuinely large, previously-unnoticed
+gap: `ServerState/NewGame/StarMapInitialiser.cs` has a `switch` over every Primary Racial Trait
+listing exactly what ships/planets each one should start with — but the **entire switch statement
+is inside a `/* ... */` comment block** and has never executed, for any PRT. Every race currently
+starts with exactly one scout, one colony ship, one starbase (three colony ships for Hyper
+Expansion specifically, the one piece of this system that *is* live, via a separate `if` outside
+the dead block). See `docs/behavior-specs/race-traits.md`'s Open Questions for the full writeup.
+
+Given the size of correctly implementing distinct starting *fleets* for all 10 PRTs (most are only
+sketched as one-line comments, not sourced with the same confidence as the tech-level numbers
+below), this pass scoped down to the one concrete, well-documented, user-verified gap: **Packet
+Physics and Interstellar Traveler both start with a second homeworld-tier planet**
+(`race-traits.md` §2 — PP: "Starts with a second homeworld-tier planet"; IT: "Starts with two
+Stargate-equipped planets"). Implemented in `StarMapInitialiser.cs`'s `InitializeHomeStar`: after
+the normal home star is set up, a race with either trait is granted the *nearest currently-unowned*
+regular star (from the ones `GenerateStars()` already placed), given the same
+habitability/population/resources treatment as a real homeworld via the existing
+`AllocateHomeStarResources`. Deliberately does **not** draw from `map.Homeworlds` — that list is
+sized to exactly the player count by `StarMapGenerator.PlaceHomeworlds()`, so taking a second entry
+for one player would leave a later-processed player with no home star at all and hit the existing
+`Report.FatalError("Could not allocate home star")`. IT's specific "Stargate-equipped" detail isn't
+reflected yet (stargates aren't implemented in this codebase at all — a separately-tracked gap);
+PP's "(non-tiny universes)" qualifier isn't checked either. Both noted as follow-ups in the spec.
+
+While in there, also found and fixed a second, concrete, **data-verifiable** discrepancy: PP's
+starting bonus is documented as "Mass Driver tech up to level 13," which `GameInitialiser.cs` had
+implemented as Energy tech level **4**. "Level 13" turns out to refer to the mass-driver
+component's own tier name — this project's `components.xml` names its mass-driver-family
+components `Mass Driver 5/6`, `Super Driver 7/8/9`, `Ultra Driver 10/11/12/13`, and lists `Ultra
+Driver 13` itself as requiring **Energy tech 24**, not 4 (which only reaches the far weaker `Mass
+Driver 5`). Fixed to 24. This is a cross-reference against the project's own data, not a live-game
+re-verification like the War Monger/Claim Adjuster tech-level fixes from the previous session —
+worth confirming against the real game if it becomes reachable again.
+
+**Verification**: added
+`NewGameTest.GeneratePlayerAssets_PacketPhysicsAndInterstellarTraveler_GetSecondPlanet` — runs full
+map + player-asset generation for one IT race and one plain race, asserts the IT race ends up
+owning exactly 2 stars and the plain race exactly 1. No existing test touched PP's Energy level, so
+nothing else needed updating for that fix. Full suite now 73/75 (same 2 pre-existing, unrelated
+failures as always).
+
+**Confirmed working end-to-end in the live app** (all from this session's fixes):
+- New Game dialog: tab switching, Add/Delete player, Race Name / Human-AI combo selection, Create
+  Game — all produced the expected state changes and started a real game (`Feel the Nova`, year
+  2100, Rabbitoid vs. Default AI Antetheral).
+- Production dialog ([ProductionDialog.cs](../Nova/WinForms/Gui/Dialogs/ProductionDialog.cs)):
+  **Mineral Alchemy** and **Terraform** now appear in Available Designs (previously
+  `NotImplementedException` stubs, fixed this session) and can be added to the queue; Mineral
+  Alchemy priced correctly at 100 resources / 3 years, matching the spec. Queue state round-tripped
+  correctly back to the main window's Production Queue panel.
+- Research dialog: for a start-of-game empire with Propulsion 6 / Construction 5 (all others 0),
+  the displayed "Resources needed to research next level" for Biotechnology (80) and "years to
+  completion" (27, at 3 resources/year) both match hand-calculation against the rewritten
+  `Research.Cost()` formula (`BaseCost[1]=50` + tech-investment surcharge `(6+5)*10=110` = 160,
+  × this race's 50% Biotechnology cost factor = 80) — confirms the real `BaseCost` table
+  ([Research.cs](../Common/Research.cs)) replaced the old Fibonacci placeholder correctly.
+- Race Designer, Environment tab: the `maxGrowth` NumericUpDown's new `Minimum = 1`
+  ([RaceDesigner.cs:901](../Nova/WinForms/RaceDesigner/RaceDesigner.cs#L901)) correctly clamps —
+  typing `0` and tabbing away snapped the field back to `1` rather than accepting 0% growth.
+
+Not yet exercised live: combat (no battle has actually occurred in a live session yet — would need
+two armed fleets in the same system, more turns than tested here), tech trading, warp-10 engine
+destruction, fuel-shortfall mechanics, cloaking/scan-range interactions, stargates. These are all
+still only verified by unit tests / source reading per the sections above.
+
 ## Testing setup (original machine — unreachable this session, kept for reference)
 - The original game supposedly runs via **otvdm** (Win16-on-Win64 shim) at
   `C:\Downloads\Games\Stars\`, launched via `Play Stars.bat`, on some other machine the user has
@@ -235,10 +566,16 @@ described below, which turned out to be unreachable from this session):
 
 ## Next steps
 1. ~~Get `Tests\Tests.csproj` building~~ **DONE 2026-09-04** — see "Running the tests" above (65/67
-   passing). Still nothing in this session was verified in an *actual running game* though, only by
-   compiling and unit tests — playtesting the changes (especially combat) is the highest-priority
-   follow-up. Worth adding real unit-test coverage for combat/production/research specifically,
-   since the existing suite barely touches what this session changed.
+   passing).
+   ~~Playtest the changes in an actual running Nova.exe~~ **DONE 2026-09-04** — see "Live playtesting
+   findings (2026-09-04)" below. Confirmed working end-to-end: New Game creation, Production dialog
+   with Mineral Alchemy/Terraform now buildable, Research cost table math, Race Designer growth-rate
+   clamp. A suspected crash bug (NovaConsole player-list double-click) turned out on retest with
+   real mouse input to be a synthetic-input testing artifact, not a real bug — see "Live playtesting
+   findings" for the full story. Combat itself still not exercised in a live battle — that remains
+   the highest-priority follow-up. Worth adding real unit-test coverage for combat/production/research
+   specifically, since the existing suite barely
+   touches what this session changed.
 2. Work through the "Still open in combat" and "Still open / deferred elsewhere" lists above —
    auto-build wiring, Slow Tech Advance, BET, remaining PRT/LRT mechanics, stargates/wormholes,
    conditional cargo transfers, per-missile independent resolution.

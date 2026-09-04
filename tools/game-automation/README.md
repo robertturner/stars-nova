@@ -9,6 +9,13 @@ Requires the game + otvdm already set up per `docs/PROJECT-STATUS.md`'s "Testing
 (as of 2026-09-03, that's `C:\StarsGame\` on the `ROBSAMD` machine — game and otvdm binaries are not
 in this repo, they're copyrighted/large and live outside version control).
 
+`nova_automation.ps1` is the equivalent harness for driving our own built `Nova.exe` (added
+2026-09-04, once the project pivoted to forking Stars! Nova — see `docs/PROJECT-STATUS.md`'s "Live
+playtesting findings" section for what it found). It targets controls directly via
+`SendMessage`/`PostMessage`/`BM_CLICK` rather than cursor coordinates, which proved more robust for
+a WinForms app — see the lessons-learned comment block at the top of that file before using it, in
+particular the list-view double-click warning and the ListView deadlock note.
+
 ## Functions
 
 - `Pin-GameWindow` — moves whichever game window is currently frontmost to a fixed screen origin

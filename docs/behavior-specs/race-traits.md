@@ -367,6 +367,29 @@ end-to-end sanity checks against whatever numbers a clean-room implementation pr
 - **No confirmed value for AR's `EfficiencyCoefficient` bounds or Death Star build cost**, and no
   second independent source corroborating the AR-specific production formula in §5 — it comes from a
   single strategy guide. Worth corroborating against another source before treating it as certain.
+- ~~**PP's "Mass Driver tech up to level 13" was implemented as Energy tech level 4.**~~ **RESOLVED
+  by cross-referencing this project's own component data (2026-09-05):** "level 13" refers to the
+  mass-driver component's own tier number, not a raw Energy tech level — this codebase's `Mass
+  Driver`-family components are named `Mass Driver 5/6`, `Super Driver 7/8/9`, and `Ultra Driver
+  10/11/12/13`, and `components.xml` lists `Ultra Driver 13` (the tier the spec's "up to level 13"
+  refers to) as requiring **Energy tech 24** to unlock, not 4 (which only reaches `Mass Driver 5`).
+  Fixed in `GameInitialiser.cs`. This is a data cross-reference, not a live-game re-verification
+  like the War Monger/Claim Adjuster entries above — worth confirming against the real game if it's
+  ever reachable again.
+- **The entire "distinct starting fleet/planet-count per PRT" system is effectively unimplemented,
+  beyond Hyper Expansion's 3x colony ship count and (as of 2026-09-05) Packet Physics/Interstellar
+  Traveler's second planet.** `ServerState/NewGame/StarMapInitialiser.cs` contains a `switch` over
+  every PRT listing what it *should* start with as ships (an armed scout for War Monger, two
+  shielded scouts for Packet Physics, two mine layers for Space Demolition, a destroyer and a
+  privateer for Interstellar Traveler, two scouts/a medium freighter/a mini miner/a destroyer for
+  Jack Of All Trades, a distinct "orbital construction colony ship" for Alternate Reality, an
+  orbital terraforming ship instead of a normal colony ship for Claim Adjuster, etc.) — but the
+  entire `switch` is inside a `/* ... */` comment block and has never executed. Every race
+  currently starts with exactly the same one scout + one colony ship + one starbase (three for
+  HE's colony ships specifically), regardless of PRT. This is a substantially larger feature than
+  the single second-planet fix above — it needs the specific hull/component loadout for each
+  PRT's bonus ships confirmed (most are only sketched as one-line comments here, not sourced the
+  way the tech-level numbers above are) before it can be implemented with the same confidence.
 
 ## Sources
 
