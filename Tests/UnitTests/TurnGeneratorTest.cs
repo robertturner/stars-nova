@@ -155,6 +155,72 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
+        public void Generate_StopsAtFirstWaypoint_EvenWithLeftoverMovement()
+        {
+            // Regression test: a fleet with enough speed/fuel to cover several waypoints'
+            // worth of distance in one year previously flew through all of them in a single
+            // turn - e.g. a scout arriving at a planet and immediately continuing past it
+            // before anything (a scan report, an "explored" flag) ever registered the visit.
+            // Per docs/behavior-specs/fleet-movement-scanning-cargo.md §5, arrival at a
+            // waypoint always uses up the rest of that turn's movement; the fleet only
+            // resumes toward its next waypoint the following turn.
+            serverData = new SimpleServerData();
+            empireData = new SimpleEmpireData();
+            empireData.Id = 1;
+            serverData.AllEmpires.Add(empireData.Id, empireData);
+
+            Fleet fleet = new Fleet(3);
+            fleet.Owner = 1;
+            fleet.Position = new NovaPoint(0, 0);
+
+            ShipDesign shipDesign = new ShipDesign(3);
+            shipDesign.Blueprint = new Component();
+            Hull hull = new Hull();
+            hull.Modules = new List<HullModule>();
+            hull.Modules.Add(new HullModule());
+            shipDesign.Blueprint.Properties.Add("Hull", hull);
+            ShipToken shipToken = new ShipToken(shipDesign, 1);
+            fleet.Composition.Add(shipToken.Key, shipToken);
+
+            // Warp 9 = 81 ly/year, vastly more than the 1 ly separating each waypoint below -
+            // under the bug, the fleet would reach both StarA and StarB in the same turn.
+            Waypoint waypointA = new Waypoint();
+            waypointA.Position = new NovaPoint(1, 0);
+            waypointA.WarpFactor = 9;
+            waypointA.Task = new NoTask();
+            waypointA.Destination = "StarA";
+            fleet.Waypoints.Add(waypointA);
+
+            Waypoint waypointB = new Waypoint();
+            waypointB.Position = new NovaPoint(2, 0);
+            waypointB.WarpFactor = 9;
+            waypointB.Task = new NoTask();
+            waypointB.Destination = "StarB";
+            fleet.Waypoints.Add(waypointB);
+
+            Star starA = new Star();
+            starA.Name = "StarA";
+            starA.Position = new NovaPoint(1, 0);
+            serverData.AllStars.Add(starA.Key, starA);
+
+            Star starB = new Star();
+            starB.Name = "StarB";
+            starB.Position = new NovaPoint(2, 0);
+            serverData.AllStars.Add(starB.Key, starB);
+
+            empireData.AddOrUpdateFleet(fleet);
+
+            SimpleTurnGenerator turnGenerator = new SimpleTurnGenerator(serverData);
+            turnGenerator.Generate();
+
+            Assert.AreEqual(1, fleet.Position.X, "Fleet should have stopped at StarA, not continued to StarB");
+            Assert.AreEqual(0, fleet.Position.Y);
+            Assert.AreEqual(2, fleet.Waypoints.Count, "StarB should still be a pending waypoint");
+            Assert.AreEqual("StarA", fleet.Waypoints[0].Destination, "Fleet should be holding at StarA");
+            Assert.AreEqual("StarB", fleet.Waypoints[1].Destination, "StarB should not have been consumed yet");
+        }
+
+        [Test]
         public void SetFleetOrbit()
         {
             Fleet fleet = new Fleet(1);

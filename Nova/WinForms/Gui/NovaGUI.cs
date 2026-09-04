@@ -43,16 +43,24 @@ namespace Nova.WinForms.Gui
         public int CurrentTurn;      // control turnvar used for to decide to load new turn... (Thread)
         public string CurrentRace;   // control var used for to decide to load new turn... (Thread)
         protected ClientData clientState;
-        
+
+        // clientState.Commands.Count as of the last successful "Save & Submit Turn". Setting the
+        // Waypoint Task/Battle Plan/etc. only ever updates this in-memory stack; nothing reaches
+        // the server until WriteOrders() runs. Used on close to warn about orders that were set
+        // in the GUI but never actually submitted (previously lost with no warning at all).
+        private int commandsAtLastSubmit;
+
         /// <Summary>
         /// Construct the main window.
         /// </Summary>
         public NovaGUI(string[] argArray)
-        { 
+        {
             clientState = new ClientData();
             clientState.Initialize(argArray);
-            
+
             InitializeComponent();
+
+            commandsAtLastSubmit = clientState.Commands.Count;
 
             this.selectionDetail = new Nova.WinForms.Gui.SelectionDetail(clientState.EmpireState, clientState);
             this.selectionSummary = new Nova.WinForms.Gui.SelectionSummary(clientState.EmpireState);
@@ -65,7 +73,12 @@ namespace Nova.WinForms.Gui
             SelectionDetail.FleetDetail.StarmapChanged += MapControl.RefreshStarMap;
             SelectionDetail.FleetDetail.FleetSelectionChanged += MapControl.SetCursor;
             SelectionDetail.PlanetDetail.PlanetSelectionChanged += MapControl.SetCursor;
-            
+
+            // Lets Shift+Click insert a new waypoint after whichever one is currently selected
+            // in the Waypoints list, instead of always appending to the end of the route.
+            MapControl.GetWaypointInsertIndex = () => SelectionDetail.FleetDetail.SelectedWaypointIndex;
+
+
             SelectionDetail.FleetDetail.FleetSelectionChanged += SelectionSummary.SummaryChangeSelection;
             SelectionDetail.PlanetDetail.PlanetSelectionChanged += SelectionSummary.SummaryChangeSelection;
             MapControl.SelectionChanged += SelectionSummary.SummaryChangeSelection;            
@@ -83,14 +96,21 @@ namespace Nova.WinForms.Gui
             this.selectionDetail.Location = new System.Drawing.Point(8, 24);
             this.selectionDetail.Margin = new System.Windows.Forms.Padding(0);
             this.selectionDetail.Name = "selectionDetail";
-            this.selectionDetail.Size = new System.Drawing.Size(360, 406);
+            // FleetDetail's own designed content is 453px tall (its bottom-most group, "Waypoint
+            // Task" - the Scrap/Colonise/Invade/Lay Mines dropdown - sits at y=392-452). This
+            // container was 406px, silently clipping that entire group off-screen with no
+            // scrollbar or other visual indication anything was missing. Also required shifting
+            // `messages` and `selectionSummary` down by the same +47px, and growing the form
+            // itself - see NovaGui.Designer.cs - since both previously overlapped the space this
+            // group now occupies (messages was actually painting over it - see its own comment).
+            this.selectionDetail.Size = new System.Drawing.Size(360, 453);
             this.selectionDetail.TabIndex = 21;
             this.selectionDetail.Value = null;
-            // 
+            //
             // selectionSummary
-            // 
+            //
             this.selectionSummary.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
-            this.selectionSummary.Location = new System.Drawing.Point(8, 534);
+            this.selectionSummary.Location = new System.Drawing.Point(8, 581); // was 534, +47
             this.selectionSummary.Name = "selectionSummary";
             this.selectionSummary.Size = new System.Drawing.Size(360, 191);
             this.selectionSummary.TabIndex = 19;
@@ -197,15 +217,38 @@ namespace Nova.WinForms.Gui
         /// <param name="e">A <see cref="EventArgs"/> that contains the event data.</param>
         private void NovaGUI_FormClosing(object sender, FormClosingEventArgs e)
         {
+            if (clientState.Commands.Count != commandsAtLastSubmit)
+            {
+                DialogResult result = MessageBox.Show(
+                    "You have changes (fleet orders, research allocation, production, etc.) that " +
+                    "have not been submitted via \"Commands > Save & Submit Turn\".\n\n" +
+                    "If you exit without submitting, these changes will be lost and will not affect " +
+                    "next turn's outcome.\n\nSubmit them now?",
+                    "Nova - Unsubmitted Orders",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Warning);
+
+                if (result == DialogResult.Cancel)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+                else if (result == DialogResult.Yes)
+                {
+                    OrderWriter orderWriter = new OrderWriter(clientState);
+                    orderWriter.WriteOrders();
+                }
+                // DialogResult.No: fall through and exit without submitting, as before.
+            }
+
             try
             {
                 clientState.Save();
             }
             catch (Exception ex)
             {
-                Report.Error("Unable to save the client state." + Environment.NewLine + ex.Message);                
-            }                
-            // OrderWriter.WriteOrders(); // don't do this here, do it only on save & submit.
+                Report.Error("Unable to save the client state." + Environment.NewLine + ex.Message);
+            }
         }
 
         /// <Summary>
@@ -303,6 +346,7 @@ namespace Nova.WinForms.Gui
             clientState.Save();
             OrderWriter orderWriter = new OrderWriter(clientState);
             orderWriter.WriteOrders();
+            commandsAtLastSubmit = clientState.Commands.Count;
             this.Close();
         }
 

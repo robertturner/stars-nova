@@ -44,6 +44,13 @@ namespace Nova.Common.Commands
     {
         Add,
         Edit,
-        Delete
+        Delete,
+
+        // Only handled by WaypointCommand (see its ApplyToState) - inserts at a specific list
+        // index rather than always appending, so a new waypoint can be placed in the middle of
+        // an existing route. Kept separate from Add rather than making Add respect Index, since
+        // several existing Add call sites pass an Index value that ApplyToState has always
+        // ignored - changing Add's meaning would silently change their behavior.
+        Insert
     }
 }

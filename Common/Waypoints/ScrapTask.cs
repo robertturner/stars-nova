@@ -130,11 +130,14 @@ namespace Nova.Common.Waypoints
                     }
                 }
 
-                double totalResources = fleet.TotalCost.Energy * resources/100;
-                Resources returned = fleet.TotalCost;
-                returned *= amount/100;
-                fleet.TotalCost.Energy = (int)totalResources;
-                star.ResourcesOnHand += fleet.TotalCost;
+                // fleet.TotalCost is a computed property (rebuilt from Composition on every
+                // access), so it must be read into a local once - mutating the result of a
+                // second/third access is silently lost, which previously made this credit the
+                // star with the fleet's full, unscaled cost regardless of amount/resources.
+                Resources totalCost = fleet.TotalCost;
+                Resources returned = totalCost * (amount / 100.0);
+                returned.Energy = (int)Math.Ceiling(totalCost.Energy * resources / 100.0);
+                star.ResourcesOnHand += returned;
 
                 // Scrapping at one of your own starbases is a tech-trading opportunity if the
                 // fleet was built with components requiring higher tech than you currently have

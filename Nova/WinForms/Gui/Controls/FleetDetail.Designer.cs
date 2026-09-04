@@ -571,7 +571,11 @@ namespace Nova.WinForms.Gui
             this.WaypointTasks.Size = new System.Drawing.Size(152, 21);
             this.WaypointTasks.TabIndex = 68;
             this.WaypointTasks.TabStop = false;
-            // 
+            // Was never wired to anything - selecting a task here (Scrap, Colonise, Invade, ...)
+            // visually changed the dropdown but had zero effect on the fleet's actual waypoint;
+            // WaypointTaskChanged() existed and worked correctly, it just had no event feeding it.
+            this.WaypointTasks.SelectedIndexChanged += new System.EventHandler(this.WaypointTaskChanged);
+            //
             // meterCargoOther
             // 
             this.meterCargoOther.Cargo = Nova.WinForms.Gui.Controls.CargoMeter.CargoType.Multi;

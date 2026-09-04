@@ -47,7 +47,7 @@
             this.groupBox2.FlatStyle = System.Windows.Forms.FlatStyle.System;
             this.groupBox2.Location = new System.Drawing.Point(374, 24);
             this.groupBox2.Name = "groupBox2";
-            this.groupBox2.Size = new System.Drawing.Size(611, 701);
+            this.groupBox2.Size = new System.Drawing.Size(611, 748); // +47, see ClientSize below
             this.groupBox2.TabIndex = 1;
             this.groupBox2.TabStop = false;
             this.groupBox2.Text = "Star Map";
@@ -222,23 +222,30 @@
             // 
             this.messages.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
                         | System.Windows.Forms.AnchorStyles.Left)));
-            this.messages.Location = new System.Drawing.Point(8, 412);
+            // Was Point(8, 412), directly under selectionDetail's original (undersized) 406px
+            // height. selectionDetail is now 453px tall (see NovaGUI.cs) to stop clipping
+            // FleetDetail's "Waypoint Task" group (Scrap/Colonise/Invade/Lay Mines) off-screen -
+            // shifted down by the same +47px to keep clear of it, since being added to Controls
+            // before selectionDetail put messages at a lower z-order index, i.e. in FRONT,
+            // silently painting over whatever of selectionDetail's content it overlapped.
+            this.messages.Location = new System.Drawing.Point(8, 459);
             this.messages.Name = "messages";
             this.messages.Size = new System.Drawing.Size(360, 116);
             this.messages.TabIndex = 18;
             this.messages.Year = Global.StartingYear;
-            // 
+            //
             // NovaGUI
-            // 
+            //
             this.AutoScaleBaseSize = new System.Drawing.Size(5, 13);
-            this.ClientSize = new System.Drawing.Size(993, 732);
+            // +47 (was 732) to fit the whole shifted-down stack - see messages/selectionSummary.
+            this.ClientSize = new System.Drawing.Size(993, 779);
             this.Controls.Add(this.messages);
             this.Controls.Add(this.mainMenu);
             this.Controls.Add(this.groupBox2);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.KeyPreview = true;
             this.MainMenuStrip = this.mainMenu;
-            this.MinimumSize = new System.Drawing.Size(928, 770);
+            this.MinimumSize = new System.Drawing.Size(928, 817); // +47, see ClientSize above
             this.Name = "NovaGUI";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.NovaGUI_FormClosing);
             this.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.OnKeyPress);

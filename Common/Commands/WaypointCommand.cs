@@ -137,7 +137,20 @@ namespace Nova.Common.Commands
             {
                 return false;
             }
-            
+
+            if (Mode == CommandMode.Insert)
+            {
+                // List<T>.Insert throws for an out-of-range index, which would otherwise crash
+                // the whole turn generation (not just this one order) if a stale/malformed index
+                // ever reached here - e.g. the route changed between the client issuing this and
+                // the server processing it.
+                int count = empire.OwnedFleets[FleetKey].Waypoints.Count;
+                if (Index < 0 || Index > count)
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
         
@@ -155,6 +168,12 @@ namespace Nova.Common.Commands
                 break;
                 case CommandMode.Edit:
                     empire.OwnedFleets[FleetKey].Waypoints.RemoveAt(Index);
+                    empire.OwnedFleets[FleetKey].Waypoints.Insert(Index, Waypoint);
+                break;
+                case CommandMode.Insert:
+                    // Unlike Add, this inserts at Index rather than always appending - lets a
+                    // new waypoint be placed in the middle of an existing route. Index ==
+                    // Waypoints.Count behaves the same as Add (append at the end).
                     empire.OwnedFleets[FleetKey].Waypoints.Insert(Index, Waypoint);
                 break;
             }

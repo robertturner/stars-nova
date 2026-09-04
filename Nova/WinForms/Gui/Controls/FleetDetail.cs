@@ -126,7 +126,8 @@ namespace Nova.WinForms.Gui
                     {
                         if ((lastCommand as WaypointCommand).Waypoint.Destination == editedWaypoint.Destination &&
                             (lastCommand as WaypointCommand).Waypoint.Position == editedWaypoint.Position &&
-                            (lastCommand as WaypointCommand).Mode != CommandMode.Add)
+                            (lastCommand as WaypointCommand).Mode != CommandMode.Add &&
+                            (lastCommand as WaypointCommand).Mode != CommandMode.Insert)
                         {
                             // Discard it.
                             commands.Pop();
@@ -143,6 +144,16 @@ namespace Nova.WinForms.Gui
 
                 DisplayLegDetails(index);
             }
+        }
+
+        /// <Summary>
+        /// Index of the currently selected waypoint in the Waypoints list, or -1 if none is
+        /// selected. Read by StarMap so that Shift+Click can insert a new waypoint right after
+        /// this one instead of always appending to the end of the route.
+        /// </Summary>
+        public int SelectedWaypointIndex
+        {
+            get { return wayPoints.SelectedIndices.Count > 0 ? wayPoints.SelectedIndices[0] : -1; }
         }
 
         /// <Summary>
@@ -296,7 +307,8 @@ namespace Nova.WinForms.Gui
                 {
                     if ((lastCommand as WaypointCommand).Waypoint.Destination == editedWaypoint.Destination &&
                         (lastCommand as WaypointCommand).Waypoint.Position == editedWaypoint.Position &&
-                        (lastCommand as WaypointCommand).Mode != CommandMode.Add)
+                        (lastCommand as WaypointCommand).Mode != CommandMode.Add &&
+                        (lastCommand as WaypointCommand).Mode != CommandMode.Insert)
                     {
                         // Discard it.
                         commands.Pop();

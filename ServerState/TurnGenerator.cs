@@ -400,10 +400,11 @@ namespace Nova.Server
             Waypoint currentPosition = new Waypoint();
             double availableTime = 1.0;
 
-            while (fleet.Waypoints.Count > 0) 
+            while (fleet.Waypoints.Count > 0)
             {
                 Waypoint waypointZero = fleet.Waypoints[0];
-                   
+                NovaPoint positionBeforeMove = fleet.Position;
+
                 Fleet.TravelStatus fleetMoveResult;
 
                 // -------------------
@@ -488,6 +489,27 @@ namespace Nova.Server
 
                 currentPosition = fleet.Waypoints[0];
                 fleet.Waypoints.RemoveAt(0);
+
+                // Arriving at a waypoint uses up the rest of that turn's movement, even if
+                // there's leftover time/fuel budget that could reach a subsequent waypoint too -
+                // a fleet only resumes toward its next waypoint on the FOLLOWING turn. See
+                // docs/behavior-specs/fleet-movement-scanning-cargo.md §5 ("... executes that
+                // waypoint's task once it actually arrives, then proceeds to the following
+                // waypoint the next turn"). Without this, a fast/short-hopping fleet could fly
+                // through several waypoints - and the stars at them - in a single turn, e.g. a
+                // scout arriving at a planet and immediately continuing past it before anything
+                // (a scan report, an "explored" flag) ever registered the visit.
+                //
+                // The exception is the zero-distance "resume from here" placeholder waypoint
+                // this same loop re-inserts above whenever a fleet is left InTransit (its
+                // Position is set to wherever the fleet actually stopped, so re-approaching it
+                // next turn covers no real distance). Consuming that placeholder must stay free/
+                // instant, or a fleet already InTransit would need two turns to make any further
+                // progress at all - one to consume the placeholder, another to actually move.
+                if (positionBeforeMove != fleet.Position)
+                {
+                    break;
+                }
             }
 
             fleet.Waypoints.Insert(0, currentPosition);

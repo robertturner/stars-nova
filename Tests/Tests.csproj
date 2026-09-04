@@ -140,6 +140,7 @@
     <Compile Include="UnitTests\StarTest.cs" />
     <Compile Include="IntegrationTests\TestControls.cs" />
     <Compile Include="UnitTests\TurnGeneratorTest.cs" />
+    <Compile Include="UnitTests\WaypointCommandTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common\Common.csproj">

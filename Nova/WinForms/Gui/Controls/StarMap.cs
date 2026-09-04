@@ -56,7 +56,15 @@ namespace Nova.WinForms.Gui
        
         public event EventHandler<EventArgs> WaypointChanged;
 
-        private readonly Point[] triangle = 
+        /// <Summary>
+        /// Optional callback returning the index of the waypoint that a new Shift+Click
+        /// waypoint should be inserted after - e.g. whichever one is currently selected in the
+        /// fleet's Waypoints list - rather than always appending to the end of the route.
+        /// Return -1 (or leave this unset) to append at the end, as before.
+        /// </Summary>
+        public Func<int> GetWaypointInsertIndex;
+
+        private readonly Point[] triangle =
         { 
             new Point(0, 5), 
             new Point(-5, -5),
@@ -824,18 +832,38 @@ namespace Nova.WinForms.Gui
                 waypoint.Destination = selected.Name;
             }
           
-            // If the new waypoint is the same as the last one then do nothing.
-
             int lastIndex = fleet.Waypoints.Count - 1;
-            Waypoint lastWaypoint = fleet.Waypoints[lastIndex];
 
-            if (waypoint.Destination == lastWaypoint.Destination)
+            // Insert right after whichever waypoint is currently selected in the fleet's
+            // Waypoints list, so a new waypoint can be placed in the middle of an existing
+            // route - not just appended to the end. Falls back to appending (unchanged
+            // behavior) when nothing usable is selected, e.g. the last waypoint is selected,
+            // or nothing is.
+            int insertIndex = lastIndex + 1;
+            if (GetWaypointInsertIndex != null)
             {
-                return;
+                int selected = GetWaypointInsertIndex();
+                if (selected >= 0 && selected <= lastIndex)
+                {
+                    insertIndex = selected + 1;
+                }
             }
-            
-            WaypointCommand command = new WaypointCommand(CommandMode.Add, waypoint, fleet.Key);
-            
+
+            // If the new waypoint is the same as the one it would follow then do nothing.
+            // (insertIndex is only 0 if the fleet somehow has no waypoints at all, which
+            // shouldn't happen - every fleet starts with one for its current position.)
+            if (insertIndex > 0)
+            {
+                Waypoint previousWaypoint = fleet.Waypoints[insertIndex - 1];
+
+                if (waypoint.Destination == previousWaypoint.Destination)
+                {
+                    return;
+                }
+            }
+
+            WaypointCommand command = new WaypointCommand(CommandMode.Insert, waypoint, fleet.Key, insertIndex);
+
             clientState.Commands.Push(command);
             
             if (command.IsValid(clientState.EmpireState))
