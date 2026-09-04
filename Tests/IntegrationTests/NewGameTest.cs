@@ -93,6 +93,71 @@ namespace Nova.Tests.IntegrationTests
                 Assert.Fail();
             }
         }
+
+        /// <Summary>
+        /// Packet Physics and Interstellar Traveler both start with a second homeworld-tier
+        /// planet (docs/behavior-specs/race-traits.md §2) - previously entirely unimplemented
+        /// (the only code that ever mentioned it was inside a commented-out switch statement).
+        /// Also checks a race with neither trait still gets exactly one planet, and that the
+        /// bonus doesn't starve another player of their own home star (it must not draw from
+        /// map.Homeworlds, which is sized to exactly the player count).
+        /// </Summary>
+        [Test]
+        public void GeneratePlayerAssets_PacketPhysicsAndInterstellarTraveler_GetSecondPlanet()
+        {
+            ServerData serverState = new ServerData();
+
+            GameSettings.Data.MapHeight = 400;
+            GameSettings.Data.MapWidth = 400;
+            GameSettings.Data.StarDensity = 60;
+            GameSettings.Data.StarSeparation = 10;
+            GameSettings.Data.StarUniformity = 60;
+
+            Race itRace = new Race();
+            itRace.Name = "ITRace";
+            itRace.Traits.SetPrimary("IT");
+            serverState.AllRaces.Add(itRace.Name, itRace);
+
+            Race normalRace = new Race();
+            normalRace.Name = "NormalRace";
+            serverState.AllRaces.Add(normalRace.Name, normalRace);
+
+            // Only used by GenerateStars() to size map.Homeworlds to the player count - see
+            // the comment on FindNearestUnownedStar in StarMapInitialiser.cs.
+            serverState.AllPlayers.Add(new PlayerSettings());
+            serverState.AllPlayers.Add(new PlayerSettings());
+
+            EmpireData itEmpire = new EmpireData();
+            itEmpire.Id = 1;
+            itEmpire.Race = itRace;
+            serverState.AllEmpires[itEmpire.Id] = itEmpire;
+
+            EmpireData normalEmpire = new EmpireData();
+            normalEmpire.Id = 2;
+            normalEmpire.Race = normalRace;
+            serverState.AllEmpires[normalEmpire.Id] = normalEmpire;
+
+            StarMapinitializer starMapInitializer = new StarMapinitializer(serverState);
+            starMapInitializer.GenerateStars();
+            starMapInitializer.GeneratePlayerAssets();
+
+            int itOwnedStars = 0;
+            int normalOwnedStars = 0;
+            foreach (Star star in serverState.AllStars.Values)
+            {
+                if (star.Owner == itEmpire.Id)
+                {
+                    itOwnedStars++;
+                }
+                if (star.Owner == normalEmpire.Id)
+                {
+                    normalOwnedStars++;
+                }
+            }
+
+            Assert.AreEqual(2, itOwnedStars, "Interstellar Traveler should start with two planets");
+            Assert.AreEqual(1, normalOwnedStars, "A race without PP/IT should start with only one planet");
+        }
     }
 }
 

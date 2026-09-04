@@ -231,7 +231,14 @@ namespace Nova.Server.NewGame
                     break;
 
                 case "PP":
-                    empire.ResearchLevels[TechLevel.ResearchField.Energy] = 4;
+                    // docs/behavior-specs/race-traits.md §2 says PP "Starts with ... Mass Driver
+                    // tech up to level 13" - that's the component's own tier number (this
+                    // codebase's highest mass-driver-family component is "Ultra Driver 13"), not
+                    // an Energy tech level of 13. Per this project's own components.xml, Ultra
+                    // Driver 13 requires Energy tech 24 - the previous value of 4 only unlocked
+                    // "Mass Driver 5", nowhere near what the spec describes. Cross-referenced
+                    // from data, not re-verified against a live game session (unlike WM/CA above).
+                    empire.ResearchLevels[TechLevel.ResearchField.Energy] = 24;
                     // Two shielded scouts, one colony ship, two starting planets in a non-tiny universe
                     break;
 
