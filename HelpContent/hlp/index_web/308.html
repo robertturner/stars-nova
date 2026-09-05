@@ -1,0 +1,778 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><title>Battle Plans dialog</title>
+<meta http-equiv="Content-Style-Type" content="text/css">
+<style type="text/css"><!--
+body {
+  margin: 5px 5px 5px 5px;
+  background-color: #ffffff;
+}
+/* ========== Text Styles ========== */
+hr { color: #000000}
+body, table /* Normal text */
+{
+ font-size: 10pt;
+ font-family: 'Courier New';
+ font-style: normal;
+ font-weight: normal;
+ color: #000000;
+ text-decoration: none;
+}
+span.rvts1 /* Heading */
+{
+ font-weight: bold;
+ color: #0000ff;
+}
+span.rvts2 /* Subheading */
+{
+ font-weight: bold;
+ color: #000080;
+}
+span.rvts3 /* Keywords */
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #800000;
+}
+a.rvts4, span.rvts4 /* Jump 1 */
+{
+ color: #008000;
+ text-decoration: underline;
+}
+a.rvts5, span.rvts5 /* Jump 2 */
+{
+ font-family: 'Arial';
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts6
+{
+ font-size: 14pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts7
+{
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts8
+{
+ font-family: 'Arial Unicode MS', 'Lucida Sans Unicode', 'Arial';
+ color: #000000;
+}
+span.rvts9
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #008000;
+}
+span.rvts10
+{
+ font-size: 12pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts11
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts12
+{
+ font-family: 'Arial';
+ color: #008000;
+}
+span.rvts13
+{
+ font-size: 11pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts14
+{
+ font-family: 'Arial';
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts15
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts16
+{
+ font-family: 'Arial';
+}
+span.rvts17
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #000000;
+}
+span.rvts18
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts19
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts20
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts21
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts22
+{
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts23
+{
+ font-size: 8pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts24
+{
+ font-size: 12pt;
+ font-family: 'Arial';
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts25
+{
+ font-family: 'Arial';
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts26
+{
+ font-family: 'Arial';
+ color: #808080;
+}
+span.rvts27
+{
+ font-family: 'SymbolProp BT';
+ color: #000000;
+}
+span.rvts28
+{
+ font-family: 'Helv';
+ color: #000000;
+}
+span.rvts29
+{
+ font-family: 'Helv';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts30
+{
+ font-size: 11pt;
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts31
+{
+ font-size: 8pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts32
+{
+ font-size: 14pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts33
+{
+ font-family: 'Wingdings';
+ color: #000000;
+}
+span.rvts34
+{
+ font-family: 'Arial';
+ color: #0000ff;
+ text-decoration: underline;
+}
+/* ========== Para Styles ========== */
+p,ul,ol /* Paragraph Style */
+{
+ text-align: left;
+ text-indent: 0px;
+ padding: 0px 0px 0px 0px;
+ margin: 0px 0px 0px 0px;
+}
+.rvps1 /* Centered */
+{
+ text-align: center;
+}
+.rvps2
+{
+ margin: 4px 0px 8px 0px;
+}
+.rvps3
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps4
+{
+ text-indent: 48px;
+ margin: 8px 0px 8px 0px;
+}
+.rvps5
+{
+ margin: 4px 24px 12px 0px;
+}
+.rvps6
+{
+ margin: 0px 0px 16px 0px;
+}
+.rvps7
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps8
+{
+ margin: 16px 0px 8px 0px;
+}
+.rvps9
+{
+ margin: 0px 0px 16px 0px;
+}
+.rvps10
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps11
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps12
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps13
+{
+ margin: 0px 0px 12px 0px;
+}
+.rvps14
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps15
+{
+}
+.rvps16
+{
+ margin: 4px 0px 8px 0px;
+}
+.rvps17
+{
+ margin: 8px 24px 8px 0px;
+}
+.rvps18
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps19
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps20
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 48px;
+}
+.rvps21
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps22
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps23
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps24
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps25
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps26
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps27
+{
+ margin: 0px 0px 12px 0px;
+}
+.rvps28
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 4px 0px 8px 0px;
+}
+.rvps29
+{
+ margin: 8px 24px 8px 0px;
+}
+.rvps30
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 4px 0px 8px 0px;
+}
+.rvps31
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps32
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps33
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps34
+{
+ margin: 8px 0px 8px 0px;
+}
+.rvps35
+{
+ margin: 8px 0px 8px 0px;
+}
+.rvps36
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps37
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps38
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps39
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps40
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps41
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps42
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps43
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps44
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps45
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps46
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps47
+{
+ margin: 0px 0px 5px 0px;
+}
+.rvps48
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps49
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps50
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps51
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps52
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 12px 0px 8px 0px;
+}
+.rvps53
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps54
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps55
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps56
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps57
+{
+ margin: 0px 0px 5px 0px;
+}
+.rvps58
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps59
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps60
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps61
+{
+ margin: 4px 0px 4px 0px;
+}
+.rvps62
+{
+ margin: 4px 0px 4px 0px;
+}
+.rvps63
+{
+ margin: 0px 0px 20px 0px;
+}
+.rvps64
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps65
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps66
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps67
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps68
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps69
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps70
+{
+ line-height: 1.47;
+ margin: 0px 0px 8px 0px;
+}
+.rvps71
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps72
+{
+ text-align: center;
+ margin: 0px 0px 8px 0px;
+}
+.rvps73
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps74
+{
+ text-align: right;
+ margin: 8px 9px 8px 0px;
+}
+.rvps75
+{
+ text-align: right;
+ margin: 0px 9px 8px 0px;
+}
+.rvps76
+{
+ text-align: right;
+ margin: 0px 9px 8px 0px;
+}
+.rvps77
+{
+ margin: 16px 0px 4px 0px;
+}
+.rvps78
+{
+ margin: 16px 0px 4px 0px;
+}
+.rvps79
+{
+ margin: 16px 24px 8px 0px;
+}
+.rvps80
+{
+ text-indent: -24px;
+ margin: 0px 0px 10px 24px;
+}
+.rvps81
+{
+ text-indent: -24px;
+ margin: 0px 0px 10px 24px;
+}
+.rvps82
+{
+ margin: 16px 24px 8px 0px;
+}
+.rvps83
+{
+ margin: 8px 8px 5px 8px;
+}
+.rvps84
+{
+ margin: 8px 8px 3px 8px;
+}
+.rvps85
+{
+ margin: 8px 24px 3px 6px;
+}
+.rvps86
+{
+ margin: 0px 8px 3px 8px;
+}
+.rvps87
+{
+ margin: 8px 8px 3px 24px;
+}
+.rvps88
+{
+ margin: 0px 8px 3px 24px;
+}
+.rvps89
+{
+ margin: 8px 8px 3px 24px;
+}
+.rvps90
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 8px 3px 8px;
+}
+.rvps91
+{
+ margin: 8px 8px 4px 8px;
+}
+.rvps92
+{
+ margin: 0px 8px 8px 8px;
+}
+.rvps93
+{
+ margin: 0px 8px 3px 8px;
+}
+.rvps94
+{
+ margin: 8px 8px 3px 8px;
+}
+.rvps95
+{
+ margin: 16px 8px 4px 8px;
+}
+.rvps96
+{
+ margin: 4px 8px 3px 8px;
+}
+.rvps97
+{
+ text-indent: -40px;
+ margin: 8px 8px 3px 48px;
+}
+.rvps98
+{
+ margin: 0px 8px 3px 8px;
+}
+--></style>
+</head>
+<body alink=#ff0000>
+
+<p class=rvps16><span class=rvts6>Battle Plans dialog</span></p>
+<p class=rvps12><span class=rvts12>More Stars! Dialogs</span></p>
+<p class=rvps3><span class=rvts7>The Battle Plans dialog allows you to view or change the battle plans for a selected fleet. You can open the Battle plans dialog using the </span><span class=rvts11>Commands</span><span class=rvts7> (</span><span class=rvts11>Battle Plans...</span><span class=rvts7>) menu command or through the </span><span class=rvts12>Waypoint Task tile</span><span class=rvts7>.</span></p>
+<p class=rvps11><span class=rvts13>Plan</span></p>
+<p class=rvps3><span class=rvts7>Click on this dropdown to list and select from existing battle plans. Stars! provides several pre-defined battle plans to get you started. To learn the contents of a plan, select it from the list. Then look at the options chosen for target, tactics, and, if you're in a multi-player game, the victim. You can modify, rename or delete an existing plan, or copy it and use it as the basis for a new plan.</span></p>
+<p class=rvps11><span class=rvts13>Default Plans</span></p>
+<p class=rvps3><span class=rvts7>New fleets are given a battle plan of Default. This plan sets up a default attack strategy if the fleet is armed, and a default flight strategy is the fleet is unarmed. You can't rename or delete the Default plan, but you can modify it.</span></p>
+<p class=rvps11><span class=rvts13>Tactics</span></p>
+<p class=rvps3><span class=rvts7>Choose tactics to use on primary and secondary targets. A tactic applies to the entire fleet.</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Disengage</span><span class=rvts7> -- Attempt to run away as soon as possible. Seven squares of movement on the </span><span class=rvts12>battle board</span><span class=rvts7> are required to leave the battle. As movement ranges from ½ square to 2 ½ squares per round it can take from 3 to 14 rounds to disengage.</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Disengage if challenged</span><span class=rvts7> – Behaves like Maximize damage until the token takes damage and then it behaves like Disengage.</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Minimize damage to self</span><span class=rvts7> – Attempt to move to the location from which this token can do the most damage to its target while taking the least damage from your enemies.</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Maximize net damage </span><span class=rvts7>– Attempt to get in range of the target class with all of your ship's weapons, then move in such a way as to always do some damage while maximizing damage_done/damage_taken. </span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Maximize damage ratio </span><span class=rvts7>– Attempts to get in range of at least one ship of the target class and move in such a way as to do some damage while maximizing damage_done/damage_taken.</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Maximize damage </span><span class=rvts7>– Attempts to get in range of at least one ship of the target class with all your ships weapons, then tries to maximize the damage done. This tactic does not care about damage taken. </span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Dump Cargo</span><span class=rvts7> -- Jettison cargo at the start of battle.</span></p>
+<p class=rvps3><span class=rvts7>Maximize Damage Ratio will not necessarily close to what may be considered the best location for you ship's weapons if it is carrying both short and long range weapons. For example, if you design a cruiser that carries range 6 missiles and a range 2 beam weapon, odds are that you will never get closer than range 6 in the battle. This is an advantage if when you want to use the short range weapons strictly as a deterrent against fast ships that try to get in close and destroy you with their short range weapons. If you do want to get closer and bring all weapons to bear, use Maximize Net Damage or Maximize Damage tactics. </span></p>
+<p class=rvps11><span class=rvts13>Targeting Options</span></p>
+<p class=rvps3><span class=rvts7>You can specify both primary and secondary targets. If no target matching the primary target description is found, the fleet looks for the secondary target. Possible targets are:</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>None/Disengage</span><span class=rvts7> -- Don't look for a target, just attempt to disengage.</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Any</span><span class=rvts7> -- Target any opponent's fleet you encounter.</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Starbase</span><span class=rvts7> -- Target the opponent's starbase whether it is armed or unarmed.</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Armed Ships</span><span class=rvts7> -- Target any ship or starbase carrying weapons (does not include bombers). Preference is given to the strongest tokens this token is likely to be able to hurt.</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Bombers/Freighters</span><span class=rvts7> -- Target Bombers and Freighters only.</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Unarmed Ships</span><span class=rvts7> -- Target any ship not carrying weapons or bombs.</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Fuel Transports</span><span class=rvts7> -- Target Fuel Transports only.</span></p>
+<p class=rvps18><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts11>Freighters</span><span class=rvts7> -- Target Unarmed Freighters only.</span></p>
+<p class=rvps11><span class=rvts13>Specifying the Right Target</span></p>
+<p class=rvps3><span class=rvts7>Make sure your battle plan reflects what you really want your ships to do. For example, if you specify a target of Any and the closest ship happens to be an unarmed freighter instead of the enemy's battleships, you will waste a round destroying an easy target while the opponent's battleships pound you into space dust. In this case, choosing a target of Armed Ships would be much more appropriate. </span></p>
+<p class=rvps11><span class=rvts13>Specifying which Players to Attack</span></p>
+<p class=rvps3><span class=rvts7>Attack Who specifies which players are targeted using this plan. In a multi-player game, the categories listed are defined in the </span><span class=rvts12>Player Relations dialog</span><span class=rvts7>. In a solo game everyone is your enemy, and this field is disabled.</span></p>
+<p class=rvps14><span class=rvts11>Learn more about Combat in these topics:</span></p>
+<p class=rvps10><span class=rvts12>The Basics of Combat</span></p>
+<p class=rvps7><span class=rvts12>The Guts of Combat</span></p>
+<p class=rvps16><span class=rvts6><br></span></p>
+
+</body></html>

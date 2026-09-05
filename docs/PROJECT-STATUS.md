@@ -589,3 +589,245 @@ still only verified by unit tests / source reading per the sections above.
    remote with its history merged in locally) so work here can actually be contributed back, per the
    2026-09-04 decision to evolve Nova rather than replace it. Needs the user's GitHub auth — not set
    up this session (no `gh` CLI available on ROBSAMD).
+
+## .NET Framework 4.8 → .NET 9 migration (2026-09-05)
+
+Converted all 6 solution projects (`Common`, `ControlLibrary`, `Server`/`ServerState`, `Nova`,
+`GameFileInflator`, `Tests`) from old-style `.csproj` (`TargetFrameworkVersion v4.8`) to SDK-style
+`.csproj` targeting `net9.0-windows` with `UseWindowsForms=true`. Notable findings and fixes along
+the way:
+
+- **`Common/Serializer.cs`** (a `BinaryFormatter` wrapper) and `Orders.ToBinary()`/`FromBinary()`
+  were confirmed genuinely dead code (no live caller anywhere) and deleted outright, clearing the
+  one real `BinaryFormatter` concern (disabled by default on .NET 9+) without needing a replacement.
+- **`Common/Report.cs`**: `Thread.CurrentThread.Abort()` (throws `PlatformNotSupportedException` on
+  modern .NET) replaced with `Environment.Exit(1)`, which is actually the more correct way to
+  fulfill `FatalError()`'s "terminate the program" contract anyway.
+- **Discovered and deleted 6 orphaned legacy-duplicate files** that predated a namespace rename
+  (`NovaCommon`→`Nova.Common`, `NovaConsole`→`Nova.Server`) and were never wired into
+  `Common.csproj`'s old explicit `Compile` list: `Common/DataStructures/{Orders,GameSettings,
+  Intel,ProductionItem}.cs`, `Common/Scores.cs`, `Common/Properties/Resources.Designer.cs`. These
+  would have caused duplicate-class compile errors under SDK-style implicit globbing; confirmed
+  dead via cross-referencing against the live `Common/Files/*.cs` equivalents and grepping for any
+  external reference. (Also found and removed a completely unused `using NUnit.Framework;` in
+  `Common/Files/Intel.cs` — the only reason `Common` depended on the NUnit test framework at all.)
+- **`Nova.csproj`** has 8 files (4 ComponentEditor dialog pairs: Armor/CargoPod/Mine/Shield) that
+  exist on disk but were never in the old project's `Compile`/`EmbeddedResource` lists — explicitly
+  excluded via `<Compile Remove>` in the new csproj to preserve that (pre-existing, unrelated)
+  exclusion rather than silently start compiling untested code.
+- **WFO1000** (.NET 9's new WinForms-designer data-leakage safety check, flags any public
+  read/write property on a `Control`/`Form` lacking `DesignerSerializationVisibility` metadata) hit
+  ~40+ properties across `ControlLibrary`'s custom controls. Fixed the one occurrence in `Common`
+  (`ProgressDialog.Success`) with a proper `[DesignerSerializationVisibility(Hidden)]` attribute;
+  suppressed the diagnostic project-wide in `ControlLibrary`/`Nova`/`Tests` instead of hand-annotating
+  every custom-control property, since none of them are edited through the VS designer in a way that
+  risks the data-leakage scenario the check exists for.
+- **Tests**: `packages.config` → `PackageReference`, `NUnit3TestAdapter` bumped to 4.6.0,
+  `Microsoft.NET.Test.Sdk` 17.12.0 added (enables `dotnet test`). **Pinned NUnit to 3.14.0, not
+  4.x** — NUnit 4 removed the classic `Assert.AreEqual`/`IsTrue`/`IsFalse`/`Greater`/etc. shortcuts
+  in favor of `Assert.That(...)` constraints, which would have meant rewriting every assertion in
+  the suite; out of scope for a framework-version bump.
+- The mapped `Z:` network drive triggers a genuine Windows security-zone restriction (`MSB3821`)
+  during a full clean `Rebuild` of certain resx files, regardless of MSBuild version (old v4.0.30319
+  or the VS-bundled modern one) — worked around by building on a local-disk copy and syncing
+  `Build/` output back, rather than by changing any security-zone settings. Targeted, non-Rebuild
+  builds of individual projects work fine directly on `Z:`.
+- Full test suite rebuilt clean on the new toolchain: **73/75 passing**, same 2 pre-existing,
+  unrelated failures as before the migration (`BattleEngineTest.Test4SelectTargets`,
+  `RaceAdvantagePointCalculatorTest.calculateAdvantagePointsForStandardJoat`).
+- Not yet converted: multi-platform/Android portability is still blocked on `Common`'s direct
+  `System.Windows.Forms`/`System.Drawing` usage (the embedded `ProgressDialog` WinForms component
+  chief among them) — deferred past this migration pass, as originally planned, until the
+  Avalonia/Dock UI work actually needs it.
+
+## Research dialog: multi-level "Expected Research Benefits" (2026-09-05)
+
+The Research dialog's benefits list only ever looked one level ahead and had no visual distinction
+between near- and far-off unlocks — nothing like the original game's color-coded, multi-level
+preview. Rewrote `PopulateResearchBenefits()` in
+[ResearchDialog.cs](../Nova/WinForms/Gui/Dialogs/ResearchDialog.cs) to scan every tech level from
+the current one up to `TechLevel.MaxLevel` (new constant, replacing a magic `26`) for each
+not-yet-available component, find the fewest additional levels of the *target field alone* needed
+to unlock it (holding every other field at its current level — a component that also needs a
+higher level in some unrelated field is correctly omitted, since researching this field won't
+unlock it), and color the entry by that distance: green (next level), blue (2-4 levels out), black
+(5+ levels out) — the exact legend from the original game's own help text ("Expected Research
+Benefits" topic). `researchBenefits` is now an owner-drawn `ListBox` (`DrawItemEventHandler`) so
+each entry can render in its own color via a new internal `ResearchBenefitEntry` wrapper class.
+Also added a "Help" button (opens the manual at the Research dialog topic — see below), matching
+the original dialog's layout.
+
+## In-game manual / Help system (2026-09-05)
+
+Downloaded the original Stars! Player's Guide (`stars.hlp`) via its community-maintained HTML
+conversion (`stars.hlp.html.rar` from wiki.starsautohost.org/wiki/Downloads — the raw `.hlp` is
+Microsoft WinHelp format, which modern Windows can't open at all; the HTML conversion sidesteps
+needing a WinHelp decompiler). Extracted 418 topics + 149 images (~7.5MB) into `HelpContent/` at
+the repo root, wired into `Nova.csproj` via a wildcard `Content` include so it copies to
+`Build/Debug/HelpContent/` alongside the exe.
+
+Built a new `HelpForm` ([HelpForm.cs](../Nova/WinForms/Gui/Dialogs/HelpForm.cs) +
+`.Designer.cs`): a search box + alphabetical topic list on the left, a `WebBrowser` control on the
+right rendering the selected topic's original HTML directly. The wiki's HTML conversion lost the
+original's image-map-based visual table of contents (the "Contents" topic is just a hotspot image
+with no `<area>` tags in the converted HTML), so topic navigation is a flat, searchable list rather
+than a reconstructed chapter tree — every topic is still reachable, just not organized by chapter.
+Wired to a new **Help → Manual** menu item (F1) in `NovaGUI`, and to the Research dialog's new Help
+button (opens directly at topic 297, "Research dialog").
+
+**Explicit user decision on licensing**: this is the original game's own copyrighted manual text,
+not clean-room material like the rest of this project's code and docs (which are written in
+original wording from public behavior sources, never copying the original game's assets). Flagged
+this distinction and asked the user before proceeding; they explicitly chose to ship it verbatim
+rather than keep it as a reference-only/not-distributed aid. See
+`HelpContent/NOTICE-HelpContent.txt` for the resulting provenance/licensing note, which callers
+packaging or redistributing this project without third-party content should read.
+
+## Tech-tree audit against the original manual (2026-09-05)
+
+Cross-checked `docs/behavior-specs/research-tech-tree.md`'s existing Open Questions against the
+newly-available original help text (see above) rather than attempting to exhaustively catalogue
+all 418 topics against the whole codebase in one pass:
+
+- **Resolved**: the "115% vs. 125%" Generalized Research discrepancy. The original game's own help
+  text reads "Only half of the resources dedicated to research will be applied to the current
+  field of research. 15% of the total will be applied to each of the fields. (Yes, we know this
+  adds up to 125%.)" — confirming 125% and that "115%" was simply an error in the GameFAQs guide
+  this doc had cited, not a real ambiguity in the game.
+- **Found a doc bug**: this project's own doc stated normal miniaturization caps at "64%" — the
+  original manual (and this project's own code comments in
+  [GameInitialiser.cs:348](../ServerState/NewGame/GameInitialiser.cs#L348), which already had it
+  right) both say **75%**. Fixed in the doc.
+- **Found a real implementation gap**: miniaturization (the baseline "research makes production
+  cheaper" mechanic — 4%/level cost reduction once every requirement is exceeded by a level,
+  capped at 75%; 5%/level capped at 80% with Bleeding Edge Technology) and Bleeding Edge Technology
+  itself are both entirely unimplemented — just `TODO ??? (priority 4)` comment stubs in
+  `GameInitialiser.cs`. Not fixed this session (out of scope for the research-dialog/help-system
+  work), but now clearly flagged in the doc rather than silently missing.
+- A full field-by-field audit of every hull/component/weapon tech requirement against the manual's
+  "Technology Browser"-referencing topics (32 of the 418) was not attempted this session — noted
+  as a follow-up, not completed.
+
+## Crash fix: maxed tech field + missing unhandled-exception handling (2026-09-05)
+
+User report: "Crash when trying to open Research from menu." Two real bugs found and fixed:
+
+1. **No unhandled-exception handling anywhere in `Nova/Program.cs`.** On .NET Framework, an
+   unhandled exception on the UI thread showed a recoverable "Continue/Quit" dialog by default. On
+   .NET 9, WinForms' default instead **terminates the whole process** with no dialog and no
+   accessible stack trace — Windows Error Reporting only logs a generic native fault code
+   (`e0434352`), not the actual managed exception. This made every crash this session (before and
+   after this fix) impossible to diagnose from the outside. Fixed by wiring up
+   `Application.SetUnhandledExceptionMode(CatchException)` plus `Application.ThreadException` /
+   `AppDomain.CurrentDomain.UnhandledException` handlers that log full exception details (message +
+   stack trace) to `nova-crash.log` next to the exe and show a recoverable error dialog instead of
+   silently killing the process. This is a permanent fix for the whole app, not just Research — any
+   future UI-thread exception is now recoverable and diagnosable instead of an opaque crash.
+2. **The actual bug, found by code review** (automation to reproduce it live was blocked by an
+   unrelated desktop/input-focus issue on this machine — see below): `ParameterChanged()` in
+   [ResearchDialog.cs](../Nova/WinForms/Gui/Dialogs/ResearchDialog.cs) and `ApplyLevelUps()` in
+   [StarUpdateStep.cs](../ServerState/TurnSteps/StarUpdateStep.cs) both called
+   `Research.Cost(..., currentLevel[field] + 1)` **unconditionally** — `Research.Cost`'s base-cost
+   table only has entries for levels 1-26 (`TechLevel.MaxLevel`), so once any field reaches level
+   26, `+ 1` = 27 indexes past the end of the array and throws `IndexOutOfRangeException`. The
+   `StarUpdateStep` instance is the more serious of the two: it runs during ordinary turn
+   generation in a `while(true)` loop applying every level-up a field's banked resources can
+   afford, with no check for the field already being maxed — so this could crash turn generation
+   itself, not just the dialog, for any empire with a maxed field and still-arriving research
+   income for it (e.g. Generalized Research's 15% side-allocation keeps feeding a maxed field every
+   turn). Fixed both call sites to skip the `Research.Cost` call entirely once a field is already
+   at `MaxLevel`. Added
+   [StarUpdateStepTest.cs](../Tests/UnitTests/StarUpdateStepTest.cs) (via reflection against the
+   private `ApplyLevelUps`, since exercising it through the public `Process()` entry point would
+   need a fully-populated `Star`/`Manufacture` fixture unrelated to this bug) — confirmed it fails
+   with the exact `IndexOutOfRangeException` when the fix is reverted, passes with it applied. Full
+   suite now 74/76 (same 2 pre-existing, unrelated failures).
+
+**Automation note**: reproducing the crash live this session was blocked by a genuine
+desktop/input-focus issue on this RDP-connected machine, distinct from anything in Nova itself —
+`SetForegroundWindow`/`BringWindowToTop` reported success and `PrintWindow`-based screenshots kept
+showing Nova's window contents correctly, but real screen captures (`CopyFromScreen`) showed the
+Claude Code chat window was actually still covering it on the real desktop, and neither real
+synthetic mouse input nor message-based `PostMessage` clicks were reaching the Nova window even
+after forcing Z-order with `SetWindowPos(HWND_TOPMOST)` — consistent with this session's
+previously-documented "RDP input desktop can detach from real interactive input while screen
+capture keeps working" pattern. Diagnosed and fixed via careful code review instead once the
+exception-logging infrastructure above made clear that automation wasn't going to yield a stack
+trace on demand.
+
+## Cross-checked components.xml against a 1997 per-item tech table (2026-09-05)
+
+User downloaded a batch of StarsFAQ-hosted reference material to `C:\StarsGame\downloads` and asked
+for a look through for anything to improve our knowledge. Most of it was game installers/patches or
+strategy-guide HTML already covered by existing doc sources, but `techitem.zip` (`TECHITEM.DOC`, a
+1997 Word doc) turned out to be exactly the "full hull/component prerequisite table" flagged as
+missing in `docs/behavior-specs/research-tech-tree.md`'s Open Questions — every unlock in the game,
+organized by field and tech level, with every secondary-field requirement spelled out per item.
+
+Converted it with `antiword` (already installed at `/mingw64/bin/antiword`) and wrote a one-off
+Python script to parse it into a `{name: {field: level}}` table and diff against `components.xml`
+(226 components, 188 matched by name). Found and fixed a real, systematic bug: **Smart Bomb, Neutron
+Bomb, Enriched Neutron Bomb, Peerless Bomb, Annihilator Bomb, and Energy Dampener** all had their
+secondary tech requirement mislabeled as `Electronics` in `components.xml`, when the source
+document — cited twice per item, independently, in both that field's own table row and the
+Biotechnology/Energy table row — consistently says `Biotechnology` (the five `<SMART>`-tagged
+bombs) or `Energy` (Energy Dampener) instead. Verified this wasn't a wholesale Electronics mixup:
+every other Electronics-tagged bomb (LBU-17, LBU-32, LBU-74 — not `<SMART>`) checked out correct
+against the same source. Full test suite re-run clean after the fix: 74/76 (same 2 pre-existing
+failures). See `docs/behavior-specs/research-tech-tree.md`'s "Full hull/component prerequisite
+table" entry for the complete writeup, including what this pass did *not* cover (an exhaustive
+item-by-item audit of all 188 matches, and the ~51 doc items with no matching `components.xml`
+name).
+
+## The Research dialog crash's REAL cause: SDK-migration resx logical-name mismatch (2026-09-05)
+
+The previous session's max-tech-level fix (`Research.Cost` array bounds — see above) was a real,
+independently-worthwhile bug, but the user re-tested and **it still crashed** opening Research from
+the menu. This turned out to be a completely different, much more consequential bug, and the
+exception-logging infrastructure added alongside that earlier fix (`nova-crash.log`) is what made it
+possible to diagnose in about two minutes instead of another long automation fight:
+
+```
+System.Resources.MissingManifestResourceException: Could not find the resource
+"Nova.WinForms.Gui.ResearchDialog.resources" among the resources "...
+```
+
+**Root cause**: SDK-style projects compute a `.resx`'s embedded manifest resource name from
+`RootNamespace` + its *physical folder path* (e.g. `Nova.WinForms.Gui.Dialogs.ResearchDialog`).
+The old-style `.csproj` instead used each paired `.cs` file's actual *declared* C# namespace. This
+codebase has long-standing, pre-existing inconsistency between the two — most classes physically
+under `WinForms/Gui/Dialogs/` and `WinForms/Gui/Reports/` declare `namespace Nova.WinForms.Gui`,
+not `.Dialogs`/`.Reports` — which the old MSBuild tolerated fine but the new SDK-style build does
+not. Any dialog whose designer calls `ComponentResourceManager.GetObject(...)` (universally, for a
+designer-set `Icon`) throws `MissingManifestResourceException` at the first line of
+`InitializeComponent()` — this is why it crashed immediately on opening the dialog, before any of
+the dialog's own code (including last session's max-level fix) ever ran.
+
+Wrote a small script (BOM-aware — the naive first attempt silently failed on every `Designer.cs`
+because they all start with a UTF-8 BOM that broke a naive `^namespace` regex) to compare every
+`.resx`'s default SDK-computed logical name against its paired class's actual namespace across the
+whole `Nova` project. Found **30 real mismatches** out of 42 `.resx` files — a systemic issue, not
+specific to `ResearchDialog`. (The other migrated projects — `Common`, `ControlLibrary`,
+`GameFileInflator` — were checked too and are clean; only `Nova` has resx files nested several
+folders deep with declared namespaces that don't track the folder structure.) Fixed all 30 via
+explicit `<EmbeddedResource Update="...">` / `<LogicalName>` overrides in `Nova.csproj`, restoring
+each one's pre-migration logical name (4 of the 30 matches were the already-excluded orphaned
+ComponentEditor dialogs — correctly left out, since they're not compiled at all).
+
+**Verified live, in-game**, not just by rebuilding: found that `Program.cs`'s `--gui -r <race> -t
+<turn> -i <intel file>` command-line switch launches directly into the playable GUI, bypassing the
+Launcher/Console entirely (`NovaConsole.PlayerList_DoubleClick` builds exactly these arguments to
+launch the GUI in-process, so this replicates it faithfully as a standalone process) — a much more
+reliable way to reach a specific screen for testing than fighting through the Launcher's file-open
+dialog and Console's ListView, both of which continued to reject synthetic input this session (see
+the "Automation note" above — this was the same underlying issue, worked around this time by
+avoiding the need for realistic mouse input altogether). Opened the Research dialog from the
+Commands menu: no crash, and the new multi-level color-coded "Expected Research Benefits" list
+rendered correctly (green/blue/black exactly as designed). Clicked the new Help button: opened the
+in-game Manual correctly pre-selected to the "Research dialog" topic, WebBrowser rendering the
+original manual content with the attribution footer visible. Full test suite re-confirmed clean
+afterward: 74/76 (same 2 pre-existing failures).
+
+This is a good reminder for the rest of the .NET migration cleanup: **any WinForms
+form/control with a `.resx` file should be checked for this class of bug** before considering the
+migration fully verified, not just the ones that happen to get clicked on during a play session.

@@ -22,9 +22,10 @@
 namespace Nova
 {
     using System;
+    using System.IO;
     using System.Linq;
     using System.Windows.Forms;
-    
+
     using Nova.Common;
 
     public static class Program
@@ -37,10 +38,20 @@ namespace Nova
         {
             string firstArgument = args.FirstOrDefault();
             string[] coreArgs = args.Skip(1).ToArray();
-            
+
+            // On .NET Framework, an unhandled exception on the UI thread showed a
+            // recoverable "Continue/Quit" dialog by default. On modern .NET, WinForms
+            // instead terminates the whole process with no dialog and no accessible
+            // stack trace (Windows Error Reporting only logs a generic native fault
+            // code). Restore the old, recoverable behavior, and log full exception
+            // details somewhere a developer can actually read them.
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (sender, e) => HandleException(e.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (sender, e) => HandleException(e.ExceptionObject as Exception);
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            
+
             switch (firstArgument)
             {
                 case CommandArguments.Option.ConsoleSwitch:
@@ -73,6 +84,44 @@ namespace Nova
                     ShowErrorDialog(); 
                     break;
             }
+        }
+
+        /// <Summary>
+        /// Logs an unhandled exception's full details to a file next to the executable
+        /// (Windows Error Reporting only captures a generic native fault code for a .NET
+        /// process crash, not the managed exception or its stack trace) and shows the
+        /// user a recoverable error dialog rather than letting the process die silently.
+        /// </Summary>
+        private static void HandleException(Exception exception)
+        {
+            if (exception == null)
+            {
+                return;
+            }
+
+            try
+            {
+                string logPath = Path.Combine(Application.StartupPath, "nova-crash.log");
+                string entry = string.Format(
+                    "{0:u}{1}{2}{1}{1}",
+                    DateTime.Now,
+                    Environment.NewLine,
+                    exception);
+                File.AppendAllText(logPath, entry);
+            }
+            catch
+            {
+                // Logging is best-effort; don't let a failure to write the log
+                // prevent the error dialog below from being shown.
+            }
+
+            MessageBox.Show(
+                exception.Message + Environment.NewLine + Environment.NewLine +
+                "Full details have been written to nova-crash.log next to the executable." + Environment.NewLine +
+                "You can usually continue, but consider saving and restarting soon.",
+                "Stars! Nova - Unexpected Error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
 
         private static void ShowErrorDialog()

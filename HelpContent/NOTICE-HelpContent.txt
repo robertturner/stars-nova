@@ -1,0 +1,20 @@
+This folder contains the original Stars! Player's Guide (stars.hlp), converted
+from Microsoft WinHelp (.hlp) format to HTML by a member of the Stars!AutoHost
+wiki community.
+
+Source: https://wiki.starsautohost.org/wiki/Downloads (file: stars.hlp.html.rar,
+"in .html format", under the References section), retrieved 2026-09-05.
+
+Unlike the rest of this project - a clean-room reimplementation of Stars!,
+built from public behavior documentation and restated in original wording,
+without consulting the original game's code or assets - this specific content
+IS the original game's own manual text and images, written by the original
+Stars! authors (Jeff Johnson, King of Prussia / Empire Interactive). It is
+included here at the project maintainer's explicit direction, as a convenience
+reference for players and to help verify this clone's mechanics against the
+original, not as clean-room material.
+
+If you are packaging or redistributing this project and want to exclude
+third-party copyrighted content, this HelpContent/ folder (and the "Manual"
+entry under the in-game Help menu that depends on it) is the one part of the
+distribution this note applies to.

@@ -182,6 +182,14 @@ namespace Nova.Server.TurnSteps
         {
             while (true)
             {
+                if (empire.ResearchLevels[area] >= TechLevel.MaxLevel)
+                {
+                    // Research.Cost's base-cost table only has entries for levels
+                    // 1..MaxLevel; asking for MaxLevel + 1 would throw. Nothing more to
+                    // research here - any banked resources for this field just sit unused.
+                    break;
+                }
+
                 int cost = Research.Cost(area, empire.Race, empire.ResearchLevels, empire.ResearchLevels[area] + 1);
 
                 if (empire.ResearchResources[area] >= cost)

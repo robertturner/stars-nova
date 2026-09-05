@@ -49,6 +49,11 @@ namespace Nova.Common
 		static public ResearchField FirstField = ResearchField.Biotechnology;
 		static public ResearchField LastField = ResearchField.Construction;
 
+		/// <summary>
+		/// The highest tech level attainable in any field.
+		/// </summary>
+		public const int MaxLevel = 26;
+
 		// These members are private to hide the 
 		// implementaion of the hashtable and force access through the enums, 
 		// in order to prevent errors due to using string literals (e.g. "Biotech" vs "Biotechnology")

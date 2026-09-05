@@ -29,6 +29,7 @@
             this.battlesReportMenu              = new System.Windows.Forms.ToolStripMenuItem();
             this.scoresMenuItem                 = new System.Windows.Forms.ToolStripMenuItem();
             this.helpToolStripMenuItem          = new System.Windows.Forms.ToolStripMenuItem();
+            this.manualToolStripMenuItem        = new System.Windows.Forms.ToolStripMenuItem();
             this.aboutToolStripMenuItem         = new System.Windows.Forms.ToolStripMenuItem();
             
             this.messages           = new Nova.WinForms.Gui.Messages();
@@ -204,13 +205,22 @@
             this.scoresMenuItem.Click += new System.EventHandler(this.ScoresMenuItem_Click);
             // 
             // helpToolStripMenuItem
-            // 
+            //
             this.helpToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.manualToolStripMenuItem,
             this.aboutToolStripMenuItem});
             this.helpToolStripMenuItem.Name = "helpToolStripMenuItem";
             this.helpToolStripMenuItem.Size = new System.Drawing.Size(44, 20);
             this.helpToolStripMenuItem.Text = "&Help";
-            // 
+            //
+            // manualToolStripMenuItem
+            //
+            this.manualToolStripMenuItem.Name = "manualToolStripMenuItem";
+            this.manualToolStripMenuItem.ShortcutKeys = System.Windows.Forms.Keys.F1;
+            this.manualToolStripMenuItem.Size = new System.Drawing.Size(107, 22);
+            this.manualToolStripMenuItem.Text = "&Manual";
+            this.manualToolStripMenuItem.Click += new System.EventHandler(this.MenuManual);
+            //
             // aboutToolStripMenuItem
             // 
             this.aboutToolStripMenuItem.Name = "aboutToolStripMenuItem";
@@ -266,6 +276,7 @@
         private ToolStripMenuItem researchToolStripMenuItem;
         private ToolStripMenuItem shipDesignerToolStripMenuItem;
         private ToolStripMenuItem helpToolStripMenuItem;
+        private ToolStripMenuItem manualToolStripMenuItem;
         private ToolStripMenuItem aboutToolStripMenuItem;
         private ToolStripMenuItem playerRelationslMenuItem;
         private ToolStripMenuItem battlePlansMenu;

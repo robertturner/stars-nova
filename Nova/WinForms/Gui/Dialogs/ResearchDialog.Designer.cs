@@ -53,6 +53,7 @@ namespace Nova.WinForms.Gui
 			this.label2 = new System.Windows.Forms.Label();
 			this.label1 = new System.Windows.Forms.Label();
 			this.okButton = new System.Windows.Forms.Button();
+			this.helpButton = new System.Windows.Forms.Button();
 			this.groupBox2 = new System.Windows.Forms.GroupBox();
 			this.researchBenefits = new System.Windows.Forms.ListBox();
 			this.groupBox3 = new System.Windows.Forms.GroupBox();
@@ -244,7 +245,7 @@ namespace Nova.WinForms.Gui
 			this.label1.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
 			// 
 			// okButton
-			// 
+			//
 			this.okButton.Location = new System.Drawing.Point(459, 274);
 			this.okButton.Name = "okButton";
 			this.okButton.Size = new System.Drawing.Size(75, 23);
@@ -252,6 +253,16 @@ namespace Nova.WinForms.Gui
 			this.okButton.Text = "OK";
 			this.okButton.UseVisualStyleBackColor = true;
 			this.okButton.Click += new System.EventHandler(this.OKClicked);
+			//
+			// helpButton
+			//
+			this.helpButton.Location = new System.Drawing.Point(378, 274);
+			this.helpButton.Name = "helpButton";
+			this.helpButton.Size = new System.Drawing.Size(75, 23);
+			this.helpButton.TabIndex = 4;
+			this.helpButton.Text = "Help";
+			this.helpButton.UseVisualStyleBackColor = true;
+			this.helpButton.Click += new System.EventHandler(this.HelpClicked);
 			// 
 			// groupBox2
 			// 
@@ -264,12 +275,14 @@ namespace Nova.WinForms.Gui
 			this.groupBox2.Text = "Expected Research Benefits";
 			// 
 			// researchBenefits
-			// 
+			//
+			this.researchBenefits.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
 			this.researchBenefits.FormattingEnabled = true;
 			this.researchBenefits.Location = new System.Drawing.Point(10, 20);
 			this.researchBenefits.Name = "researchBenefits";
 			this.researchBenefits.Size = new System.Drawing.Size(288, 82);
 			this.researchBenefits.TabIndex = 0;
+			this.researchBenefits.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.ResearchBenefits_DrawItem);
 			// 
 			// groupBox3
 			// 
@@ -400,6 +413,7 @@ namespace Nova.WinForms.Gui
 			this.Controls.Add(this.groupBox3);
 			this.Controls.Add(this.groupBox2);
 			this.Controls.Add(this.okButton);
+			this.Controls.Add(this.helpButton);
 			this.Controls.Add(this.groupBox1);
 			this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
 			this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
@@ -424,6 +438,7 @@ namespace Nova.WinForms.Gui
        private System.Windows.Forms.Label label2;
        private System.Windows.Forms.Label label1;
        private System.Windows.Forms.Button okButton;
+       private System.Windows.Forms.Button helpButton;
        private System.Windows.Forms.RadioButton biotechButton;
        private System.Windows.Forms.RadioButton electronicsButton;
        private System.Windows.Forms.RadioButton constructionButton;

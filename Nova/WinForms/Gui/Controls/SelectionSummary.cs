@@ -79,18 +79,17 @@ namespace Nova.WinForms.Gui
                 Invalidate();
                 return;
             }
-            
-            // If we are displaying a fleet clear it out and add the planet
-            // Summary display.
 
-            if (summaryItem is FleetIntel || summaryItem == null)
-            {
-                PlanetSummary.Show();
-                FleetSummary.Hide();
-                Invalidate();
-            }
+            // Always (re)show the planet Summary and hide the fleet one, even if the
+            // last-displayed item was also a planet - SetItem(null) hides both without
+            // clearing summaryItem, so a type-only check here could otherwise leave the
+            // panel hidden across repeated planet-to-planet selections until a fleet
+            // selection happened to change summaryItem's type in between.
+            PlanetSummary.Show();
+            FleetSummary.Hide();
+            Invalidate();
 
-            summaryItem = report;            
+            summaryItem = report;
 
             this.summaryFrame.Text = "Summary of " + report.Name;
             PlanetSummary.Location = new Point(5, 15);
@@ -103,12 +102,10 @@ namespace Nova.WinForms.Gui
         /// <param name="Item">The <see cref="Item"/> to display (a <see cref="Fleet"/> or <see cref="Star"/>).</param>
         private void DisplayFleet(FleetIntel report)
         {
-            if (summaryItem is StarIntel || summaryItem == null)
-            {
-                FleetSummary.Show();
-                PlanetSummary.Hide();
-                Invalidate();
-            }
+            // See the matching comment in DisplayPlanet for why this is unconditional.
+            FleetSummary.Show();
+            PlanetSummary.Hide();
+            Invalidate();
 
             summaryItem = report;
             this.summaryFrame.Text = "Summary of " + report.Name;
@@ -128,6 +125,7 @@ namespace Nova.WinForms.Gui
             if (item == null)
             {
                 this.summaryFrame.Text = "Nothing Selected";
+                summaryItem = null;
                 FleetSummary.Hide();
                 PlanetSummary.Hide();
                 Invalidate();

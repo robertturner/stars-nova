@@ -1,0 +1,779 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><title>Troubleshooting:</title>
+<meta http-equiv="Content-Style-Type" content="text/css">
+<style type="text/css"><!--
+body {
+  margin: 5px 5px 5px 5px;
+  background-color: #ffffff;
+}
+/* ========== Text Styles ========== */
+hr { color: #000000}
+body, table /* Normal text */
+{
+ font-size: 10pt;
+ font-family: 'Courier New';
+ font-style: normal;
+ font-weight: normal;
+ color: #000000;
+ text-decoration: none;
+}
+span.rvts1 /* Heading */
+{
+ font-weight: bold;
+ color: #0000ff;
+}
+span.rvts2 /* Subheading */
+{
+ font-weight: bold;
+ color: #000080;
+}
+span.rvts3 /* Keywords */
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #800000;
+}
+a.rvts4, span.rvts4 /* Jump 1 */
+{
+ color: #008000;
+ text-decoration: underline;
+}
+a.rvts5, span.rvts5 /* Jump 2 */
+{
+ font-family: 'Arial';
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts6
+{
+ font-size: 14pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts7
+{
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts8
+{
+ font-family: 'Arial Unicode MS', 'Lucida Sans Unicode', 'Arial';
+ color: #000000;
+}
+span.rvts9
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #008000;
+}
+span.rvts10
+{
+ font-size: 12pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts11
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts12
+{
+ font-family: 'Arial';
+ color: #008000;
+}
+span.rvts13
+{
+ font-size: 11pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts14
+{
+ font-family: 'Arial';
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts15
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts16
+{
+ font-family: 'Arial';
+}
+span.rvts17
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #000000;
+}
+span.rvts18
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts19
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts20
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts21
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts22
+{
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts23
+{
+ font-size: 8pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts24
+{
+ font-size: 12pt;
+ font-family: 'Arial';
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts25
+{
+ font-family: 'Arial';
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts26
+{
+ font-family: 'Arial';
+ color: #808080;
+}
+span.rvts27
+{
+ font-family: 'SymbolProp BT';
+ color: #000000;
+}
+span.rvts28
+{
+ font-family: 'Helv';
+ color: #000000;
+}
+span.rvts29
+{
+ font-family: 'Helv';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts30
+{
+ font-size: 11pt;
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts31
+{
+ font-size: 8pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts32
+{
+ font-size: 14pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts33
+{
+ font-family: 'Wingdings';
+ color: #000000;
+}
+span.rvts34
+{
+ font-family: 'Arial';
+ color: #0000ff;
+ text-decoration: underline;
+}
+/* ========== Para Styles ========== */
+p,ul,ol /* Paragraph Style */
+{
+ text-align: left;
+ text-indent: 0px;
+ padding: 0px 0px 0px 0px;
+ margin: 0px 0px 0px 0px;
+}
+.rvps1 /* Centered */
+{
+ text-align: center;
+}
+.rvps2
+{
+ margin: 4px 0px 8px 0px;
+}
+.rvps3
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps4
+{
+ text-indent: 48px;
+ margin: 8px 0px 8px 0px;
+}
+.rvps5
+{
+ margin: 4px 24px 12px 0px;
+}
+.rvps6
+{
+ margin: 0px 0px 16px 0px;
+}
+.rvps7
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps8
+{
+ margin: 16px 0px 8px 0px;
+}
+.rvps9
+{
+ margin: 0px 0px 16px 0px;
+}
+.rvps10
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps11
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps12
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps13
+{
+ margin: 0px 0px 12px 0px;
+}
+.rvps14
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps15
+{
+}
+.rvps16
+{
+ margin: 4px 0px 8px 0px;
+}
+.rvps17
+{
+ margin: 8px 24px 8px 0px;
+}
+.rvps18
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps19
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps20
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 48px;
+}
+.rvps21
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps22
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps23
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps24
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps25
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps26
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps27
+{
+ margin: 0px 0px 12px 0px;
+}
+.rvps28
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 4px 0px 8px 0px;
+}
+.rvps29
+{
+ margin: 8px 24px 8px 0px;
+}
+.rvps30
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 4px 0px 8px 0px;
+}
+.rvps31
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps32
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps33
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps34
+{
+ margin: 8px 0px 8px 0px;
+}
+.rvps35
+{
+ margin: 8px 0px 8px 0px;
+}
+.rvps36
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps37
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps38
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps39
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps40
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps41
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps42
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps43
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps44
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps45
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps46
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps47
+{
+ margin: 0px 0px 5px 0px;
+}
+.rvps48
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps49
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps50
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps51
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps52
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 12px 0px 8px 0px;
+}
+.rvps53
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps54
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps55
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps56
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps57
+{
+ margin: 0px 0px 5px 0px;
+}
+.rvps58
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps59
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps60
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps61
+{
+ margin: 4px 0px 4px 0px;
+}
+.rvps62
+{
+ margin: 4px 0px 4px 0px;
+}
+.rvps63
+{
+ margin: 0px 0px 20px 0px;
+}
+.rvps64
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps65
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps66
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps67
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps68
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps69
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps70
+{
+ line-height: 1.47;
+ margin: 0px 0px 8px 0px;
+}
+.rvps71
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps72
+{
+ text-align: center;
+ margin: 0px 0px 8px 0px;
+}
+.rvps73
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps74
+{
+ text-align: right;
+ margin: 8px 9px 8px 0px;
+}
+.rvps75
+{
+ text-align: right;
+ margin: 0px 9px 8px 0px;
+}
+.rvps76
+{
+ text-align: right;
+ margin: 0px 9px 8px 0px;
+}
+.rvps77
+{
+ margin: 16px 0px 4px 0px;
+}
+.rvps78
+{
+ margin: 16px 0px 4px 0px;
+}
+.rvps79
+{
+ margin: 16px 24px 8px 0px;
+}
+.rvps80
+{
+ text-indent: -24px;
+ margin: 0px 0px 10px 24px;
+}
+.rvps81
+{
+ text-indent: -24px;
+ margin: 0px 0px 10px 24px;
+}
+.rvps82
+{
+ margin: 16px 24px 8px 0px;
+}
+.rvps83
+{
+ margin: 8px 8px 5px 8px;
+}
+.rvps84
+{
+ margin: 8px 8px 3px 8px;
+}
+.rvps85
+{
+ margin: 8px 24px 3px 6px;
+}
+.rvps86
+{
+ margin: 0px 8px 3px 8px;
+}
+.rvps87
+{
+ margin: 8px 8px 3px 24px;
+}
+.rvps88
+{
+ margin: 0px 8px 3px 24px;
+}
+.rvps89
+{
+ margin: 8px 8px 3px 24px;
+}
+.rvps90
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 8px 3px 8px;
+}
+.rvps91
+{
+ margin: 8px 8px 4px 8px;
+}
+.rvps92
+{
+ margin: 0px 8px 8px 8px;
+}
+.rvps93
+{
+ margin: 0px 8px 3px 8px;
+}
+.rvps94
+{
+ margin: 8px 8px 3px 8px;
+}
+.rvps95
+{
+ margin: 16px 8px 4px 8px;
+}
+.rvps96
+{
+ margin: 4px 8px 3px 8px;
+}
+.rvps97
+{
+ text-indent: -40px;
+ margin: 8px 8px 3px 48px;
+}
+.rvps98
+{
+ margin: 0px 8px 3px 8px;
+}
+--></style>
+</head>
+<body alink=#ff0000>
+
+<p class=rvps2><span class=rvts6>Troubleshooting: </span>
+<br><span class=rvts6>What to Do when the Ship Hits the Fan</span></p>
+<p class=rvps3><span class=rvts7>Here's a description of the problems customers and testers have reported and how you can resolve them. These problems are relevant to the current version. New troubleshooting information will be posted to the Stars! Web site at www.webmap.com/stars!. </span></p>
+<p class=rvps7><span class=rvts7>Scroll through this file. If you're having problems with Stars!, hopefully you'll find the answer here.</span></p>
+<p class=rvps17><span class=rvts10>Cannot Open Game File errors</span></p>
+<p class=rvps7><span class=rvts11>Problem</span><span class=rvts7>: You try to open a Stars! game, and receive an error message indicating the game file cannot be opened.</span></p>
+<p class=rvps3><span class=rvts11>Solution</span><span class=rvts7>: This may be caused by trying to open a game created with an older version of Stars!. Because of changes made to the current version in order to simplify and improve play, games generated by older versions will not run with the current version.</span></p>
+<p class=rvps7><span class=rvts7>The game file may also be corrupted. Copy the previous turn from the backup directory, then rerun and submit the turn.</span></p>
+<p class=rvps17><span class=rvts10>General Protection Fault error</span></p>
+<p class=rvps7><span class=rvts11>Problem</span><span class=rvts7>: Stars! crashes with a General Protection Fault in XXX, where XXX has the number 256, 1024, or ends in DRV. </span></p>
+<p class=rvps3><span class=rvts11>Solution</span><span class=rvts7>: This error indicates an out-of-date Windows video driver. Contact your video card manufacturer or, possibly, Microsoft for an upgrade to the newest driver. Upgrading the driver has fixed all errors of this type that have been reported.</span></p>
+<p class=rvps29><span class=rvts10>Shortcut Keystrokes don't always work</span></p>
+<p class=rvps3><span class=rvts11>Problem</span><span class=rvts7>: Pressing a shortcut key does nothing.</span></p>
+<p class=rvps7><span class=rvts11>Solution</span><span class=rvts7>: Click on any tile that doesn't have a listbox, on a button in the Messages pane, or in the Scanner pane, then try the keystroke again.</span></p>
+<p class=rvps17><span class=rvts10>Serial Number dialog comes back</span></p>
+<p class=rvps7><span class=rvts11>Problem</span><span class=rvts7>: You always seem to be getting that pesky dialog asking for a serial number. </span></p>
+<p class=rvps3><span class=rvts11>Solution</span><span class=rvts7>: Expect to re-enter the serial number under the following conditions:</span></p>
+<p class=rvps55><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts7>if you cancel the serial number dialog</span></p>
+<p class=rvps56><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts7>if you've exited only from the opening "splash" screen. The copy protection looks for a stars.ini file, which isn't written until you actually exit Stars! from within game. Open or start a game and choose </span><span class=rvts11>File</span><span class=rvts7> (</span><span class=rvts11>Exit</span><span class=rvts7>) to write the file.</span></p>
+<p class=rvps55><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts7>if the stars.ini file has been deleted, renamed or moved from the Windows directory, or if the Windows directory has been moved. Start or open a game, and choose </span><span class=rvts11>File</span><span class=rvts7> (</span><span class=rvts11>Exit</span><span class=rvts7>) to write a new stars.ini file. </span></p>
+<p class=rvps56><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts7>if you make a change to your computer's hardware after Stars! has been installed.</span></p>
+<p class=rvps55><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts7>if you move Stars! to a new computer</span></p>
+<p class=rvps56><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts7>if you install an upgrade patch</span></p>
+<p class=rvps55><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts7>if you are using the same registered copy on multiple machines, in the same multi-player game</span></p>
+<p class=rvps56><span class=rvts8>&diams; &nbsp; &nbsp; &nbsp; &nbsp;</span><span class=rvts7>if you are running more than one version of Windows on the same computer, and thus are using a separate Windows directory for each version, you'll be asked for the number the first time you start Stars! under each operating system.</span></p>
+<p class=rvps7><span class=rvts7>Read more about </span><span class=rvts12>copy protection and Stars!</span><span class=rvts7>.</span></p>
+<p class=rvps17><span class=rvts10>"Partially Done" Turn message</span></p>
+<p class=rvps7><span class=rvts11>Problem</span><span class=rvts7>: You're hosting a game and receive a message that a player has submitted a turn that is "partially done".</span></p>
+<p class=rvps3><span class=rvts11>Solution</span><span class=rvts7>: Go ahead and generate the new turn. The difference between the player's turn being marked as "done" or "partially done" is the submitted bit. When you save your turn you can choose Save, or Save and Submit. If you have used Save then the Host program considers the turn as "partially done". This is useful in network games when you want to save your work but don't want the host to Auto-Generate too soon. In a Play-By-Mail games it doesn't matter because the turn is generated manually.</span></p>
+<p class=rvps29><span class=rvts10>You Installed the Current Version, but an Older Version Appears when You Run Stars!</span></p>
+<p class=rvps3><span class=rvts11>Problem</span><span class=rvts7>: You install the new version of Stars!, start it up, and the older version appears.</span></p>
+<p class=rvps7><span class=rvts11>Solution</span><span class=rvts7>: If you're currently running an instance of an older version of Stars!, Windows will always open another instance of that version. (This is standard Windows behavior). Close any Stars! sessions currently running and start the new version. </span></p>
+<p class=rvps3><span class=rvts7>You CAN run different versions of Stars! simultaneously as long as each executable file has a different name. </span></p>
+<p class=rvps7><span class=rvts7><br></span></p>
+<p class=rvps7><span class=rvts7><br></span></p>
+<p class=rvps16><span class=rvts6><br></span></p>
+
+</body></html>

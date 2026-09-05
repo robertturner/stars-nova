@@ -187,8 +187,16 @@ Two lesser racial traits directly interact with cost:
   double; the cost drops back to normal once the empire's level in
   every prerequisite field exceeds the requirement by at least one
   level. It also changes component miniaturization from 4%/level
-  (capped 64%) to 5%/level (capped 80%)
-  [wiki.starsautohost.org/wiki/Custom_Race_wizard].
+  (capped 75%) to 5%/level (capped 80%) — confirmed directly against
+  the original game's own Player's Guide ("Bleeding Edge Technology"
+  and "Conditions that Affect Production" topics), not just the wiki
+  [wiki.starsautohost.org/wiki/Custom_Race_wizard],
+  [stars.hlp, retrieved via wiki.starsautohost.org/wiki/Downloads].
+  **Note:** this project's own code does not yet implement
+  miniaturization (the baseline 4%/level cost reduction) or Bleeding
+  Edge Technology at all — both are still `TODO` stubs in
+  `ServerState/NewGame/GameInitialiser.cs`. This is a real gameplay gap,
+  not just a documentation one.
 - **Generalized Research** — see section 4 below; it does not change
   `totalCost`, only how a turn's research budget is spread across
   fields.
@@ -209,11 +217,17 @@ trait yields more total research throughput than a focused strategy for
 the same resource spend, at the cost of being unable to "rush" a single
 field to unlock something urgently
 [wiki.starsautohost.org/wiki/Generalized_Research],
-[wiki.starsautohost.org/wiki/Custom_Race_wizard]. One strategy-guide
-author's independent tally of "50% + 5×15%" likewise reaches 125%, even
-though the in-game help text is reported to say 115% — the two
-community sources disagree on the label though not on the arithmetic
-(see Open Questions) [gamefaqs.gamespot.com].
+[wiki.starsautohost.org/wiki/Custom_Race_wizard]. **125% is confirmed**
+directly against the original game's own help text (the "Generalized
+Research" topic in stars.hlp reads: "Only half of the resources
+dedicated to research will be applied to the current field of
+research. 15% of the total will be applied to each of the fields. (Yes,
+we know this adds up to 125%.)" — the game acknowledges the odd total
+itself). The "115%" figure a GameFAQs strategy-guide author attributed
+to the in-game help text was therefore that author's own error, not a
+genuine discrepancy in the game
+[stars.hlp, retrieved via wiki.starsautohost.org/wiki/Downloads],
+[gamefaqs.gamespot.com].
 
 The Super Stealth PRT has an unrelated, passive way to gain resources
 in *all six* fields simultaneously every year: it gains, in each field,
@@ -428,14 +442,10 @@ available is short by 40; it is banked toward level 4.
   document assume immediate updates (consistent with how the original
   FAQ's own weapons-cost examples reconcile against the base-cost
   table), but this was not independently confirmed by a second source.
-- **115% vs. 125% for Generalized Research.** The Stars!AutoHost wiki
-  and a GameFAQs strategy guide both independently compute 50% + 5×15%
-  = 125% total research yield for the Generalized Research trait, but
-  the guide's author notes that the in-game help text is reported to
-  say 115%. No source consulted resolves this discrepancy; it may be a
-  documentation error in the original game, a rounding/labeling
-  convention not captured by either wiki, or a misremembering by the
-  guide's author.
+- ~~**115% vs. 125% for Generalized Research.**~~ **Resolved** — see
+  section 4. The original game's own help text confirms 125% and jokes
+  about the odd total itself; "115%" was the GameFAQs guide author's
+  own misremembering, not a real discrepancy.
 - **Precise default values for the resource-generation constants.**
   Sources give a valid *range* for each race-design economic setting
   (e.g., colonists-per-resource 700–2500) and cite various example
@@ -447,14 +457,34 @@ available is short by 40; it is banked toward level 4.
   default. This document treats 1,000/10/10/10 as a reasonable
   illustrative baseline for worked examples, not a verified universal
   default.
-- **Full hull/component prerequisite table.** Only a representative
-  subset of tech-gated unlocks (focused on early/mid-game breakpoints)
-  was catalogued here from a single strategy-guide chapter. A complete,
-  field-by-field prerequisite table for every hull, engine, weapon,
-  armor, shield, and scanner in the game was not compiled and would
-  need a dedicated pass through the in-game Technology Browser data or
-  an equivalent community reference (e.g. a hull/component spreadsheet)
-  not retrieved for this document.
+- ~~**Full hull/component prerequisite table.**~~ **Partially resolved
+  (2026-09-05)**: `TECHITEM.DOC` (a 1997 fan-made per-tech-level unlock
+  table, `techitem.zip` on the Stars!AutoHost wiki downloads page) is
+  exactly this — every hull, engine, weapon, armor, shield, scanner,
+  mine layer, and terraforming item, organized by field and level, with
+  every secondary-field requirement spelled out. It was cross-referenced
+  programmatically against this project's `components.xml` (226
+  components; 188 matched by name). This found and fixed a genuine,
+  systematic bug: **Smart Bomb, Neutron Bomb, Enriched Neutron Bomb,
+  Peerless Bomb, Annihilator Bomb, and Energy Dampener** all had their
+  secondary tech requirement mislabeled as `Electronics` in
+  `components.xml` when the source doc — cited twice per item,
+  independently, in both that field's own table and the
+  Biotechnology/Energy table — consistently says `Biotechnology` (the
+  five `<SMART>`-tagged bombs) or `Energy` (Energy Dampener). Every
+  other `Electronics`-tagged bomb (LBU-17, LBU-32, LBU-74 — not
+  `<SMART>`) was independently confirmed correct against the same
+  source, so this wasn't a wholesale field mixup, just these six items.
+  Not yet done: an exhaustive item-by-item pass (188 matches is a lot to
+  eyeball one at a time) — the cross-check surfaced ~25 further
+  "Biotechnology" discrepancies that all turned out to be a parsing
+  artifact in the one-off script used for this pass (confirmed via
+  spot-checking a few, e.g. Ultra Driver 12, against `components.xml`
+  directly), not real bugs, so a cleaner re-parse would be needed before
+  trusting further automated output from this source. The ~51 items in
+  the doc with no matching name in `components.xml` were not
+  investigated (could be items not yet modeled at all, or just naming
+  differences).
 - **"Slow Tech Advance" and other game-parameter interactions.** The
   source formula states this parameter doubles `totalCost`, but no
   source consulted described how it interacts with `costFactor` or
@@ -462,8 +492,18 @@ available is short by 40; it is banked toward level 4.
   here to apply after the `costFactor` multiplication, consistent with
   the formula's own ordering, but not independently verified.
 
+- **Miniaturization and Bleeding Edge Technology are unimplemented.**
+  The original game's own manual documents both mechanics precisely
+  (see section on race-design cost traits, above), and this project's
+  documentation now reflects the correct numbers, but neither mechanic
+  exists yet in `Common`/`ServerState` — components never get cheaper
+  as an empire's tech level rises past a requirement. This is a
+  confirmed implementation gap, not just a documentation one.
+
 ## Sources
 
+- [stars.hlp — the original Stars! Player's Guide, converted to HTML by the Stars!AutoHost wiki community](https://wiki.starsautohost.org/wiki/Downloads) (file `stars.hlp.html.rar`, under References; used here only to verify mechanics against this project's own clean-room documentation, not copied into it — see `HelpContent/NOTICE-HelpContent.txt` for where the actual converted text is used)
+- `TECHITEM.DOC` (1997, from `techitem.zip` on the same Stars!AutoHost wiki downloads page, References section) — a per-tech-level table of every hull/component/weapon/armor/shield/scanner unlock across all six fields. Used only to verify `components.xml` (see the "Full hull/component prerequisite table" entry above); not copied into this repository.
 - [Stars! Advanced and Technical FAQ — Table of Contents](http://www.starsfaq.com/advfaq/contents.htm)
 - [Stars! Advanced and Technical FAQ — "Guts!" (bombing, tech trading §4.2, research costs §4.3)](http://www.starsfaq.com/advfaq/guts1.htm)
 - ["The ultimate way of managing research" by Andrei Romanov — Stars!-R-Us Article](http://www.starsfaq.com/articles/sru/art82.htm)

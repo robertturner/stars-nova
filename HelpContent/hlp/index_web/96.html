@@ -1,0 +1,773 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><title>Using Fuel</title>
+<meta http-equiv="Content-Style-Type" content="text/css">
+<style type="text/css"><!--
+body {
+  margin: 5px 5px 5px 5px;
+  background-color: #ffffff;
+}
+/* ========== Text Styles ========== */
+hr { color: #000000}
+body, table /* Normal text */
+{
+ font-size: 10pt;
+ font-family: 'Courier New';
+ font-style: normal;
+ font-weight: normal;
+ color: #000000;
+ text-decoration: none;
+}
+span.rvts1 /* Heading */
+{
+ font-weight: bold;
+ color: #0000ff;
+}
+span.rvts2 /* Subheading */
+{
+ font-weight: bold;
+ color: #000080;
+}
+span.rvts3 /* Keywords */
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #800000;
+}
+a.rvts4, span.rvts4 /* Jump 1 */
+{
+ color: #008000;
+ text-decoration: underline;
+}
+a.rvts5, span.rvts5 /* Jump 2 */
+{
+ font-family: 'Arial';
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts6
+{
+ font-size: 14pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts7
+{
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts8
+{
+ font-family: 'Arial Unicode MS', 'Lucida Sans Unicode', 'Arial';
+ color: #000000;
+}
+span.rvts9
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #008000;
+}
+span.rvts10
+{
+ font-size: 12pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts11
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts12
+{
+ font-family: 'Arial';
+ color: #008000;
+}
+span.rvts13
+{
+ font-size: 11pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts14
+{
+ font-family: 'Arial';
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts15
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts16
+{
+ font-family: 'Arial';
+}
+span.rvts17
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #000000;
+}
+span.rvts18
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts19
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts20
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts21
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts22
+{
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts23
+{
+ font-size: 8pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts24
+{
+ font-size: 12pt;
+ font-family: 'Arial';
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts25
+{
+ font-family: 'Arial';
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts26
+{
+ font-family: 'Arial';
+ color: #808080;
+}
+span.rvts27
+{
+ font-family: 'SymbolProp BT';
+ color: #000000;
+}
+span.rvts28
+{
+ font-family: 'Helv';
+ color: #000000;
+}
+span.rvts29
+{
+ font-family: 'Helv';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts30
+{
+ font-size: 11pt;
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts31
+{
+ font-size: 8pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts32
+{
+ font-size: 14pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts33
+{
+ font-family: 'Wingdings';
+ color: #000000;
+}
+span.rvts34
+{
+ font-family: 'Arial';
+ color: #0000ff;
+ text-decoration: underline;
+}
+/* ========== Para Styles ========== */
+p,ul,ol /* Paragraph Style */
+{
+ text-align: left;
+ text-indent: 0px;
+ padding: 0px 0px 0px 0px;
+ margin: 0px 0px 0px 0px;
+}
+.rvps1 /* Centered */
+{
+ text-align: center;
+}
+.rvps2
+{
+ margin: 4px 0px 8px 0px;
+}
+.rvps3
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps4
+{
+ text-indent: 48px;
+ margin: 8px 0px 8px 0px;
+}
+.rvps5
+{
+ margin: 4px 24px 12px 0px;
+}
+.rvps6
+{
+ margin: 0px 0px 16px 0px;
+}
+.rvps7
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps8
+{
+ margin: 16px 0px 8px 0px;
+}
+.rvps9
+{
+ margin: 0px 0px 16px 0px;
+}
+.rvps10
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps11
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps12
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps13
+{
+ margin: 0px 0px 12px 0px;
+}
+.rvps14
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps15
+{
+}
+.rvps16
+{
+ margin: 4px 0px 8px 0px;
+}
+.rvps17
+{
+ margin: 8px 24px 8px 0px;
+}
+.rvps18
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps19
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps20
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 48px;
+}
+.rvps21
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps22
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps23
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps24
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps25
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps26
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps27
+{
+ margin: 0px 0px 12px 0px;
+}
+.rvps28
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 4px 0px 8px 0px;
+}
+.rvps29
+{
+ margin: 8px 24px 8px 0px;
+}
+.rvps30
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 4px 0px 8px 0px;
+}
+.rvps31
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps32
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps33
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps34
+{
+ margin: 8px 0px 8px 0px;
+}
+.rvps35
+{
+ margin: 8px 0px 8px 0px;
+}
+.rvps36
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps37
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps38
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps39
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps40
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps41
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps42
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps43
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps44
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps45
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps46
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps47
+{
+ margin: 0px 0px 5px 0px;
+}
+.rvps48
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps49
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps50
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps51
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps52
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 12px 0px 8px 0px;
+}
+.rvps53
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps54
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps55
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps56
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps57
+{
+ margin: 0px 0px 5px 0px;
+}
+.rvps58
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps59
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps60
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps61
+{
+ margin: 4px 0px 4px 0px;
+}
+.rvps62
+{
+ margin: 4px 0px 4px 0px;
+}
+.rvps63
+{
+ margin: 0px 0px 20px 0px;
+}
+.rvps64
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps65
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps66
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps67
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps68
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps69
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps70
+{
+ line-height: 1.47;
+ margin: 0px 0px 8px 0px;
+}
+.rvps71
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps72
+{
+ text-align: center;
+ margin: 0px 0px 8px 0px;
+}
+.rvps73
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps74
+{
+ text-align: right;
+ margin: 8px 9px 8px 0px;
+}
+.rvps75
+{
+ text-align: right;
+ margin: 0px 9px 8px 0px;
+}
+.rvps76
+{
+ text-align: right;
+ margin: 0px 9px 8px 0px;
+}
+.rvps77
+{
+ margin: 16px 0px 4px 0px;
+}
+.rvps78
+{
+ margin: 16px 0px 4px 0px;
+}
+.rvps79
+{
+ margin: 16px 24px 8px 0px;
+}
+.rvps80
+{
+ text-indent: -24px;
+ margin: 0px 0px 10px 24px;
+}
+.rvps81
+{
+ text-indent: -24px;
+ margin: 0px 0px 10px 24px;
+}
+.rvps82
+{
+ margin: 16px 24px 8px 0px;
+}
+.rvps83
+{
+ margin: 8px 8px 5px 8px;
+}
+.rvps84
+{
+ margin: 8px 8px 3px 8px;
+}
+.rvps85
+{
+ margin: 8px 24px 3px 6px;
+}
+.rvps86
+{
+ margin: 0px 8px 3px 8px;
+}
+.rvps87
+{
+ margin: 8px 8px 3px 24px;
+}
+.rvps88
+{
+ margin: 0px 8px 3px 24px;
+}
+.rvps89
+{
+ margin: 8px 8px 3px 24px;
+}
+.rvps90
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 8px 3px 8px;
+}
+.rvps91
+{
+ margin: 8px 8px 4px 8px;
+}
+.rvps92
+{
+ margin: 0px 8px 8px 8px;
+}
+.rvps93
+{
+ margin: 0px 8px 3px 8px;
+}
+.rvps94
+{
+ margin: 8px 8px 3px 8px;
+}
+.rvps95
+{
+ margin: 16px 8px 4px 8px;
+}
+.rvps96
+{
+ margin: 4px 8px 3px 8px;
+}
+.rvps97
+{
+ text-indent: -40px;
+ margin: 8px 8px 3px 48px;
+}
+.rvps98
+{
+ margin: 0px 8px 3px 8px;
+}
+--></style>
+</head>
+<body alink=#ff0000>
+
+<p class=rvps17><span class=rvts10>Using Fuel</span></p>
+<p class=rvps12><span class=rvts14>More about Fleets</span></p>
+<p class=rvps3><span class=rvts12>Playing Stars!</span></p>
+<p class=rvps7><span class=rvts7>Fuel is made of antimatter and is measured in milligrams (mg). This means it has no real affect on&nbsp; the ship's mass (and thus, fuel usage). Fuel is a manufactured commodity that can only be obtained from starbases with ship building capability or from other fleets. It is also created by ships traveling at their engine's free speed and by fuel tankers and by ships with Anti-Matter Generators. </span></p>
+<p class=rvps7><span class=rvts7>Fuel is shared by all ships in a fleet. The fuel capacity of a fleet is the sum of the fuel capacity for each ship in the fleet. The rate at which fuel is used is based partially on the mass of the all ships and cargo in the fleet.</span></p>
+<p class=rvps7><span class=rvts7>Fuel usage is also based on the rate at which each ship in the fleet uses fuel at a given speed. All ship types can move at any speed, but they each burn different amounts of fuel to achieve that speed. The total fuel usage for the fleet is the sum of the fuel usage for all the individual ships.</span></p>
+<p class=rvps3><span class=rvts7>Fuel usage between waypoints is shown in the </span><span class=rvts12>Fleet Waypoints tile</span><span class=rvts7>. The amount shown for reaching the selected waypoint is always exact.</span></p>
+<p class=rvps11><span class=rvts13>Sometimes Slowing Down Uses More Fuel</span></p>
+<p class=rvps7><span class=rvts7>Each year's travel is a separate jump that uses a finite, countable number of milligrams of fuel. Let's say that you have a fleet that can travel at warp 5 for 3mg per year of travel. A journey of 100ly would take 4 years and use 12mg of fuel. If you slowed down to warp 4 it would only cost 2mg per year of travel but the journey would take 7 years for a total of 14mg of fuel. This is a case where it is more economical to go at the faster speed.</span></p>
+<p class=rvps37><span class=rvts11>Tip:</span><span class=rvts7> Since fuel is shared by the entire fleet, you can help guarantee that a ship with a low fuel capacity reaches its destination by merging it into a fleet with a large fuel capacity.</span></p>
+<p class=rvps31><span class=rvts13>Refueling</span></p>
+<p class=rvps7><span class=rvts7>To refuel, simply visit one of your planets with a starbase with ship building capability in orbit. You'll be refueled automatically. Fuel can also be </span><span class=rvts12>transferred between fleets</span><span class=rvts7> manually or with a </span><span class=rvts12>Transport waypoint task</span><span class=rvts7>.</span></p>
+<p class=rvps31><span class=rvts13>Fuel and Combat</span></p>
+<p class=rvps7><span class=rvts7>Ships don't use fuel while in combat.</span></p>
+<p class=rvps31><span class=rvts13>Fuel Transports</span></p>
+<p class=rvps7><span class=rvts7>Fuel transports produce 200 mg of fuel each year, regardless of how far they travel. </span></p>
+<p class=rvps21><span class=rvts11>Tip</span><span class=rvts7>: Fuel transports also cause damaged ships in the fleet to heal 5 or 10% faster, depending on the hull type.</span></p>
+<p class=rvps31><span class=rvts13>Fuel and Ramscoop Engines</span></p>
+<p class=rvps7><span class=rvts7>Ramscoop engines draw fuel from surrounding space, allowing them to travel up to a certain speed at no cost. If you load fuel on a fleet using ramscoop engines and set a speed greater than that allowed for free travel, the fleet will travel at the set speed until it runs out of fuel, then slow to the maximum free speed for that ramscoop. Ramscoops generate fuel when traveling at the free speed. Traveling at speeds below the maximum free speed can generate even more fuel.</span></p>
+<p class=rvps21><span class=rvts11>Speed for Free</span>
+<br><span class=rvts7>Each type of Ramscoop has a different maximum speed for travel without using Fuel. See the Engines section of the Technology Browser for more information.</span></p>
+<p class=rvps11><span class=rvts13>Fuel, Stargates and Wormholes</span></p>
+<p class=rvps3><span class=rvts7>Ships don't use fuel while traveling through a stargate or a wormhole. However, with a stargate you're limited to fleets that do not carry cargo (other than Fuel). </span></p>
+<p class=rvps7><span class=rvts7>Wormholes are unstable and can wander. Be sure that any fleet using a wormhole has enough fuel to return to a friendly planet should the opposite end of the wormhole travel and deposit the fleet far from the expected location.</span></p>
+<p class=rvps31><span class=rvts13>Running Out of Fuel (Well, Nearly)</span></p>
+<p class=rvps7><span class=rvts7>Even the best of us occasionally runs out of gas. The same is true for you as an Emperor. For ships with Ramscoop engines this isn't a problem as they will automatically slow down and continue their journey at their fastest free speed. For ships with normal engines you have several choices. If they are worth saving you can send a fleet to rescue them. If they aren't worth saving then you can either just ignore them or scrap them. Or you can let them limp home at Warp 1.</span></p>
+<p class=rvps7><span class=rvts7>Any ship can travel Warp 1 without using fuel. This means you travel 1 light year per year of play. You also generate tiny amounts of fuel at Warp 1, and may be able to put on small bursts of speed. This really is helpful only if you're close to your destination, almost out of fuel, and don't want to bother sending a rescue ship.</span></p>
+<p class=rvps21><span class=rvts11>Fuel Warning in the Fleet Waypoints Tile</span>
+<br><span class=rvts7>When you choose a waypoint you can't reach given the current speed and fuel supply, the Fuel Usage amount turns red. </span></p>
+<p class=rvps29><span class=rvts10><br></span></p>
+
+</body></html>

@@ -1,0 +1,418 @@
+1	Stars! Player's Guide - Contents
+2	Introduction and Player Support
+3	Setup and Hosting
+4	Playing Stars!
+5	The Stars! Screen
+6	Stars! dialogs
+7	How to...
+8	The Guts of Stars!
+9	Free Stars! Strategy Guide
+10	Welcome to Stars!
+11	Multi-player games
+12	What You Need to Play
+13	Copy Protection
+14	Stars! Web Site
+15	Submitting Bug Reports
+16	Playing the Tutorial
+17	Starting a Single Player Game
+18	Hosting a Multi-Player Game
+19	Hosting Hot-Seat (Single Computer) Games
+20	Hosting Network Games
+21	Hosting Modem and Email Games
+22	What Each Player Needs to Do in a Multi-Player Game
+23	Being Absent from Play
+24	Creating a Password
+25	Creating a Universe from the Command Line
+26	Setting and Viewing Winning Conditions
+27	Tuning Stars to Your Display Resolution
+28	Playing with a Custom Race
+29	Creating and Saving a Custom Race
+30	Adding an Existing Race to a New Game
+31	Editing an Existing Custom Race
+32	Replaying a Previous Turn
+33	Saving Your Game: What it Means
+34	Options for Launching Stars!
+35	Exiting the Game
+36	Adding Expansion Players
+37	Turn file -- gamename.mN
+38	Universe file -- gamename.xy
+39	Log file -- gamename.xN
+40	Race Description file -- name.rN
+41	Planets
+42	Your Home World and Other Inhabited Planets
+43	Population
+44	Minerals
+45	Mines
+46	Factories
+47	Building Planetary Defenses
+48	Planet-based Scanners
+49	Orbital Devices
+50	Starbases
+51	Stargates
+52	Mass Driver Basics
+53	Terraforming
+54	How to Terraform
+55	Types of Terraforming Technology
+56	Total Terraforming
+57	Claim Adjusters and Terraforming Other Players' Planets from Orbit
+58	Planet Reports
+59	Production
+60	How Production Works
+61	Adding an Item to the Production Queue
+62	Add an item to the top of the queue
+63	Add an item to the middle of the queue
+64	Add an item to the bottom of the queue
+65	Move an item in the queue
+66	Removing an Item from the Production Queue
+67	Production Templates
+68	Clearing the Production Queue
+69	Unblocking a Production Queue
+70	Adding Auto-Build Items to the Queue
+71	Changing the Order of Planets in the Production dialog
+72	Conditions that Affect Production
+73	Research
+74	Fields of Study
+75	Viewing Stars! Technology
+76	Allocating Resources for Research
+77	The Cost of Research
+78	Designing Ship and Starbase Hulls
+79	How to Approach Hull Design
+80	Designing a New Hull from Scratch
+81	Editing an Existing Hull Design
+82	Deleting an Existing Hull Design
+83	Reaching the Maximum Number of Designs
+84	Counting the Number of Hull Designs
+85	Adding Ship-based Scanners
+86	Adding Cloaking Devices
+87	Engines
+88	Learning About Other Player's Hulls
+89	Managing Fleets
+90	Assembling Fleets
+91	Warp Speed
+92	Finding a Single Fleet
+93	Finding a Specific Fleet Composition
+94	Switching Between Fleets
+95	Naming Fleets
+96	Using Fuel
+97	Routing Fleets
+98	Rendezvousing Fleets
+99	Splitting and Merging Fleets
+100	Scrapping Fleets
+101	Reports on Your Fleets
+102	Navigation
+103	Adding Fleet Waypoints and Tasks
+104	Moving Fleet Waypoints
+105	Deleting Fleet Waypoints
+106	Stargate Navigation
+107	Wormhole Navigation
+108	Colonization
+109	Choosing Planets to Colonize
+110	Colonizing an Uninhabited Planet
+111	Shuttling Colonists with Freighters
+112	Hey, that Planet's Already Inhabited!
+113	Mining
+114	Mining Colonized Worlds
+115	Remote Mining
+116	Creating a Robot Mining Fleet
+117	Joint Ventures in Remote Mining
+118	Transporting Freight
+119	Shipping Freight
+120	Transferring Fuel and Cargo to other Fleets
+121	Jettisoning Cargo
+122	Creating a Custom Transport Zip Order
+123	Flinging Mineral Packets
+124	The Basics of Combat
+125	Fleet-to-fleet Combat
+126	Salvage from Space Battles
+127	Bombing Planets
+128	Mineral Packet Bombardment
+129	Ground Combat
+130	Minefields
+131	Laying Minefields
+132	Sweeping Minefields
+133	Remotely Detonating Minefields
+134	Starbase Combat
+135	Declaring Enemies and Friends
+136	Battle Plans
+137	Targeting
+138	Battle Tactics
+139	Making a New Battle Plan
+140	Changing the Contents of a Battle Plan
+141	Battle Reports
+142	Review a Space Battle
+143	Viewing an Enemy Fleet Summary
+144	Viewing Enemy Ship Designs
+145	Fleet Report on Enemies and other Players
+146	Patrolling
+147	Scanning and Cloaking
+148	Scanner Technology
+149	Selecting Fleets in the Scanner pane
+150	Scanning Planets
+151	Cloaking, or Hiding from an Opponent's Scanners
+152	Detecting an Opponent's Fleets
+153	Pirating using Stealth-based Scanners
+154	Reports
+155	Printing a Map of the Universe
+156	Diplomacy and Trade
+157	Changing the Basic Layout
+158	Shrinking and Growing Panes
+159	Moving and Collapsing Tiles
+160	Commanding a Planet
+161	Planet tile
+162	Production tile
+163	Status tile
+164	Minerals on Hand tile
+165	Fleets in Orbit tile
+166	Starbase tile
+167	Commanding a Fleet
+168	Fleet tile
+169	Location tile
+170	Fuel and Cargo tile
+171	Fleet Composition tile
+172	Other Fleets Here tile
+173	Fleet Waypoints tile
+174	Waypoint Task tile
+175	Transport
+176	Colonize
+177	Remote Mining
+178	Merge with Fleet
+179	Scrap Fleet
+180	Lay Mine Fields
+181	Patrol
+182	Route
+183	Transfer Fleet
+184	Selecting an Object to Command
+185	Obtaining a Summary of a Planet, Fleet or other Object
+186	Messages pane
+187	The Goto, Previous and Next Buttons
+188	Filtered Message Checkbox
+189	Filtering Message Types
+190	Sending Messages to other Players
+191	Scanner pane
+192	Key to the Scanner
+193	Quick Reference to Scanner Usage
+194	Choosing Your View of the Universe
+195	Normal view
+196	Surface Minerals view
+197	Mineral Concentration view
+198	Planet Value view
+199	Population view
+200	No Player Information view
+201	Add Waypoints mode
+202	Scanner Coverage overlay
+203	Mine Fields overlay
+204	Fleet Paths overlay
+205	Planet Names overlay
+206	Ship Count overlay
+207	Idle Fleets filter
+208	Ship Design filter
+209	Enemy Ship Class filter
+210	Status Bar
+211	Zooming
+212	Displaying Player Colors
+213	Selection Summary pane
+214	Planet Summary
+215	Multiple Objects Indicator
+216	Report Vintage
+217	Population Status
+218	Habitability Value
+219	Starbase Indicator
+220	Environment Graph
+221	Mineral Content Graph
+222	Fleet Summary
+223	Rainbow Effect
+224	Troubleshooting:
+225	New Game (Quick Setup)
+226	Begin Tutorial
+227	Difficulty Level
+228	Tiny Universe
+229	Small Universe
+230	Medium Universe
+231	Large Universe
+232	Huge Universe
+233	Player Race
+234	New Game (Advanced Setup)
+235	Step 1: Specifying the Universe (Advanced Setup)
+236	Game Name
+237	Density
+238	Player Positions
+239	Beginner: Maximum Minerals
+240	Slower Tech Advances
+241	Accelerated BBS Play
+242	No Random Events
+243	Computer Players Form Alliances
+244	Public Player Scores
+245	Galaxy Clumping
+246	Step 2: Specifying the Players (Advanced Setup)
+247	Step 3: Winning Conditions (Advanced Setup)
+248	Custom Race wizard
+249	Step 1: Basic Definition (Player Race)
+250	Race Name and Password
+251	Predefined Races
+252	Leftover Advantage Points -- Surface Minerals
+253	Leftover Advantage Points -- Mines
+254	Leftover Advantage Points -- Factories
+255	Leftover Advantage Points -- Defenses
+256	Leftover Advantage Points � Mineral Concentration
+257	Race Emblem
+258	Step 2: Primary Traits (Player Race)
+259	Hyper-Expansion
+260	Super-Stealth
+261	War Monger
+262	Claim Adjuster
+263	Inner-Strength
+264	Space Demolition
+265	Packet Physics
+266	Interstellar Traveler
+267	Alternate Reality
+268	Jack of All Trades
+269	Step 3: Lesser Traits (Player Race)
+270	Improved Fuel Efficiency
+271	Total Terraforming
+272	Advanced Remote Mining
+273	Improved Starbases
+274	Generalized Research
+275	Ultimate Recycling
+276	Mineral Alchemy
+277	No Ramscoop Engines
+278	Cheap Engines
+279	Only Basic Remote Mining
+280	No Advanced Scanners
+281	Low Starting Population
+282	Bleeding Edge Technology
+283	Regenerating Shields
+284	Step 4: Population Growth Factors (Player Race)
+285	Growth Conditions
+286	Maximum Population Growth
+287	Step 5: Population Efficiency (Player Race)
+288	Step 6: Research Costs (Player Race)
+289	Finish and Save (Player Race)
+290	Production dialog
+291	Production Inventory
+292	Production Queue
+293	Customize Production Templates dialog
+294	Ship and Starbase Designer
+295	Hull Schematic
+296	Hull Component List
+297	Research dialog
+298	Technology Status
+299	Expected Research Benefits
+300	Currently Researching
+301	Resource Allocation
+302	Cargo Transfer dialogs
+303	Between Your Planet and Your Fleet
+304	Between Your Fleet and a Planet
+305	Between Your Fleets
+306	Between Your Fleet and an Opponent's Fleet
+307	Ship Transfer dialog
+308	Battle Plans dialog
+309	Battle VCR
+310	Player Relations dialog
+311	Rename Fleet dialog
+312	Find Planet or Fleet dialog
+313	Custom Zip Orders dialog
+314	Score sheet
+315	Host Mode dialog
+316	Change Password dialog
+317	Merge Fleets dialog
+318	About Data Tables
+319	Armor table
+320	Beam Weapons table
+321	Bombs table
+322	Electrical Devices table
+323	Engines table
+324	Mechanical Devices table
+325	Mine Laying table
+326	Mining table
+327	Orbital Devices table
+328	Planetary Installations table
+329	Scanners table
+330	Shields table
+331	Ship Hulls table
+332	Starbase Hulls table
+333	Terraforming table
+334	Torpedoes table
+335	The Guts of Combat
+336	About the Battle Board
+337	Armor, Shields and Damage
+338	Weapons and Battle Devices
+339	Damage Repair
+340	Movement, Initiative and Firing in Battle
+341	The Guts of Cloaking
+342	The Guts of Minefields
+343	The Guts of Mass Drivers
+344	Alternate Reality Races
+345	Files Used in Stars!
+346	Keyboard Shortcuts
+347	Added Cost of Research
+348	AI
+349	AIs and Advantage Points
+350	Annual Growth Rate
+351	Battle Speed
+352	Best Warp Speed
+353	Capital Ship
+354	Collateral Damage
+355	Defenses and Invading Troops
+356	Dialogs and Displays
+357	Disengaging
+358	Energy Sources for Starships
+359	Factory
+360	Fibonacci Series
+361	Fleet Colors
+362	Host file
+363	Initiative
+364	Load from Fleet
+365	Load Optimal
+366	Losing Colonists
+367	Maximum Ship Designs and Ships
+368	Mine
+369	Mineral Alchemy
+370	Orbit Ring Colors
+371	Planet-penetrating Scanners
+372	Player Log file
+373	Race file
+374	Rating
+375	Race Description file -- name.rN files
+376	Resources
+377	Round of Battle
+378	Ship Classes
+379	Token
+380	Views in the Scanner pane
+381	Wait for Fleet
+382	Hosting Multi-Player Games
+383	How to Play with a Custom Race...
+384	How to Manage Production...
+385	How to Assign Waypoints and Tasks...
+386	How to Manage Battles...
+387	How to Design Ships...
+388	How to Manage Fleets...
+389	How to Colonize...
+390	Planet Tiles
+391	Fleet Tiles
+392	Waypoint Tasks
+393	Scanner Topics
+394	Battle Details
+395	Data Tables
+396	Planets
+397	Terraforming
+398	Orbital Devices
+399	Production
+400	Research
+401	Hull Design
+402	Fleet Management
+403	Navigation
+404	Colonization
+405	Mining
+406	Freight
+407	Combat
+408	Scanning
+409	Custom Race wizard
+410	Advanced Setup
+411	Scanner Views
+412	Research dialog features
+413	Minefields
+414	Battle Plans
+415	Messages Pane
+416	Primary Race Traits
+417	Frequently Asked Questions
+418	Buying Stars!

@@ -1,0 +1,904 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><title>The Guts of Cloaking</title>
+<meta http-equiv="Content-Style-Type" content="text/css">
+<style type="text/css"><!--
+body {
+  margin: 5px 5px 5px 5px;
+  background-color: #ffffff;
+}
+/* ========== Text Styles ========== */
+hr { color: #000000}
+body, table /* Normal text */
+{
+ font-size: 10pt;
+ font-family: 'Courier New';
+ font-style: normal;
+ font-weight: normal;
+ color: #000000;
+ text-decoration: none;
+}
+span.rvts1 /* Heading */
+{
+ font-weight: bold;
+ color: #0000ff;
+}
+span.rvts2 /* Subheading */
+{
+ font-weight: bold;
+ color: #000080;
+}
+span.rvts3 /* Keywords */
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #800000;
+}
+a.rvts4, span.rvts4 /* Jump 1 */
+{
+ color: #008000;
+ text-decoration: underline;
+}
+a.rvts5, span.rvts5 /* Jump 2 */
+{
+ font-family: 'Arial';
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts6
+{
+ font-size: 14pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts7
+{
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts8
+{
+ font-family: 'Arial Unicode MS', 'Lucida Sans Unicode', 'Arial';
+ color: #000000;
+}
+span.rvts9
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #008000;
+}
+span.rvts10
+{
+ font-size: 12pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts11
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts12
+{
+ font-family: 'Arial';
+ color: #008000;
+}
+span.rvts13
+{
+ font-size: 11pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts14
+{
+ font-family: 'Arial';
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts15
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts16
+{
+ font-family: 'Arial';
+}
+span.rvts17
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #000000;
+}
+span.rvts18
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts19
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts20
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts21
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts22
+{
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts23
+{
+ font-size: 8pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts24
+{
+ font-size: 12pt;
+ font-family: 'Arial';
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts25
+{
+ font-family: 'Arial';
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts26
+{
+ font-family: 'Arial';
+ color: #808080;
+}
+span.rvts27
+{
+ font-family: 'SymbolProp BT';
+ color: #000000;
+}
+span.rvts28
+{
+ font-family: 'Helv';
+ color: #000000;
+}
+span.rvts29
+{
+ font-family: 'Helv';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts30
+{
+ font-size: 11pt;
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts31
+{
+ font-size: 8pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts32
+{
+ font-size: 14pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts33
+{
+ font-family: 'Wingdings';
+ color: #000000;
+}
+span.rvts34
+{
+ font-family: 'Arial';
+ color: #0000ff;
+ text-decoration: underline;
+}
+/* ========== Para Styles ========== */
+p,ul,ol /* Paragraph Style */
+{
+ text-align: left;
+ text-indent: 0px;
+ padding: 0px 0px 0px 0px;
+ margin: 0px 0px 0px 0px;
+}
+.rvps1 /* Centered */
+{
+ text-align: center;
+}
+.rvps2
+{
+ margin: 4px 0px 8px 0px;
+}
+.rvps3
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps4
+{
+ text-indent: 48px;
+ margin: 8px 0px 8px 0px;
+}
+.rvps5
+{
+ margin: 4px 24px 12px 0px;
+}
+.rvps6
+{
+ margin: 0px 0px 16px 0px;
+}
+.rvps7
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps8
+{
+ margin: 16px 0px 8px 0px;
+}
+.rvps9
+{
+ margin: 0px 0px 16px 0px;
+}
+.rvps10
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps11
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps12
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps13
+{
+ margin: 0px 0px 12px 0px;
+}
+.rvps14
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps15
+{
+}
+.rvps16
+{
+ margin: 4px 0px 8px 0px;
+}
+.rvps17
+{
+ margin: 8px 24px 8px 0px;
+}
+.rvps18
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps19
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps20
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 48px;
+}
+.rvps21
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps22
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps23
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps24
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps25
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps26
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps27
+{
+ margin: 0px 0px 12px 0px;
+}
+.rvps28
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 4px 0px 8px 0px;
+}
+.rvps29
+{
+ margin: 8px 24px 8px 0px;
+}
+.rvps30
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 4px 0px 8px 0px;
+}
+.rvps31
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps32
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps33
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps34
+{
+ margin: 8px 0px 8px 0px;
+}
+.rvps35
+{
+ margin: 8px 0px 8px 0px;
+}
+.rvps36
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps37
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps38
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps39
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps40
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps41
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps42
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps43
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps44
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps45
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps46
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps47
+{
+ margin: 0px 0px 5px 0px;
+}
+.rvps48
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps49
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps50
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps51
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps52
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 12px 0px 8px 0px;
+}
+.rvps53
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps54
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps55
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps56
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps57
+{
+ margin: 0px 0px 5px 0px;
+}
+.rvps58
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps59
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps60
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps61
+{
+ margin: 4px 0px 4px 0px;
+}
+.rvps62
+{
+ margin: 4px 0px 4px 0px;
+}
+.rvps63
+{
+ margin: 0px 0px 20px 0px;
+}
+.rvps64
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps65
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps66
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps67
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps68
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps69
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps70
+{
+ line-height: 1.47;
+ margin: 0px 0px 8px 0px;
+}
+.rvps71
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps72
+{
+ text-align: center;
+ margin: 0px 0px 8px 0px;
+}
+.rvps73
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps74
+{
+ text-align: right;
+ margin: 8px 9px 8px 0px;
+}
+.rvps75
+{
+ text-align: right;
+ margin: 0px 9px 8px 0px;
+}
+.rvps76
+{
+ text-align: right;
+ margin: 0px 9px 8px 0px;
+}
+.rvps77
+{
+ margin: 16px 0px 4px 0px;
+}
+.rvps78
+{
+ margin: 16px 0px 4px 0px;
+}
+.rvps79
+{
+ margin: 16px 24px 8px 0px;
+}
+.rvps80
+{
+ text-indent: -24px;
+ margin: 0px 0px 10px 24px;
+}
+.rvps81
+{
+ text-indent: -24px;
+ margin: 0px 0px 10px 24px;
+}
+.rvps82
+{
+ margin: 16px 24px 8px 0px;
+}
+.rvps83
+{
+ margin: 8px 8px 5px 8px;
+}
+.rvps84
+{
+ margin: 8px 8px 3px 8px;
+}
+.rvps85
+{
+ margin: 8px 24px 3px 6px;
+}
+.rvps86
+{
+ margin: 0px 8px 3px 8px;
+}
+.rvps87
+{
+ margin: 8px 8px 3px 24px;
+}
+.rvps88
+{
+ margin: 0px 8px 3px 24px;
+}
+.rvps89
+{
+ margin: 8px 8px 3px 24px;
+}
+.rvps90
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 8px 3px 8px;
+}
+.rvps91
+{
+ margin: 8px 8px 4px 8px;
+}
+.rvps92
+{
+ margin: 0px 8px 8px 8px;
+}
+.rvps93
+{
+ margin: 0px 8px 3px 8px;
+}
+.rvps94
+{
+ margin: 8px 8px 3px 8px;
+}
+.rvps95
+{
+ margin: 16px 8px 4px 8px;
+}
+.rvps96
+{
+ margin: 4px 8px 3px 8px;
+}
+.rvps97
+{
+ text-indent: -40px;
+ margin: 8px 8px 3px 48px;
+}
+.rvps98
+{
+ margin: 0px 8px 3px 8px;
+}
+--></style>
+</head>
+<body alink=#ff0000>
+
+<p class=rvps16><span class=rvts6>The Guts of Cloaking</span></p>
+<p class=rvps7><span class=rvts12>More Guts</span><span class=rvts7> </span></p>
+<p class=rvps3><span class=rvts7>In order for matter to be cloaked, it requires a certain number of cloaking units per kT. When a ship is empty, its cloak provides the maximum amount of cloaking possible with that device. When the ship has cargo, the weight of the cargo reduces the number of cloak units per kT, and thus, the cloaking percentage.</span></p>
+<p class=rvps11><span class=rvts13>Cloaking when the Ship is Empty</span></p>
+<p class=rvps3><span class=rvts7>To determine the total number of cloaking units for an unladen ship, read the following table:</span></p>
+<div><table border=0 cellpadding=0 cellspacing=-1 style="border-width: 0px; border-collapse: collapse;">
+<tr valign=top>
+<td width=187 valign=top>
+<p class=rvps3><span class=rvts11>Cloaking Device</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts11>Cloak Units/kT</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts11>Max Cloaking %</span></p>
+</td>
+</tr>
+<tr valign=top>
+<td width=187 valign=top>
+<p class=rvps3><span class=rvts7>Transport Cloak*</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>300</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>75</span></p>
+</td>
+</tr>
+<tr valign=top>
+<td width=187 valign=top>
+<p class=rvps3><span class=rvts7>Stealth Cloak</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>70</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>35</span></p>
+</td>
+</tr>
+<tr valign=top>
+<td width=187 valign=top>
+<p class=rvps3><span class=rvts7>Super-Stealth Cloak</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>140</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>55</span></p>
+</td>
+</tr>
+<tr valign=top>
+<td width=187 valign=top>
+<p class=rvps3><span class=rvts7>Ultra-Stealth Cloak*</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>540</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>85</span></p>
+</td>
+</tr>
+<tr valign=top>
+<td width=187 valign=top>
+<p class=rvps3><span class=rvts7>Shadow Shield* </span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>70</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>35</span></p>
+</td>
+</tr>
+<tr valign=top>
+<td width=187 valign=top>
+<p class=rvps3><span class=rvts7>Depleted Neutronium Armor* </span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>50</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>25</span></p>
+</td>
+</tr>
+<tr valign=top>
+<td width=187 valign=top>
+<p class=rvps3><span class=rvts7>Chameleon Scanner* </span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>40</span></p>
+</td>
+<td width=120 valign=top>
+<p class=rvps3><span class=rvts7>20</span></p>
+</td>
+</tr>
+</table>
+</div>
+<p class=rvps21><span class=rvts7>* Available only to races with the </span><span class=rvts12>Super Stealth trait</span><span class=rvts7>.</span></p>
+<p class=rvps34><span class=rvts7>For example, an empty ship with a Stealth Cloak has 70 cloak units/kT, or 35% cloaking. By itself, the ship is visible to enemy scanners at only 35% of their maximum range. </span></p>
+<p class=rvps7><span class=rvts7>When a cloaked ship has cargo, we need to recalculate the number of cloak units/kT available. Let's say this ship is a small freighter with a Quick Jump 5 engine, Tritanium Armor, and a Stealth Cloak. Empty, it weighs 91kT, with 70 cloak units/kT, and is cloaked at 35%. If you completely fill this particular freighter with cargo, it weighs 161kT. To calculate the new cloaking percentage:</span></p>
+<div><table border=0 cellpadding=0 cellspacing=-1 style="border-width: 0px; border-collapse: collapse;">
+<tr valign=top>
+<td width=302 valign=top>
+<p class=rvps18><span class=rvts7>1.  &nbsp; &nbsp; &nbsp; &nbsp;Calculate the total number of cloaking units for the ship: </span>
+<br><span class=rvts7>Max_cloak_units/kT x Ship_mass_empty</span></p>
+</td>
+<td width=210 valign=top>
+<p class=rvps73><span class=rvts7>70 units/kT&nbsp; x&nbsp; 91kT = 6370 total cloak units</span></p>
+</td>
+</tr>
+<tr valign=top>
+<td width=302 valign=top>
+<p class=rvps18><span class=rvts7>2.  &nbsp; &nbsp; &nbsp; &nbsp;Calculate the actual units/kT: </span>
+<br><span class=rvts7>Total_units / Ship_mass_with_cargo</span></p>
+</td>
+<td width=210 valign=top>
+<p class=rvps3><span class=rvts7>6370 / 161 kT = ~40 units/kT</span></p>
+</td>
+</tr>
+</table>
+</div>
+<p class=rvps3><span class=rvts7>We can use the following chart to learn how much coverage a given number of cloaking units provides.</span></p>
+<p class=rvps3><img width=425 height=280 alt="" hspace=1 vspace=1 src="abc147.jpg"></p>
+<p class=rvps73><span class=rvts7>At 40 cloak units/kT, the loaded freighter in our example is now only 20% cloaked.</span></p>
+<p class=rvps3><span class=rvts7>The following table provides exact numbers at certain points on the graph, allowing for more precise calculations.</span></p>
+<p class=rvps7><span class=rvts7>100 units/kT&nbsp;&nbsp;  &nbsp; &nbsp; &nbsp; &nbsp;50% cloaked</span></p>
+<p class=rvps3><span class=rvts7>300 units/kT&nbsp;&nbsp;  &nbsp; &nbsp; &nbsp; &nbsp;75% cloaked</span></p>
+<p class=rvps7><span class=rvts7>600 units/kT&nbsp;&nbsp;  &nbsp; &nbsp; &nbsp; &nbsp;87.5% cloaked</span></p>
+<p class=rvps3><span class=rvts7>1000 units/kT&nbsp;  &nbsp; &nbsp; &nbsp; &nbsp;93.75% &nbsp; &nbsp; &nbsp; &nbsp;cloaked</span></p>
+<p class=rvps11><span class=rvts13>Cloaking for a Fleet with More than One Ship</span></p>
+<p class=rvps3><span class=rvts7>In a fleet with more than one ship, uncloaked ships are counted as cargo when calculating units/kT. Let's place our empty freighter in a fleet with an empty scout that has a Quick Jump 5 engine, Laser, and a Bat Scanner, which weighs 15kT when empty. The entire fleet weighs 106kT, so traveling together, this fleet would be 6370 / 106 = ~60 units/kT, approximately 30% cloaked.</span></p>
+<p class=rvps21><span class=rvts7>Super Stealth races do not count the cargo when determining cloaking.</span></p>
+<p class=rvps11><span class=rvts13>The Effect of&nbsp; Multiple Tachyon Detectors</span></p>
+<p class=rvps3><span class=rvts7>When a hull has more than one Tachyon Detector in its design, the effectiveness is calculated as follows:</span></p>
+<p class=rvps7><span class=rvts7>95% ^ (SQRT(#_of_detectors) = Reduction in other player's cloaking</span></p>
+<p class=rvps11><span class=rvts13>The Appendix of Cloaking</span></p>
+<p class=rvps3><span class=rvts7>Here's pseudo code you can use to determine cloaking percentage from cloaking points per kT.</span></p>
+<p class=rvps3><span class=rvts7>if points &lt;= 100</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp; percent = point/2</span>
+<br><span class=rvts7>else </span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp; points = points-100</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp; if points &lt;= 200</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; percent = 50+_points/8</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp; else</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; points = points-200</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; if points &lt;= 312</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; percent = 75+_points/24</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; else</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; points = points-312</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; if points &lt;= 512</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; percent = 88+_points/64</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; else if points &lt; 768</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; percent = 96</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; else if points &lt; 1000</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; percent = 97</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; else </span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; percent = 98</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; end if</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; end if</span>
+<br><span class=rvts7>&nbsp;&nbsp;&nbsp; end if</span>
+<br><span class=rvts7>end if</span></p>
+<p class=rvps16><span class=rvts6><br></span></p>
+
+</body></html>

@@ -1,0 +1,800 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><title>The Guts of Mass Drivers</title>
+<meta http-equiv="Content-Style-Type" content="text/css">
+<style type="text/css"><!--
+body {
+  margin: 5px 5px 5px 5px;
+  background-color: #ffffff;
+}
+/* ========== Text Styles ========== */
+hr { color: #000000}
+body, table /* Normal text */
+{
+ font-size: 10pt;
+ font-family: 'Courier New';
+ font-style: normal;
+ font-weight: normal;
+ color: #000000;
+ text-decoration: none;
+}
+span.rvts1 /* Heading */
+{
+ font-weight: bold;
+ color: #0000ff;
+}
+span.rvts2 /* Subheading */
+{
+ font-weight: bold;
+ color: #000080;
+}
+span.rvts3 /* Keywords */
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #800000;
+}
+a.rvts4, span.rvts4 /* Jump 1 */
+{
+ color: #008000;
+ text-decoration: underline;
+}
+a.rvts5, span.rvts5 /* Jump 2 */
+{
+ font-family: 'Arial';
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts6
+{
+ font-size: 14pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts7
+{
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts8
+{
+ font-family: 'Arial Unicode MS', 'Lucida Sans Unicode', 'Arial';
+ color: #000000;
+}
+span.rvts9
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #008000;
+}
+span.rvts10
+{
+ font-size: 12pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts11
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts12
+{
+ font-family: 'Arial';
+ color: #008000;
+}
+span.rvts13
+{
+ font-size: 11pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts14
+{
+ font-family: 'Arial';
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts15
+{
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts16
+{
+ font-family: 'Arial';
+}
+span.rvts17
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #000000;
+}
+span.rvts18
+{
+ font-family: 'Arial';
+ font-style: italic;
+ color: #008000;
+ text-decoration: underline;
+}
+span.rvts19
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts20
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts21
+{
+ font-size: 9pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts22
+{
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts23
+{
+ font-size: 8pt;
+ font-family: 'Arial';
+ color: #000000;
+}
+span.rvts24
+{
+ font-size: 12pt;
+ font-family: 'Arial';
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts25
+{
+ font-family: 'Arial';
+ color: #000000;
+ text-decoration: underline;
+}
+span.rvts26
+{
+ font-family: 'Arial';
+ color: #808080;
+}
+span.rvts27
+{
+ font-family: 'SymbolProp BT';
+ color: #000000;
+}
+span.rvts28
+{
+ font-family: 'Helv';
+ color: #000000;
+}
+span.rvts29
+{
+ font-family: 'Helv';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts30
+{
+ font-size: 11pt;
+ font-family: 'Arial';
+ font-style: italic;
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts31
+{
+ font-size: 8pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts32
+{
+ font-size: 14pt;
+ font-family: 'Arial';
+ font-weight: bold;
+ color: #000000;
+}
+span.rvts33
+{
+ font-family: 'Wingdings';
+ color: #000000;
+}
+span.rvts34
+{
+ font-family: 'Arial';
+ color: #0000ff;
+ text-decoration: underline;
+}
+/* ========== Para Styles ========== */
+p,ul,ol /* Paragraph Style */
+{
+ text-align: left;
+ text-indent: 0px;
+ padding: 0px 0px 0px 0px;
+ margin: 0px 0px 0px 0px;
+}
+.rvps1 /* Centered */
+{
+ text-align: center;
+}
+.rvps2
+{
+ margin: 4px 0px 8px 0px;
+}
+.rvps3
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps4
+{
+ text-indent: 48px;
+ margin: 8px 0px 8px 0px;
+}
+.rvps5
+{
+ margin: 4px 24px 12px 0px;
+}
+.rvps6
+{
+ margin: 0px 0px 16px 0px;
+}
+.rvps7
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps8
+{
+ margin: 16px 0px 8px 0px;
+}
+.rvps9
+{
+ margin: 0px 0px 16px 0px;
+}
+.rvps10
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps11
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps12
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps13
+{
+ margin: 0px 0px 12px 0px;
+}
+.rvps14
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps15
+{
+}
+.rvps16
+{
+ margin: 4px 0px 8px 0px;
+}
+.rvps17
+{
+ margin: 8px 24px 8px 0px;
+}
+.rvps18
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps19
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps20
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 48px;
+}
+.rvps21
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps22
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps23
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps24
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps25
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps26
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps27
+{
+ margin: 0px 0px 12px 0px;
+}
+.rvps28
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 4px 0px 8px 0px;
+}
+.rvps29
+{
+ margin: 8px 24px 8px 0px;
+}
+.rvps30
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 4px 0px 8px 0px;
+}
+.rvps31
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 0px 8px 0px;
+}
+.rvps32
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps33
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps34
+{
+ margin: 8px 0px 8px 0px;
+}
+.rvps35
+{
+ margin: 8px 0px 8px 0px;
+}
+.rvps36
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps37
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps38
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps39
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps40
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps41
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps42
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps43
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-bottom: none;
+ margin: 0px 0px 8px 24px;
+}
+.rvps44
+{
+ margin: 0px 0px 8px 24px;
+}
+.rvps45
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps46
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps47
+{
+ margin: 0px 0px 5px 0px;
+}
+.rvps48
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps49
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps50
+{
+ margin: 0px 0px 4px 0px;
+}
+.rvps51
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps52
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-right: none;
+ border-bottom: none;
+ border-left: none;
+ margin: 12px 0px 8px 0px;
+}
+.rvps53
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps54
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps55
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps56
+{
+ text-indent: -24px;
+ margin: 0px 0px 8px 24px;
+}
+.rvps57
+{
+ margin: 0px 0px 5px 0px;
+}
+.rvps58
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps59
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps60
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 0px 0px 8px 0px;
+}
+.rvps61
+{
+ margin: 4px 0px 4px 0px;
+}
+.rvps62
+{
+ margin: 4px 0px 4px 0px;
+}
+.rvps63
+{
+ margin: 0px 0px 20px 0px;
+}
+.rvps64
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps65
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps66
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps67
+{
+ text-indent: -30px;
+ margin: 0px 0px 8px 30px;
+}
+.rvps68
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps69
+{
+ margin: 0px 0px 8px 12px;
+}
+.rvps70
+{
+ line-height: 1.47;
+ margin: 0px 0px 8px 0px;
+}
+.rvps71
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps72
+{
+ text-align: center;
+ margin: 0px 0px 8px 0px;
+}
+.rvps73
+{
+ margin: 0px 0px 8px 0px;
+}
+.rvps74
+{
+ text-align: right;
+ margin: 8px 9px 8px 0px;
+}
+.rvps75
+{
+ text-align: right;
+ margin: 0px 9px 8px 0px;
+}
+.rvps76
+{
+ text-align: right;
+ margin: 0px 9px 8px 0px;
+}
+.rvps77
+{
+ margin: 16px 0px 4px 0px;
+}
+.rvps78
+{
+ margin: 16px 0px 4px 0px;
+}
+.rvps79
+{
+ margin: 16px 24px 8px 0px;
+}
+.rvps80
+{
+ text-indent: -24px;
+ margin: 0px 0px 10px 24px;
+}
+.rvps81
+{
+ text-indent: -24px;
+ margin: 0px 0px 10px 24px;
+}
+.rvps82
+{
+ margin: 16px 24px 8px 0px;
+}
+.rvps83
+{
+ margin: 8px 8px 5px 8px;
+}
+.rvps84
+{
+ margin: 8px 8px 3px 8px;
+}
+.rvps85
+{
+ margin: 8px 24px 3px 6px;
+}
+.rvps86
+{
+ margin: 0px 8px 3px 8px;
+}
+.rvps87
+{
+ margin: 8px 8px 3px 24px;
+}
+.rvps88
+{
+ margin: 0px 8px 3px 24px;
+}
+.rvps89
+{
+ margin: 8px 8px 3px 24px;
+}
+.rvps90
+{
+ border-color: #000000;
+ border-style: solid;
+ border-width: 0px;
+ border-top: none;
+ border-right: none;
+ border-left: none;
+ margin: 8px 8px 3px 8px;
+}
+.rvps91
+{
+ margin: 8px 8px 4px 8px;
+}
+.rvps92
+{
+ margin: 0px 8px 8px 8px;
+}
+.rvps93
+{
+ margin: 0px 8px 3px 8px;
+}
+.rvps94
+{
+ margin: 8px 8px 3px 8px;
+}
+.rvps95
+{
+ margin: 16px 8px 4px 8px;
+}
+.rvps96
+{
+ margin: 4px 8px 3px 8px;
+}
+.rvps97
+{
+ text-indent: -40px;
+ margin: 8px 8px 3px 48px;
+}
+.rvps98
+{
+ margin: 0px 8px 3px 8px;
+}
+--></style>
+</head>
+<body alink=#ff0000>
+
+<p class=rvps2><span class=rvts6>The Guts of Mass Drivers</span></p>
+<p class=rvps3><span class=rvts12>More Guts</span><span class=rvts7> </span></p>
+<p class=rvps17><span class=rvts10>Damage Potential of Mineral Packets</span></p>
+<p class=rvps3><span class=rvts7>So you always wondered exactly what sort of damage a mineral packet was capable of doing?&nbsp; </span></p>
+<p class=rvps3><span class=rvts7>Mineral packets can be flung at speeds from Warp 5 to 3 Warp levels above the driver's rated speed. Exceeding the rated speed will form unstable packets that will disintegrate and lose minerals as they travel. Thus, with a top of the line Warp 13 mass accelerator, you can fling packets at speeds up to Warp 16.</span></p>
+<p class=rvps3><span class=rvts7>Why would you want to fling packets slower than the rated speed? Simple: the planet you are sending packets to doesn't have an driver capable of catching the faster packets and you don't want to kill off your own colonists.</span></p>
+<p class=rvps11><span class=rvts13>Packet Decay Rate</span></p>
+<p class=rvps3><span class=rvts7>Packets thrown over the rated speed of the mass driver decay as follows:</span></p>
+<p class=rvps65><span class=rvts7>+1 Warp&nbsp; 10% / year </span>
+<br><span class=rvts7>+2 Warp&nbsp; 25% / year </span>
+<br><span class=rvts7>+3 Warp&nbsp; 50% / year </span></p>
+<p class=rvps3><span class=rvts7>There is a minimum decay of 10kT of each mineral in the packet each year.</span></p>
+<p class=rvps3><span class=rvts7>Packets decay in both the year they are launched and the year they reach their destination by a prorated amount based on the distance they traveled that year. The decay rate is not of the original amount in the packet, but the current amount.</span></p>
+<p class=rvps37><span class=rvts7>If you have the </span><span class=rvts12>Interstellar Traveler trait</span><span class=rvts7>, packets flung at or below the driver's rated speed decay at 10% per year. Overflung packets decay as if flung at one Warp speed higher.</span></p>
+<p class=rvps37><span class=rvts7>If you have the </span><span class=rvts12>Packet Physics trait</span><span class=rvts7>, the decay rate is half the state stated rate; as is the minimum decay.</span></p>
+<p class=rvps11><span class=rvts13>Speed and Distance </span></p>
+<p class=rvps3><span class=rvts7>Warp N means that something traveling at that speed will cover N x N l.y. per year.&nbsp; Thus, a Warp 16 packet will travel 256 light years each turn!</span></p>
+<p class=rvps11><span class=rvts13>Damage and Recovery Formulas and Calculation</span></p>
+<p class=rvps3><span class=rvts7>When a packet hits a planet without a mass driver, or with a mass driver rated beneath the speed of the incoming packet, damage will be done. Note that if a Warp 5 driver flings a packet at Warp 8 to another Warp 5 driver, damage WILL be done to the receiver. Damage is determined by the speed of the packet, not the rating of the driver sending the packet.</span></p>
+<p class=rvps7><span class=rvts11>Speed</span>
+<br><span class=rvts7>spdPacket = Packet Warp ^ 2</span>
+<br><span class=rvts7>spdReceiver = Rcvr Accel ^ 2</span></p>
+<p class=rvps3><span class=rvts11>Percent Caught Safely:</span><span class=rvts7> The percentage of the packet recovered intact.</span>
+<br><span class=rvts7>%CaughtSafely = spdReceiver / spdPacket</span></p>
+<p class=rvps7><span class=rvts11>Minerals Recovered: </span><span class=rvts7>The receiver recovers 1/3 of the portion not caught safely.</span>
+<br><span class=rvts7>(packetkT x %CaughtSafely + packetkT x %remaining x 1/3)</span></p>
+<p class=rvps3><span class=rvts11>Raw Damage</span>
+<br><span class=rvts7>dmgRaw = (spdPacket - spdReceiver) x wtPacket / 160</span></p>
+<p class=rvps7><span class=rvts11>Raw Damage modified by planetary defenses</span>
+<br><span class=rvts7>dmgRaw2 = dmgRaw x (100% - pctDefCoverage)</span></p>
+<p class=rvps3><span class=rvts11>Colonists Killed: </span><span class=rvts7>The number colonists killed is the larger (maximum) of the following:</span>
+<br><span class=rvts7>dmgRaw2 x Population / 1000 </span>
+<br><span class=rvts7>dmgRaw2 x 100</span></p>
+<p class=rvps7><span class=rvts11>Planetary Defenses Destroyed</span>
+<br><span class=rvts7>#destroyed = #defenses x dmgRaw2 / 1000</span>
+<br><span class=rvts7>If #destroyed is less than dmgRaw2 / 20, then it is that number.</span></p>
+<p class=rvps3><span class=rvts11>Example</span>
+<br><span class=rvts7>You fling a 1000kT packet at Warp 10 at a planet with a Warp 5 driver, a population of 250,000 and 50 defenses preventing 60% of incoming damage.</span></p>
+<p class=rvps7><span class=rvts7>spdPacket = 100</span>
+<br><span class=rvts7>spdReceiver = 25</span>
+<br><span class=rvts7>%CaughtSafely = 25%</span>
+<br><span class=rvts7>minerals recovered = 1000kT x 25% + 1000kT x 75% x 1/3 = 250 + 250 = 500kT</span>
+<br><span class=rvts7>dmgRaw = 75 x 1000 / 160 = 469</span>
+<br><span class=rvts7>dmgRaw2 = 469 x 40% = 188</span>
+<br><span class=rvts7>#colonists killed = Max. of ( 188 x 250,000 / 1000, 188 x 100) = Max. of ( 47,000, 18800) = 47,000 colonists</span>
+<br><span class=rvts7>#defenses destroyed = 50 * 188 / 1000 =&nbsp; 9 (rounded down)</span></p>
+<p class=rvps3><span class=rvts11>If, however, the receiving planet had no mass driver or defenses, the damage is far greater:</span></p>
+<p class=rvps7><span class=rvts7>minerals recovered = 1000kT x 0% + 1000kT x 100% x 1/3 = only 333kT.</span>
+<br><span class=rvts7>dmgRaw = 100 x 1000 / 160 = 625</span>
+<br><span class=rvts7>dmgRaw2 = 625 x 100% = 625</span>
+<br><span class=rvts7>#colonists killed = Max. of (625 x 250,000 / 1000, 625 x 100) = Max. of (156,250, 62500) = 156,250.</span></p>
+<p class=rvps3><span class=rvts11>If the packet sped up to Warp 13, then:</span></p>
+<p class=rvps7><span class=rvts7>dmgRaw2 = dmgRaw = 169 x 1000 / 160 = 1056</span>
+<br><span class=rvts7>#colonists killed = Max. of (1056 x 250,000 / 1000, 1056 x 100) = Max. of ( 264,000, 105600) which entirely wipes out the colony.</span></p>
+<p class=rvps51><span class=rvts29>Learn more about:</span></p>
+<p class=rvps7><span class=rvts12>Mass Driver Basics</span></p>
+<p class=rvps16><span class=rvts6><br></span></p>
+
+</body></html>

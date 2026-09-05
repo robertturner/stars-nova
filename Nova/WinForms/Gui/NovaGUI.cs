@@ -194,6 +194,19 @@ namespace Nova.WinForms.Gui
         }
 
         /// <Summary>
+        /// Display the in-game manual.
+        /// </Summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">A <see cref="EventArgs"/> that contains the event data.</param>
+        private void MenuManual(object sender, EventArgs e)
+        {
+            using (HelpForm helpForm = new HelpForm())
+            {
+                helpForm.ShowDialog();
+            }
+        }
+
+        /// <Summary>
         /// Display the research dialog
         /// </Summary>
         /// <param name="sender">The source of the event.</param>
