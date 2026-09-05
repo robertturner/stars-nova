@@ -82,7 +82,7 @@ namespace Nova.Common
                 MessageBoxDefaultButton.Button1,
                 MessageBoxOptions.DefaultDesktopOnly);
 
-            System.Threading.Thread.CurrentThread.Abort();
+            Environment.Exit(1);
         }
 
         /// <summary>

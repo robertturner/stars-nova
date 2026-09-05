@@ -108,6 +108,7 @@ namespace Nova.Common
             }
         }
 
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool Success
         {
             get
