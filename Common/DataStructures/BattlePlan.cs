@@ -44,6 +44,41 @@ namespace Nova.Common
         public string Attack          = "Enemies";
         public int TargetId;
 
+        /// <summary>
+        /// Valid values for PrimaryTarget/SecondaryTarget - the sole source of truth for these
+        /// (confirmed via ServerState/BattleEngine.cs: neither field is ever switched on there,
+        /// they're pure display/storage strings). Shared here so both the WinForms and Avalonia
+        /// editors read the same list instead of duplicating it in generated UI code.
+        /// </summary>
+        public static readonly string[] TargetOptions =
+        {
+            "Any", "Armed Ships", "Bombers", "Freighters", "None", "Starbase", "Unarmed Ships"
+        };
+
+        /// <summary>Valid values for Tactic - confirmed the only two ServerState/BattleEngine.cs
+        /// actually switches on ("Disengage", "Disengage if Challenged"); the rest affect
+        /// damage-ordering, not string comparison.</summary>
+        public static readonly string[] TacticOptions =
+        {
+            "Disengage", "Disengage if Challenged", "Maximise Damage",
+            "Maximise Damage Ratio", "Maximise Net Damage", "Minimise Damage to Self"
+        };
+
+        /// <summary>
+        /// Valid values for Attack - the "legitimate enemies" category confirmed against a
+        /// decompile of the exported client (docs/behavior-specs-3/combat-resolution.md): five
+        /// settings - no targets, every Enemy-relationship race, every Enemy-or-Neutral race,
+        /// all races, or one specific race (via TargetId, checked independently of this list -
+        /// see BattleEngine.AreEnemies). "None" was previously missing from this list entirely,
+        /// and "Enemies and Neutrals" was previously unhandled by AreEnemies (silently behaved
+        /// like "None" instead of its intended "everyone except my Friends" meaning) - both
+        /// fixed together.
+        /// </summary>
+        public static readonly string[] AttackOptions =
+        {
+            "None", "Enemies", "Enemies and Neutrals", "Everyone"
+        };
+
         #region Construction
 
         /// <summary>

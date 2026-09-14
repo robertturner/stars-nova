@@ -60,6 +60,7 @@ namespace Nova.ControlLibrary
           this.password.Name = "password";
           this.password.Size = new System.Drawing.Size(228, 20);
           this.password.TabIndex = 1;
+          this.password.UseSystemPasswordChar = true;
           // 
           // label1
           // 

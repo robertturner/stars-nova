@@ -21,9 +21,8 @@
 
 namespace Nova.Common
 {
-    using System;    
-    using System.IO;  
-    using System.Windows.Forms;    
+    using System;
+    using System.IO;
     using System.Xml.Serialization;
     
     /// <summary>
@@ -44,14 +43,24 @@ namespace Nova.Common
 
         public int NumberOfStars = 50;
 
+        /// <summary>
+        /// The seed used to generate this game's galaxy (star positions, mineral
+        /// concentrations, homeworld assignment, and star/race name allocation - see
+        /// Gameinitializer.Initialize). Null means "not yet resolved" - Gameinitializer resolves
+        /// a null Seed to a freshly-generated one and writes it back here before generating,
+        /// so the actual seed used is always recorded afterward and can be echoed back to the
+        /// user for reproducibility (e.g. "share this seed to regenerate the same galaxy").
+        /// </summary>
+        public int? Seed = null;
+
         // Victory conditions (with initial default values)
 
         public EnabledValue PlanetsOwned        = new EnabledValue(true, 60);
-        public EnabledValue TechLevels          = new EnabledValue(false, 22);
-        public EnabledValue NumberOfFields      = new EnabledValue(false, 4);
-        public EnabledValue TotalScore          = new EnabledValue(false, 1000);
-        public EnabledValue SecondPlaceScore    = new EnabledValue(false, 0);
-        public EnabledValue ProductionCapacity  = new EnabledValue(false, 1000);
+        public EnabledValue TechLevels          = new EnabledValue(true, 22);
+        public EnabledValue NumberOfFields      = new EnabledValue(true, 4);
+        public EnabledValue TotalScore          = new EnabledValue(false, 11000);
+        public EnabledValue SecondPlaceScore    = new EnabledValue(true, 100);
+        public EnabledValue ProductionCapacity  = new EnabledValue(false, 100);
         public EnabledValue CapitalShips        = new EnabledValue(false, 100);
         public EnabledValue HighestScore        = new EnabledValue(false, 100);
         public int TargetsToMeet = 1;
@@ -170,13 +179,10 @@ namespace Nova.Common
             if (Data.SettingsPathName == null)
             {
                 // TODO (priority 5) add the nicities. Update the game files location.
-                SaveFileDialog fd = new SaveFileDialog();
-                fd.Title = "Choose a location to save the game settings.";
-
-                DialogResult result = fd.ShowDialog();
-                if (result == DialogResult.OK)
+                string chosen = PlatformHooks.AskUserForSaveFile("Choose a location to save the game settings.");
+                if (chosen != null)
                 {
-                    Data.SettingsPathName = fd.FileName;
+                    Data.SettingsPathName = chosen;
                 }
                 else
                 {

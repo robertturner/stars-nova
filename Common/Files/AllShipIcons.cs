@@ -23,7 +23,6 @@ namespace Nova.Common
 {
     using System.Collections;
     using System.Collections.Generic;
-    using System.Drawing;
     using System.IO;
 
     using Nova.Common.Components;
@@ -117,7 +116,7 @@ namespace Nova.Common
         /// <param name="fi">The file to load.</param>
         private static void LoadIcon(FileInfo fi)
         {
-            Bitmap i = new Bitmap(Path.Combine(fi.DirectoryName, fi.Name));
+            object i = PlatformHooks.LoadImage(Path.Combine(fi.DirectoryName, fi.Name));
             ShipIcon icon = new ShipIcon(fi.Name, i);
             Data.IconList.Add(icon);
 

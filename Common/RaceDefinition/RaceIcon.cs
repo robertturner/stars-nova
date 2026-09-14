@@ -28,7 +28,6 @@
 #endregion
 
 using System;
-using System.Drawing;
 using System.Xml;
 
 namespace Nova.Common
@@ -40,22 +39,13 @@ namespace Nova.Common
     public class RaceIcon : ICloneable
     {
         public string Source = string.Empty;
-        private Bitmap image; 
-        public Bitmap Image
+        private object image;
+        public object Image
         {
             get
             {
-                if (image == null)
-                {
-                    // atempt to retrieve image
-                    try
-                    {
-                        // image = new Bitmap(Source); // Never works currently so commenting!
-                    }
-                    catch
-                    {
-                    }
-                }
+                // Loading from Source is never actually attempted here (see PlatformHooks.
+                // LoadImage) - Image is only ever populated externally, via the setter.
                 return image;
             }
             set
@@ -78,7 +68,7 @@ namespace Nova.Common
         /// </summary>
         /// <param name="source">The path and file name to the icon.</param>
         /// <param name="image">The loaded image.</param>
-        public RaceIcon(string source, Bitmap image)
+        public RaceIcon(string source, object image)
         {
             Source = source;
             Image = image;

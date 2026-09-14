@@ -58,10 +58,9 @@ namespace Nova.WinForms.ComponentEditor
           this.groupBox2.TabIndex = 4;
           this.groupBox2.TabStop = false;
           this.groupBox2.Text = "Hull Layout Grid";
-          // 
+          //
           // HullGrid
-          // 
-          this.HullGrid.ActiveModules = ((System.Collections.Generic.List<Nova.Common.Components.HullModule>)(resources.GetObject("HullGrid.ActiveModules")));
+          //
           this.HullGrid.HideEmptyModules = false;
           this.HullGrid.HullName = null;
           this.HullGrid.Location = new System.Drawing.Point(6, 17);

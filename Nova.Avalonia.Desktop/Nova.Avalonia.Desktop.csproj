@@ -1,0 +1,44 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>Nova.Avalonia</AssemblyName>
+    <!-- Desktop head: the actual Avalonia app (Views/ViewModels/Docking/App.axaml, everything
+         platform-agnostic) lives in Nova.Avalonia.csproj, now a plain-net9.0 library shared with
+         Nova.Avalonia.Android.csproj - see that project's own comment and PROJECT-STATUS.md's
+         Android-port section. This head is just the Windows desktop entry point (Program.cs's
+         Main/StartWithClassicDesktopLifetime) plus the desktop-only packages/manifest that entry
+         point needs. AssemblyName kept as "Nova.Avalonia" so the built exe/build scripts and
+         anything in this repo that already refers to Nova.Avalonia.exe by that name (this
+         session's own live-testing throughout) keeps working unchanged. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3">
+      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nova.Avalonia\Nova.Avalonia.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\components.xml" Link="components.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Graphics\**\*.*" Link="Graphics\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\HelpContent\**\*.*" Link="HelpContent\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\DefaultRaces\**\*.*" Link="DefaultRaces\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

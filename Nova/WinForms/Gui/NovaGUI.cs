@@ -73,6 +73,8 @@ namespace Nova.WinForms.Gui
             SelectionDetail.FleetDetail.StarmapChanged += MapControl.RefreshStarMap;
             SelectionDetail.FleetDetail.FleetSelectionChanged += MapControl.SetCursor;
             SelectionDetail.PlanetDetail.PlanetSelectionChanged += MapControl.SetCursor;
+            SelectionDetail.MinefieldInspector.StarmapChanged += MapControl.RefreshStarMap;
+            MapControl.GetMinefieldDisplayMode = () => SelectionDetail.MinefieldInspector.DisplayMode;
 
             // Lets Shift+Click insert a new waypoint after whichever one is currently selected
             // in the Waypoints list, instead of always appending to the end of the route.
@@ -271,7 +273,7 @@ namespace Nova.WinForms.Gui
         /// <param name="e">A <see cref="EventArgs"/> that contains the event data.</param>
         private void PlayerRelationsMenuItem_Click(object sender, EventArgs e)
         {
-            PlayerRelations relationshipDialog = new PlayerRelations(clientState.EmpireState.EmpireReports, clientState.EmpireState.Id);
+            PlayerRelations relationshipDialog = new PlayerRelations(clientState.EmpireState.EmpireReports, clientState.EmpireState.Id, clientState.Commands);
             relationshipDialog.ShowDialog();
             relationshipDialog.Dispose();
         }

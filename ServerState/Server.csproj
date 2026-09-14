@@ -1,8 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Plain net9.0, not net9.0-windows/UseWindowsForms - confirmed via repo-wide grep that
+         nothing under ServerState/ actually uses System.Windows.Forms/System.Drawing/
+         Nova.ControlLibrary (the ControlLibrary reference below was vestigial). Portable so
+         Nova.Avalonia (and, through it, Nova.Avalonia.Android) can reference Gameinitializer
+         directly for a native New Game screen - see docs/PROJECT-STATUS.md's Race Designer/New
+         Game port entry. -->
+    <TargetFramework>net9.0</TargetFramework>
     <AssemblyName>Nova.Server</AssemblyName>
     <RootNamespace>Nova.Server</RootNamespace>
     <OutputType>Library</OutputType>
@@ -27,7 +32,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Common\Common.csproj" />
-    <ProjectReference Include="..\ControlLibrary\ControlLibrary.csproj" />
   </ItemGroup>
 
 </Project>

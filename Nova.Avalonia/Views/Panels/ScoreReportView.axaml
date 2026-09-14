@@ -1,0 +1,22 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             xmlns:dg="using:Avalonia.Controls"
+             x:Class="Nova.Avalonia.Views.Panels.ScoreReportView"
+             x:DataType="panels:ScoreReportViewModel">
+    <dg:DataGrid ItemsSource="{Binding Scores}" IsReadOnly="True" AutoGenerateColumns="False"
+                 GridLinesVisibility="Horizontal" CanUserSortColumns="True" CanUserResizeColumns="True">
+        <dg:DataGrid.Columns>
+            <dg:DataGridTextColumn Header="Race" Binding="{Binding EmpireId}" />
+            <dg:DataGridTextColumn Header="Rank" Binding="{Binding Rank}" />
+            <dg:DataGridTextColumn Header="Score" Binding="{Binding Score}" />
+            <dg:DataGridTextColumn Header="Planets" Binding="{Binding Planets}" />
+            <dg:DataGridTextColumn Header="Starbases" Binding="{Binding Starbases}" />
+            <dg:DataGridTextColumn Header="Unarmed Ships" Binding="{Binding UnarmedShips}" />
+            <dg:DataGridTextColumn Header="Escort Ships" Binding="{Binding EscortShips}" />
+            <dg:DataGridTextColumn Header="Capital Ships" Binding="{Binding CapitalShips}" />
+            <dg:DataGridTextColumn Header="Tech Level" Binding="{Binding TechLevel}" />
+            <dg:DataGridTextColumn Header="Resources" Binding="{Binding Resources}" />
+        </dg:DataGrid.Columns>
+    </dg:DataGrid>
+</UserControl>

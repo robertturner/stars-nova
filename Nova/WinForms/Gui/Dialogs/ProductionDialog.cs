@@ -377,21 +377,18 @@ namespace Nova.WinForms.Gui
             if (queueList.SelectedItems.Count > 0)
             {
                 int source = queueList.SelectedIndices[0];
-                // must be greater than 0 due to "--- Top of Queue ---" Placeholder
-                if (source > 0)
+                // Must be > 1: index 0 is the "--- Top of Queue ---" placeholder (not a real
+                // order, nothing to swap with), and index 1 is already the first real order -
+                // there's nothing above it but the placeholder.
+                if (source > 1)
                 {
-                    ListViewItem movedItem = (ListViewItem)queueList.Items[source].Clone();
-                    ListViewItem displacedItem = (ListViewItem)queueList.Items[source - 1].Clone();                    
-                    
-                    queueList.EditProductionOrder(displacedItem.Tag as ProductionOrder, source);
-                    queueList.EditProductionOrder(movedItem.Tag as ProductionOrder, source -1);
-
+                    queueList.SwapProductionOrders(source, source - 1);
                     queueDown.Enabled = true;
-                }                
+                }
             }
             UpdateProductionCost();
         }
-        
+
         /// <Summary>
         /// Move selected Item down in queue.
         /// </Summary>
@@ -405,11 +402,7 @@ namespace Nova.WinForms.Gui
                  // check if > 0 for Top of Queue place holder
                 if (source < queueList.Items.Count - 1 && source > 0)
                 {
-                    ListViewItem movedItem = (ListViewItem)queueList.Items[source].Clone();
-                    ListViewItem displacedItem = (ListViewItem)queueList.Items[source + 1].Clone();
-                    
-                    queueList.EditProductionOrder(displacedItem.Tag as ProductionOrder, source);
-                    queueList.EditProductionOrder(movedItem.Tag as ProductionOrder, source +1);                   
+                    queueList.SwapProductionOrders(source, source + 1);
                 }
             }
             UpdateProductionCost();

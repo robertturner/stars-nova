@@ -210,10 +210,9 @@ namespace Nova.WinForms.Gui
           this.hullImage.Size = new System.Drawing.Size(64, 64);
           this.hullImage.TabIndex = 19;
           this.hullImage.TabStop = false;
-          // 
+          //
           // hullGrid
-          // 
-          this.hullGrid.ActiveModules = ((System.Collections.Generic.List<Nova.Common.Components.HullModule>)(resources.GetObject("hullGrid.ActiveModules")));
+          //
           this.hullGrid.HideEmptyModules = true;
           this.hullGrid.HullName = null;
           this.hullGrid.Location = new System.Drawing.Point(23, 88);

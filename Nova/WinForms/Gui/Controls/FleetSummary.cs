@@ -60,16 +60,16 @@ namespace Nova.WinForms.Gui
             fleetShipCount.Text = report.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
             fleetMass.Text = report.Mass.ToString(System.Globalization.CultureInfo.InvariantCulture);
             fleetSpeed.Text = report.Speed.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            fleetImage.Image = report.Icon.Image;
-            
+            fleetImage.Image = (Image)report.Icon.Image;
+
             if (ownerId != empireState.Id)
             {
-                raceIcon.Image = empireState.EmpireReports[ownerId].Icon.Image;
+                raceIcon.Image = (Image)empireState.EmpireReports[ownerId].Icon.Image;
                 fleetOwner.Text = empireState.EmpireReports[ownerId].RaceName;
             }
             else
             {
-                raceIcon.Image = empireState.Race.Icon.Image;
+                raceIcon.Image = (Image)empireState.Race.Icon.Image;
                 fleetOwner.Text = empireState.Race.Name;
             }
         }

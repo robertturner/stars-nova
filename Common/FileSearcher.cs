@@ -24,11 +24,9 @@ namespace Nova.Common
     using System;
     using System.Collections;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.IO;
     using System.Reflection;
-    using System.Windows.Forms;
-
-    using Microsoft.Win32;
 
     /// <summary>
     /// The FileSearcher object is used to find a file that is part of Nova. It uses
@@ -43,6 +41,28 @@ namespace Nova.Common
     public static class FileSearcher
     {
         private static bool disableComponentGraphics; // if we can't find them the first time, stop asking.
+
+        /// <summary>
+        /// The path to relaunch this same running application with different command-line
+        /// switches (e.g. Nova.exe launching itself again with --race for the Race Designer, or
+        /// --new for the New Game wizard - see NovaLauncher.cs, NewGameWizard.cs, NovaConsole.cs).
+        ///
+        /// <c>Assembly.GetExecutingAssembly().Location</c> - what every one of those call sites
+        /// used before this fix - pointed at the real .exe under .NET Framework, but under this
+        /// project's SDK-style .NET 9 build (GetNovaRoot() above, migrated the same way, sidesteps
+        /// this because it only needs the containing folder, not the file itself) it resolves to
+        /// the managed Nova.dll instead, since Nova.exe is now just a native apphost stub that
+        /// loads and runs that dll. Passing a .dll to Process.Start silently does nothing useful
+        /// (no associated handler opens it, so no window ever appears) rather than throwing -
+        /// confirmed live: clicking "Race Designer" just closed the launcher with no error and no
+        /// new window, while `Nova.exe --race` on its own launched it correctly.
+        /// <see cref="Process.MainModule"/>'s <c>FileName</c> is the actual running executable
+        /// regardless of framework, so it's used here instead.
+        /// </summary>
+        public static string GetOwnExecutablePath()
+        {
+            return Process.GetCurrentProcess().MainModule.FileName;
+        }
 
         /// <summary>
         /// Identify the player race's. 
@@ -193,17 +213,10 @@ namespace Nova.Common
                 if (!Directory.Exists(graphicsPath))
                 {
                     // if all else fails, ask the user
-                    FolderBrowserDialog graphicsFolderBrowser = new FolderBrowserDialog();
-
-                    graphicsFolderBrowser.RootFolder = Environment.SpecialFolder.Desktop;
-                    graphicsFolderBrowser.SelectedPath = GetNovaRoot();
-                    graphicsFolderBrowser.Description = "Locate the Stars! Nova \"Graphics\" folder.";
-                    DialogResult gameFolderBrowserResult = graphicsFolderBrowser.ShowDialog();
-
-                    // Check for cancel being pressed (in the new game save file dialog).
-                    if (gameFolderBrowserResult == DialogResult.OK)
+                    string chosen = PlatformHooks.AskUserForFolder("Locate the Stars! Nova \"Graphics\" folder.");
+                    if (chosen != null)
                     {
-                        graphicsPath = graphicsFolderBrowser.SelectedPath;
+                        graphicsPath = chosen;
                     }
                 }
 
@@ -360,8 +373,13 @@ namespace Nova.Common
         /// Try to locate the nova root directory.
         /// </summary>
         /// <returns></returns>
-        private static string GetNovaRoot()
+        public static string GetNovaRoot()
         {
+            if (PlatformHooks.NovaRootOverride != null)
+            {
+                return PlatformHooks.NovaRootOverride();
+            }
+
             string novaRoot;
 
             // try working upward from the application directory
@@ -402,19 +420,7 @@ namespace Nova.Common
         private static string AskUserForFile(string fileName)
         {
             Report.Information("Please locate the file \"" + fileName + "\".");
-            OpenFileDialog fileDialog = new OpenFileDialog();
-            fileDialog.FileName = fileName;
-
-            fileDialog.Title = "Please locate the file \"" + fileName + "\".";
-
-            DialogResult result = fileDialog.ShowDialog();
-
-            if (result == DialogResult.Cancel)
-            {
-                return null;
-            }
-            
-            return fileDialog.FileName;
+            return PlatformHooks.AskUserForFile(fileName);
         }
     }
 }

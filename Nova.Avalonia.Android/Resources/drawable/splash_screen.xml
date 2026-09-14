@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder splash screen - Icon.png (this project's launcher icon) is Avalonia's own
+     generic logo, not a real Nova icon; no Nova-branded PNG asset exists yet in this repo (only
+     an .ico, which Android resource tooling can't consume directly). Swap Icon.png for a real
+     Nova icon once one exists, no other change needed here. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <item>
+    <color android:color="@color/splash_background"/>
+  </item>
+
+  <item android:drawable="@drawable/icon"
+        android:width="120dp"
+        android:height="120dp"
+        android:gravity="center" />
+
+</layer-list>

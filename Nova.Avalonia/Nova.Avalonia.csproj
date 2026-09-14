@@ -1,31 +1,37 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <!-- Windows-specific for now: Common/ServerState still carry WinForms-era code
-         (ProgressDialog, System.Drawing types in data structures) that isn't yet
-         decoupled from the desktop platform - see PROJECT-STATUS.md. Revisit once
-         that split happens and cross-platform (Android) support is actually being
-         built, not before. -->
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <OutputType>Library</OutputType>
+    <!-- Plain net9.0 (not net9.0-windows) - this is now the shared, platform-agnostic Avalonia
+         app (App.axaml, every View/ViewModel, Docking, GameSession/GameActions), referenced by
+         both Nova.Avalonia.Desktop.csproj (net9.0-windows, WinExe, the actual desktop entry
+         point) and Nova.Avalonia.Android.csproj (net10.0-android). It compiled clean as plain
+         net9.0 with zero changes needed - confirmed via repo-wide grep before this split that
+         nothing here ever referenced System.Windows.Forms/System.Drawing or any other
+         Windows-only API; the "Windows-specific for now" comment this file used to carry was
+         about Common/ServerState's *former* WinForms coupling (see PROJECT-STATUS.md's
+         Android-port section), not anything in this project's own code, and that coupling is
+         gone now that Common/Nova.Client are both plain net9.0 too. -->
+    <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Distinct from the project/folder name on purpose: Nova.Avalonia.Desktop.csproj deliberately
+         keeps the assembly name "Nova.Avalonia" (so the shipped desktop exe stays Nova.Avalonia.exe,
+         unchanged from before this split) - two projects can't share one assembly name in the same
+         solution, so this library takes the ".Core" suffix instead. -->
+    <AssemblyName>Nova.Avalonia.Core</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
     <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />
+    <AvaloniaResource Include="..\Nova\Resources\Nova.jpg" Link="Assets\Nova.jpg" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.2" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.2" />
-    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3">
-      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
-      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
-    </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
     <PackageReference Include="Dock.Avalonia" Version="12.1.0.6" />
     <PackageReference Include="Dock.Avalonia.Themes.Fluent" Version="12.1.0.6" />
     <PackageReference Include="Dock.Model.Mvvm" Version="12.1.0.6" />
@@ -33,6 +39,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Common\Common.csproj" />
+    <ProjectReference Include="..\Nova.Ai\Nova.Ai.csproj" />
+    <ProjectReference Include="..\Nova.Client\Nova.Client.csproj" />
     <ProjectReference Include="..\ServerState\Server.csproj" />
   </ItemGroup>
 </Project>

@@ -74,6 +74,9 @@ namespace Nova.WinForms
           this.mapHeight = new System.Windows.Forms.NumericUpDown();
           this.label6 = new System.Windows.Forms.Label();
           this.label3 = new System.Windows.Forms.Label();
+          this.seedLabel = new System.Windows.Forms.Label();
+          this.seedValue = new System.Windows.Forms.TextBox();
+          this.randomizeSeed = new System.Windows.Forms.Button();
           this.tabPlayers = new System.Windows.Forms.TabPage();
           this.newRaceButton = new System.Windows.Forms.Button();
           this.groupBox5 = new System.Windows.Forms.GroupBox();
@@ -458,6 +461,9 @@ namespace Nova.WinForms
           this.groupBox3.Controls.Add(this.mapHeight);
           this.groupBox3.Controls.Add(this.label6);
           this.groupBox3.Controls.Add(this.label3);
+          this.groupBox3.Controls.Add(this.seedLabel);
+          this.groupBox3.Controls.Add(this.seedValue);
+          this.groupBox3.Controls.Add(this.randomizeSeed);
           this.groupBox3.Location = new System.Drawing.Point(8, 65);
           this.groupBox3.Name = "groupBox3";
           this.groupBox3.Size = new System.Drawing.Size(365, 200);
@@ -679,7 +685,39 @@ namespace Nova.WinForms
           this.label3.Size = new System.Drawing.Size(41, 13);
           this.label3.TabIndex = 0;
           this.label3.Text = "Height:";
-          // 
+          //
+          // seedLabel
+          //
+          // The seed governing this game's galaxy generation (star positions, minerals,
+          // homeworld assignment, star/race names) - see GameSettings.Seed and
+          // Gameinitializer.Initialize. Placed in groupBox3's unused right-hand space rather
+          // than growing the box, since map/star settings and the seed are conceptually the
+          // same "how is the galaxy generated" group.
+          this.seedLabel.AutoSize = true;
+          this.seedLabel.Location = new System.Drawing.Point(210, 21);
+          this.seedLabel.Name = "seedLabel";
+          this.seedLabel.Size = new System.Drawing.Size(35, 13);
+          this.seedLabel.TabIndex = 16;
+          this.seedLabel.Text = "Seed:";
+          //
+          // seedValue
+          //
+          this.seedValue.Location = new System.Drawing.Point(251, 18);
+          this.seedValue.Name = "seedValue";
+          this.seedValue.Size = new System.Drawing.Size(100, 20);
+          this.seedValue.TabIndex = 17;
+          this.seedValue.Validated += new System.EventHandler(this.SeedValue_Validated);
+          //
+          // randomizeSeed
+          //
+          this.randomizeSeed.Location = new System.Drawing.Point(251, 44);
+          this.randomizeSeed.Name = "randomizeSeed";
+          this.randomizeSeed.Size = new System.Drawing.Size(100, 23);
+          this.randomizeSeed.TabIndex = 18;
+          this.randomizeSeed.Text = "Randomize";
+          this.randomizeSeed.UseVisualStyleBackColor = true;
+          this.randomizeSeed.Click += new System.EventHandler(this.RandomizeSeed_Click);
+          //
           // tabPlayers
           // 
           this.tabPlayers.Controls.Add(this.newRaceButton);
@@ -987,6 +1025,9 @@ namespace Nova.WinForms
        private System.Windows.Forms.NumericUpDown mapHeight;
        private System.Windows.Forms.Label label6;
        private System.Windows.Forms.Label label3;
+       private System.Windows.Forms.Label seedLabel;
+       private System.Windows.Forms.TextBox seedValue;
+       private System.Windows.Forms.Button randomizeSeed;
        private EnabledCounter planetsOwned;
        private EnabledCounter exceedSecondPlace;
        private EnabledCounter highestScore;

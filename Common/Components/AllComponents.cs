@@ -167,17 +167,77 @@ namespace Nova.Common.Components
                 // Report.Debug("Components file to be loaded: \"" + saveFilePath + "\"");
             }
             
-            ProgressDialog progress = new ProgressDialog();
-            progress.Text = "Loading Components";
-            ThreadPool.QueueUserWorkItem(new WaitCallback(LoadComponents), progress);
-            progress.ShowDialog();
-            
-            if (!progress.Success)
+            if (PlatformHooks.RunWithProgressDialog == null)
+            {
+                // No host has wired a progress-dialog runner (e.g. non-WinForms hosts like
+                // Avalonia/Android) - fall back to loading synchronously with no progress UI,
+                // same as RestoreHeadless().
+                RestoreHeadless();
+                return;
+            }
+
+            bool success = PlatformHooks.RunWithProgressDialog(callback => LoadComponents(callback));
+
+            if (!success)
             {
                 Report.FatalError("Failed to load component file: ProgressDialog returned false.");
                 throw new System.Exception();
             }
             isLoaded = true;
+        }
+
+        /// <summary>
+        /// Restore the component definitions without showing a WinForms progress dialog.
+        /// </summary>
+        /// <remarks>
+        /// For non-WinForms hosts (e.g. the Avalonia UI): ProgressDialog.ShowDialog() pumps
+        /// Win32 messages on whatever thread calls it, and Control.Invoke() from the
+        /// ThreadPool loader thread back onto that dialog deadlocks after the first call when
+        /// there's no classic single-threaded WinForms Application driving things - so this
+        /// loads synchronously on the calling thread instead, with no dialog and no
+        /// cross-thread marshaling at all.
+        /// </remarks>
+        public void RestoreHeadless()
+        {
+            if (isLoaded)
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(saveFilePath))
+            {
+                saveFilePath = FileSearcher.GetComponentFile();
+                if (string.IsNullOrEmpty(saveFilePath))
+                {
+                    Report.FatalError("Unable to locate component definition file.");
+                }
+            }
+
+            var callback = new NullProgressCallback();
+            LoadComponents(callback);
+
+            if (!callback.Success)
+            {
+                Report.FatalError("Failed to load component file.");
+                throw new System.Exception();
+            }
+            isLoaded = true;
+        }
+
+        /// <summary>
+        /// No-op <see cref="IProgressCallback"/> for headless component loading.
+        /// </summary>
+        private sealed class NullProgressCallback : IProgressCallback
+        {
+            public bool Success { get; set; }
+            public bool IsAborting => false;
+            public void Begin(int minimum, int maximum) { }
+            public void Begin() { }
+            public void SetRange(int minimum, int maximum) { }
+            public void SetText(string text) { }
+            public void StepTo(int val) { }
+            public void Increment(int val) { }
+            public void End() { }
         }
 
 

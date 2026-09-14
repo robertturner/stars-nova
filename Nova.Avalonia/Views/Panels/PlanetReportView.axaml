@@ -1,0 +1,23 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             xmlns:dg="using:Avalonia.Controls"
+             x:Class="Nova.Avalonia.Views.Panels.PlanetReportView"
+             x:DataType="panels:PlanetReportViewModel">
+    <dg:DataGrid ItemsSource="{Binding Planets}" IsReadOnly="True" AutoGenerateColumns="False"
+                 GridLinesVisibility="Horizontal" CanUserSortColumns="True" CanUserResizeColumns="True">
+        <dg:DataGrid.Columns>
+            <dg:DataGridTextColumn Header="Planet Name" Binding="{Binding Name}" />
+            <dg:DataGridTextColumn Header="Starbase" Binding="{Binding Starbase}" />
+            <dg:DataGridTextColumn Header="Population" Binding="{Binding Population}" />
+            <dg:DataGridTextColumn Header="Capacity %" Binding="{Binding Capacity}" />
+            <dg:DataGridTextColumn Header="Value %" Binding="{Binding Value}" />
+            <dg:DataGridTextColumn Header="Mines" Binding="{Binding Mines}" />
+            <dg:DataGridTextColumn Header="Factories" Binding="{Binding Factories}" />
+            <dg:DataGridTextColumn Header="Defenses %" Binding="{Binding Defenses}" />
+            <dg:DataGridTextColumn Header="Minerals (I/B/G)" Binding="{Binding Minerals}" />
+            <dg:DataGridTextColumn Header="Concentration %" Binding="{Binding Concentration}" />
+            <dg:DataGridTextColumn Header="Resources" Binding="{Binding Resources}" />
+        </dg:DataGrid.Columns>
+    </dg:DataGrid>
+</UserControl>

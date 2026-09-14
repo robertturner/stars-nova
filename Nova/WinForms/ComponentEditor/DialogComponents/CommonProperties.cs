@@ -23,8 +23,9 @@
 namespace Nova.WinForms.ComponentEditor
 {
     using System;
+    using System.Drawing;
     using System.Windows.Forms;
-    
+
     using Nova.Common;
     using Nova.Common.Components;   
 
@@ -143,7 +144,7 @@ namespace Nova.WinForms.ComponentEditor
             {
                 BasicProperties.Cost    = value.Cost;
                 BasicProperties.Mass    = value.Mass;
-                ComponentImage.Image    = value.ComponentImage;
+                ComponentImage.Image    = (Image)value.ComponentImage;
                 ComponentName.Text      = value.Name;
                 Description.Text        = value.Description;
                 TechRequirements.Value  = value.RequiredTech;

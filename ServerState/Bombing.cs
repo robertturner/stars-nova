@@ -34,7 +34,7 @@ namespace Nova.Server
     public class Bombing
     {
         private ServerData serverState;
-        
+
         public Bombing(ServerData serverState)
         {
             this.serverState = serverState;
@@ -84,7 +84,7 @@ namespace Nova.Server
             double minKilled = totalBombs.MinimumKill
                                   * (1 - Defenses.PopulationCoverage);
 
-            int dead = (int)Math.Max(killed, minKilled);
+            int dead = Global.StochasticRound(Math.Max(killed, minKilled));
             star.Colonists -= dead;
 
 
@@ -105,17 +105,17 @@ namespace Nova.Server
             // turn. First Defenses:
 
             // Defenses
-            int defensesDestroyed = (int)((double)star.Defenses * damagePercent);
+            int defensesDestroyed = Global.StochasticRound((double)star.Defenses * damagePercent);
             star.Defenses -= defensesDestroyed;
 
             // Now Factories
             double factories = (double)star.Factories;
-            int factoriesDestroyed = (int)(factories * damagePercent);
+            int factoriesDestroyed = Global.StochasticRound(factories * damagePercent);
             star.Factories -= factoriesDestroyed;
 
             // Now Mines
             double mines = (double)star.Mines;
-            int minesDestroyed = (int)(mines * damagePercent);
+            int minesDestroyed = Global.StochasticRound(mines * damagePercent);
             star.Mines -= minesDestroyed;
 
             // Build message

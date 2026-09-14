@@ -22,8 +22,7 @@
 namespace Nova.Common
 {
     using System.Collections.Generic;
-    using System.Drawing;
-    using System.IO; 
+    using System.IO;
 
     /// <summary>
     /// A singleton containing all the useable race icons, which is used to load and
@@ -89,7 +88,7 @@ namespace Nova.Common
                         DirectoryInfo info = new DirectoryInfo(Path.Combine(graphicFolder, "Race"));
                         foreach (FileInfo fi in info.GetFiles())
                         {
-                            Bitmap i = new Bitmap(Path.Combine(fi.DirectoryName, fi.Name));
+                            object i = PlatformHooks.LoadImage(Path.Combine(fi.DirectoryName, fi.Name));
                             RaceIcon icon = new RaceIcon(fi.Name, i);
                             Data.IconList.Add(icon);
                         }

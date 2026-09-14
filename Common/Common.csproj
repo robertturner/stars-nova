@@ -1,8 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Deliberately plain net9.0, not net9.0-windows/UseWindowsForms - Common is the portable
+         game-data/rules layer shared by every host (WinForms Nova.exe, Avalonia desktop, and
+         eventually an Android head); see docs/PROJECT-STATUS.md's Android-portability section for
+         how its former System.Windows.Forms/System.Drawing dependencies (dialogs, MessageBox,
+         ProgressDialog, Bitmap fields) were removed via Nova.Common.PlatformHooks. -->
+    <TargetFramework>net9.0</TargetFramework>
     <AssemblyName>Nova.Common</AssemblyName>
     <RootNamespace>Nova.Common</RootNamespace>
     <OutputType>Library</OutputType>

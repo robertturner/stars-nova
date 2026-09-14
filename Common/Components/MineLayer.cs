@@ -37,7 +37,18 @@ namespace Nova.Common.Components
         public static double StandardHitChance = 0.3;
 
         // Standar Mine Stats
-        public int LayerRate = 50;
+        //
+        // LayerRate defaults to 0 ("no mine-laying capability") because ShipDesign.StandardMines/
+        // HeavyMines/SpeedBumbMines (ShipDesign.cs) are each seeded with a bare `new MineLayer()`
+        // and only incremented when a design actually has a matching "Mine Layer" component - a
+        // design with none should report a laying rate of zero, not a fabricated nonzero default.
+        // Discovered as a real bug during the AI rebuild (docs/behavior-specs-3/
+        // ai-opponent-behavior.md section 4): with the old default of 50, ShipDesign.MineCount
+        // (and therefore Fleet.NumberOfMines) reported nonzero mine-laying capacity for every
+        // ship design in the game, including ones with no mine-laying hardware at all - e.g. a
+        // plain Scout - which made the AI's new mine-laying order eligible to be issued to
+        // completely unrelated fleets.
+        public int LayerRate = 0;
         public int SafeSpeed = 4;
         public double HitChance = 0.3;
         public int DamagePerEngine = 100;

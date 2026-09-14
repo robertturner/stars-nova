@@ -1,0 +1,52 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             x:Class="Nova.Avalonia.Views.Panels.BattlePlansView"
+             x:DataType="panels:BattlePlansViewModel">
+    <ScrollViewer>
+    <StackPanel Margin="8" Spacing="4">
+        <TextBlock Text="Battle Plans" FontWeight="Bold" Opacity="0.8" />
+        <ListBox ItemsSource="{Binding Plans}" SelectedItem="{Binding SelectedPlan}" MaxHeight="140">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="panels:BattlePlanRowViewModel">
+                    <TextBlock Text="{Binding Name}" />
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+            <Button Grid.Column="0" Content="New" Command="{Binding NewPlanCommand}" HorizontalAlignment="Stretch" Margin="0,0,4,0" />
+            <Button Grid.Column="1" Content="Delete" Command="{Binding DeleteCommand}" />
+        </Grid>
+
+        <TextBlock Text="{Binding StatusMessage}" Opacity="0.7" IsVisible="{Binding HasStatusMessage}" />
+
+        <StackPanel Spacing="4" Margin="0,8,0,0" IsVisible="{Binding SelectedPlan, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <StackPanel Spacing="4" DataContext="{Binding SelectedPlan}" x:DataType="panels:BattlePlanRowViewModel">
+            <TextBlock Text="Plan Details" FontWeight="Bold" Opacity="0.8" />
+
+            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBox Grid.Column="1" Text="{Binding Name}" />
+            </Grid>
+            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                <TextBlock Grid.Column="0" Text="Primary Target" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox Grid.Column="1" ItemsSource="{Binding TargetOptions}" SelectedItem="{Binding PrimaryTarget}" HorizontalAlignment="Stretch" />
+            </Grid>
+            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                <TextBlock Grid.Column="0" Text="Secondary Target" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox Grid.Column="1" ItemsSource="{Binding TargetOptions}" SelectedItem="{Binding SecondaryTarget}" HorizontalAlignment="Stretch" />
+            </Grid>
+            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                <TextBlock Grid.Column="0" Text="Tactic" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox Grid.Column="1" ItemsSource="{Binding TacticOptions}" SelectedItem="{Binding Tactic}" HorizontalAlignment="Stretch" />
+            </Grid>
+            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                <TextBlock Grid.Column="0" Text="Attack" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox Grid.Column="1" ItemsSource="{Binding AttackOptions}" SelectedItem="{Binding Attack}" HorizontalAlignment="Stretch" />
+            </Grid>
+        </StackPanel>
+        </StackPanel>
+    </StackPanel>
+    </ScrollViewer>
+</UserControl>

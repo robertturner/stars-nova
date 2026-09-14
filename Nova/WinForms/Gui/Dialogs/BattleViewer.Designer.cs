@@ -28,6 +28,7 @@ namespace Nova.WinForms.Gui
       /// </Summary>
       private void InitializeComponent()
       {
+            this.components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(BattleViewer));
             this.groupBox1 = new System.Windows.Forms.GroupBox();
             this.battlePanel = new System.Windows.Forms.Panel();
@@ -56,6 +57,10 @@ namespace Nova.WinForms.Gui
             this.groupBox5 = new System.Windows.Forms.GroupBox();
             this.stepNumber = new System.Windows.Forms.Label();
             this.nextStep = new System.Windows.Forms.Button();
+            this.previousStep = new System.Windows.Forms.Button();
+            this.playPauseButton = new System.Windows.Forms.Button();
+            this.stepPosition = new System.Windows.Forms.TrackBar();
+            this.playTimer = new System.Windows.Forms.Timer(this.components);
             this.groupBox4 = new System.Windows.Forms.GroupBox();
             this.targetArmor = new System.Windows.Forms.Label();
             this.targetShields = new System.Windows.Forms.Label();
@@ -83,6 +88,7 @@ namespace Nova.WinForms.Gui
             this.groupBox5.SuspendLayout();
             this.groupBox4.SuspendLayout();
             this.groupBox3.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.stepPosition)).BeginInit();
             this.SuspendLayout();
             // 
             // groupBox1
@@ -120,7 +126,7 @@ namespace Nova.WinForms.Gui
             this.groupBox2.Controls.Add(this.label1);
             this.groupBox2.Location = new System.Drawing.Point(625, 13);
             this.groupBox2.Name = "groupBox2";
-            this.groupBox2.Size = new System.Drawing.Size(653, 658);
+            this.groupBox2.Size = new System.Drawing.Size(653, 721);
             this.groupBox2.TabIndex = 1;
             this.groupBox2.TabStop = false;
             this.groupBox2.Text = "Battle Details";
@@ -347,32 +353,75 @@ namespace Nova.WinForms.Gui
             // groupBox5
             // 
             this.groupBox5.Controls.Add(this.stepNumber);
+            this.groupBox5.Controls.Add(this.stepPosition);
+            this.groupBox5.Controls.Add(this.previousStep);
             this.groupBox5.Controls.Add(this.nextStep);
+            this.groupBox5.Controls.Add(this.playPauseButton);
             this.groupBox5.Location = new System.Drawing.Point(10, 565);
             this.groupBox5.Name = "groupBox5";
-            this.groupBox5.Size = new System.Drawing.Size(259, 87);
+            this.groupBox5.Size = new System.Drawing.Size(320, 150);
             this.groupBox5.TabIndex = 5;
             this.groupBox5.TabStop = false;
             this.groupBox5.Text = "Replay Control";
-            // 
+            //
             // stepNumber
-            // 
+            //
             this.stepNumber.Location = new System.Drawing.Point(11, 20);
             this.stepNumber.Name = "stepNumber";
-            this.stepNumber.Size = new System.Drawing.Size(100, 23);
+            this.stepNumber.Size = new System.Drawing.Size(280, 23);
             this.stepNumber.TabIndex = 3;
             this.stepNumber.Text = "Step 1 of 10";
-            // 
+            //
+            // stepPosition
+            //
+            // A scrub bar for jumping directly to any point in the battle, and Previous/Play-
+            // Pause buttons alongside the pre-existing Next - ports client-ui-dialog-catalog.md's
+            // "replay surface has a current playback position and transport controls" for the
+            // battle-viewer entry. See BattleViewer.cs's GoToStep for how a position re-derives
+            // the display state from scratch each time, rather than the old forward-only mutation.
+            this.stepPosition.Location = new System.Drawing.Point(11, 46);
+            this.stepPosition.Maximum = 1;
+            this.stepPosition.Name = "stepPosition";
+            this.stepPosition.Size = new System.Drawing.Size(295, 45);
+            this.stepPosition.TabIndex = 4;
+            this.stepPosition.TickStyle = System.Windows.Forms.TickStyle.None;
+            this.stepPosition.Scroll += new System.EventHandler(this.StepPosition_Scroll);
+            //
+            // previousStep
+            //
+            this.previousStep.Location = new System.Drawing.Point(11, 100);
+            this.previousStep.Name = "previousStep";
+            this.previousStep.Size = new System.Drawing.Size(75, 23);
+            this.previousStep.TabIndex = 1;
+            this.previousStep.Text = "Previous";
+            this.previousStep.UseVisualStyleBackColor = true;
+            this.previousStep.Click += new System.EventHandler(this.PreviousStep_Click);
+            //
+            // playPauseButton
+            //
+            this.playPauseButton.Location = new System.Drawing.Point(92, 100);
+            this.playPauseButton.Name = "playPauseButton";
+            this.playPauseButton.Size = new System.Drawing.Size(75, 23);
+            this.playPauseButton.TabIndex = 2;
+            this.playPauseButton.Text = "Play";
+            this.playPauseButton.UseVisualStyleBackColor = true;
+            this.playPauseButton.Click += new System.EventHandler(this.PlayPauseButton_Click);
+            //
             // nextStep
-            // 
-            this.nextStep.Location = new System.Drawing.Point(11, 58);
+            //
+            this.nextStep.Location = new System.Drawing.Point(173, 100);
             this.nextStep.Name = "nextStep";
             this.nextStep.Size = new System.Drawing.Size(75, 23);
             this.nextStep.TabIndex = 2;
             this.nextStep.Text = "Next";
             this.nextStep.UseVisualStyleBackColor = true;
             this.nextStep.Click += new System.EventHandler(this.NextStep_Click);
-            // 
+            //
+            // playTimer
+            //
+            this.playTimer.Interval = 750;
+            this.playTimer.Tick += new System.EventHandler(this.PlayTimer_Tick);
+            //
             // groupBox4
             // 
             this.groupBox4.Controls.Add(this.targetQuantity);
@@ -584,7 +633,7 @@ namespace Nova.WinForms.Gui
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1300, 677);
+            this.ClientSize = new System.Drawing.Size(1300, 740);
             this.Controls.Add(this.groupBox2);
             this.Controls.Add(this.groupBox1);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
@@ -603,6 +652,7 @@ namespace Nova.WinForms.Gui
             this.groupBox4.PerformLayout();
             this.groupBox3.ResumeLayout(false);
             this.groupBox3.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.stepPosition)).EndInit();
             this.ResumeLayout(false);
 
       }
@@ -615,6 +665,10 @@ namespace Nova.WinForms.Gui
        private System.Windows.Forms.Label battleLocation;
        private System.Windows.Forms.Label label1;
        private System.Windows.Forms.Button nextStep;
+       private System.Windows.Forms.Button previousStep;
+       private System.Windows.Forms.Button playPauseButton;
+       private System.Windows.Forms.TrackBar stepPosition;
+       private System.Windows.Forms.Timer playTimer;
        private System.Windows.Forms.GroupBox groupBox3;
        private System.Windows.Forms.Label movedTo;
        private System.Windows.Forms.Label label4;

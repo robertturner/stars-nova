@@ -1,0 +1,23 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             xmlns:dg="using:Avalonia.Controls"
+             x:Class="Nova.Avalonia.Views.Panels.FleetReportView"
+             x:DataType="panels:FleetReportViewModel">
+    <dg:DataGrid ItemsSource="{Binding Fleets}" IsReadOnly="True" AutoGenerateColumns="False"
+                 GridLinesVisibility="Horizontal" CanUserSortColumns="True" CanUserResizeColumns="True">
+        <dg:DataGrid.Columns>
+            <dg:DataGridTextColumn Header="Fleet Name" Binding="{Binding Name}" />
+            <dg:DataGridTextColumn Header="Location" Binding="{Binding Location}" />
+            <dg:DataGridTextColumn Header="Destination" Binding="{Binding Destination}" />
+            <dg:DataGridTextColumn Header="ETA (yr)" Binding="{Binding Eta}" />
+            <dg:DataGridTextColumn Header="Task" Binding="{Binding Task}" />
+            <dg:DataGridTextColumn Header="Fuel" Binding="{Binding Fuel}" />
+            <dg:DataGridTextColumn Header="Cargo (I/B/G/Col)" Binding="{Binding Cargo}" />
+            <dg:DataGridTextColumn Header="Ships" Binding="{Binding Ships}" />
+            <dg:DataGridTextColumn Header="Cloak" Binding="{Binding Cloak}" />
+            <dg:DataGridTextColumn Header="Battle Plan" Binding="{Binding BattlePlan}" />
+            <dg:DataGridTextColumn Header="Mass" Binding="{Binding Mass}" />
+        </dg:DataGrid.Columns>
+    </dg:DataGrid>
+</UserControl>

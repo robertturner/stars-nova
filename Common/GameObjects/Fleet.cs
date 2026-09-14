@@ -278,7 +278,29 @@ namespace Nova.Common
                 return mineCount;
             }
         }
-        
+
+        /// <summary>Total remote-mining capacity (mine-equivalents) this fleet contributes this
+        /// turn, capped at Global.MaxRemoteMiningEquivalents per fleet -
+        /// docs/behavior-specs-4/population-growth.md: "any additional mining capacity stacked
+        /// into the same fleet beyond that produces no extra minerals... splitting the same total
+        /// mine-equivalents across more, smaller fleets always mines less in total than
+        /// concentrating them."</summary>
+        public int MineEquivalents
+        {
+            get
+            {
+                int mineEquivalents = 0;
+
+                foreach (ShipToken token in tokens.Values)
+                {
+                    mineEquivalents += token.Design.MineEquivalents * token.Quantity;
+                }
+
+                return Math.Min(mineEquivalents, Global.MaxRemoteMiningEquivalents);
+            }
+        }
+
+
         /// <summary>
         /// Return the penetrating range scan capability of the fleet.
         /// </summary>

@@ -29,7 +29,6 @@
 namespace Nova.Common
 {
     using System;
-    using System.Drawing;
     using Nova.Common.DataStructures;
 
     /// <summary>
@@ -43,15 +42,15 @@ namespace Nova.Common
         private static readonly Random Random = new Random();
 
         /// <summary>
-        /// Return a random position within a Rectangle. A border (which may be zero) is
+        /// Return a random position within a NovaRect. A border (which may be zero) is
         /// applied to the area where point positions will not be allocated. This
         /// ensures that returned points are never too close to the edge of the
         /// rectangle.
         /// </summary>
-        /// <param name="box">A <see cref="Rectangle"/> which will contain the point.</param>
+        /// <param name="box">A <see cref="NovaRect"/> which will contain the point.</param>
         /// <param name="boxBorder">The minimum distance between the point and the edge of the box.</param>
-        /// <returns>A <see cref="Point"/> within the box.</returns>
-        public static NovaPoint GetPositionInBox(Rectangle box, int boxBorder)
+        /// <returns>A <see cref="NovaPoint"/> within the box.</returns>
+        public static NovaPoint GetPositionInBox(NovaRect box, int boxBorder)
         {
             int boxSize = box.Width;
             NovaPoint position = new NovaPoint(box.X, box.Y);
@@ -66,9 +65,9 @@ namespace Nova.Common
         /// Determine if a point is within a bounding box. 
         /// </summary>
         /// <param name="p">The <see cref="NovaPoint"/> in question.</param>
-        /// <param name="box">The <see cref="Rectangle"/> defining the space to check.</param>
+        /// <param name="box">The <see cref="NovaRect"/> defining the space to check.</param>
         /// <returns>True if point p is in the box.</returns>
-        public static bool InBox(NovaPoint p, Rectangle box)
+        public static bool InBox(NovaPoint p, NovaRect box)
         {
             NovaPoint upperLeft = new NovaPoint(box.Location);
             NovaPoint bottomRight = new NovaPoint(box.Location);
@@ -126,7 +125,7 @@ namespace Nova.Common
         {
             NovaPoint topCorner = new NovaPoint(position1);
             topCorner.Offset(-20, -20);
-            Rectangle scanArea = new Rectangle(topCorner.X, topCorner.Y, 40, 40);
+            NovaRect scanArea = new NovaRect(topCorner.X, topCorner.Y, 40, 40);
 
             if (InBox(position2, scanArea))
             {

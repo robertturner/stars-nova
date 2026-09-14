@@ -39,18 +39,19 @@ namespace Nova.WinForms
     public partial class NewGameWizard : Form
     {
         private int numberOfPlayers;
-  
+        private int currentSeed;
+
         /// <summary>
-        /// List of races available to be selected by players or assigned to AIs. 
+        /// List of races available to be selected by players or assigned to AIs.
         /// </summary>
-        public Dictionary<string, Race> KnownRaces = new Dictionary<string, Race>();        
+        public Dictionary<string, Race> KnownRaces = new Dictionary<string, Race>();
 
         /// <Summary>
         /// Initializes a new instance of the NewGameWizard class.
         /// </Summary>
         public NewGameWizard()
         {
-            InitializeComponent();            
+            InitializeComponent();
 
             // Setup the list of known races.
             FileSearcher.GetAvailableRaces().ForEach(race => KnownRaces[race.Name] = race);
@@ -61,7 +62,14 @@ namespace Nova.WinForms
                 raceSelectionBox.Items.Add(raceName);
             }
 
-            Random rand = new Random();            
+            // Resolve the seed before anything else that draws on randomness (including the
+            // default player-race shuffle just below), so the whole wizard session - not just
+            // the galaxy Gameinitializer.Initialize eventually generates - is reproducible from
+            // one value. See GameSettings.Seed.
+            currentSeed = GameSettings.Data.Seed ?? Environment.TickCount;
+            seedValue.Text = currentSeed.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            Random rand = new Random(currentSeed);
             List<string> racenames = new List<string>(KnownRaces.Keys);
 
             // Add 2 players to a new game, but not more than available if the user changes the race folder
@@ -157,7 +165,9 @@ namespace Nova.WinForms
             GameSettings.Data.StarUniformity = (int)starUniformity.Value;
 
             GameSettings.Data.AcceleratedStart = acceleratedStart.Checked;
-            
+
+            GameSettings.Data.Seed = currentSeed;
+
             if (CreateGame() == true)
             {                
                 DialogResult = DialogResult.OK;    
@@ -177,7 +187,39 @@ namespace Nova.WinForms
             DialogResult = DialogResult.Cancel;
             this.Close();
         }
-        
+
+        /// <Summary>
+        /// Pick a new seed for a fresh galaxy. Deliberately does not re-run the default
+        /// player-race shuffle from the constructor - by this point the player list may already
+        /// reflect the user's own edits (added/removed/reassigned players), and silently
+        /// clobbering that on every Randomize click would be surprising. Only what a new seed
+        /// actually governs (star positions, minerals, homeworld assignment, star/race name
+        /// allocation - all inside Gameinitializer.Initialize) changes from here.
+        /// </Summary>
+        private void RandomizeSeed_Click(object sender, EventArgs e)
+        {
+            currentSeed = Environment.TickCount;
+            seedValue.Text = currentSeed.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        /// <Summary>
+        /// Lets a player type in a specific seed directly (e.g. to reproduce a galaxy someone
+        /// else shared the seed for). An invalid value reverts the display to the last known
+        /// good seed rather than silently keeping unparsed text.
+        /// </Summary>
+        private void SeedValue_Validated(object sender, EventArgs e)
+        {
+            if (int.TryParse(seedValue.Text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int parsed))
+            {
+                currentSeed = parsed;
+            }
+            else
+            {
+                seedValue.Text = currentSeed.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+        }
+
+
 
         /// <Summary>
         /// Occurs when the Tutorial button is clicked.
@@ -221,7 +263,7 @@ namespace Nova.WinForms
         {
             try
             {
-                Process.Start(Assembly.GetExecutingAssembly().Location, CommandArguments.Option.RaceDesignerSwitch);
+                Process.Start(FileSearcher.GetOwnExecutablePath(), CommandArguments.Option.RaceDesignerSwitch);
             }
             catch
             {

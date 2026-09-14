@@ -24,7 +24,6 @@ namespace Nova.Common.Components
 {
     using System;
     using System.Collections.Generic;
-    using System.Drawing;
     using System.IO;
     using System.Xml;
 
@@ -37,7 +36,11 @@ namespace Nova.Common.Components
     public class Component : Item
     {
         public TechLevel RequiredTech = new TechLevel();
-        public Image ComponentImage;
+        /// <summary>
+        /// The loaded icon image, as a platform-specific object (see PlatformHooks.LoadImage) -
+        /// e.g. a System.Drawing.Bitmap on WinForms. Common never interprets this itself.
+        /// </summary>
+        public object ComponentImage;
         public string ImageFile = string.Empty;
         public string Description = string.Empty;
         public RaceRestriction Restrictions = new RaceRestriction();
@@ -157,7 +160,7 @@ namespace Nova.Common.Components
                                     if (info.Exists)
                                     {
                                         // was absolute, so keep as is and load up the image
-                                        ComponentImage = new Bitmap(ImageFile);
+                                        ComponentImage = PlatformHooks.LoadImage(ImageFile);
                                     }
                                     else
                                     {
@@ -173,7 +176,7 @@ namespace Nova.Common.Components
                                         if (info.Exists)
                                         {
                                             // now we have an absolute path, load the image
-                                            ComponentImage = new Bitmap(ImageFile);
+                                            ComponentImage = PlatformHooks.LoadImage(ImageFile);
                                         }
                                         else
                                         {

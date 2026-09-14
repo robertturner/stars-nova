@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             x:Class="Nova.Avalonia.Views.Panels.PlayerRelationsView"
+             x:DataType="panels:PlayerRelationsViewModel">
+    <ScrollViewer>
+    <StackPanel Margin="8" Spacing="4">
+        <TextBlock Text="No other empires known yet." Opacity="0.6" IsVisible="{Binding !HasEmpires}" />
+        <ItemsControl ItemsSource="{Binding Empires}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="panels:EmpireRelationRowViewModel">
+                    <Border BorderBrush="Gray" BorderThickness="0,0,0,1" Padding="0,4" Margin="0,2">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{Binding RaceName}" FontWeight="Bold" />
+                            <ComboBox ItemsSource="{Binding RelationOptions}"
+                                      SelectedItem="{Binding Relation}" HorizontalAlignment="Stretch" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+    </ScrollViewer>
+</UserControl>

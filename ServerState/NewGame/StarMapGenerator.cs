@@ -51,7 +51,7 @@ namespace Nova.Server.NewGame
         // values are between 0 and 1
         private readonly double[,] density;
 
-        private readonly Random random = new Random();
+        private readonly Random random;
 
         // List of stars positions int[2]; int[0] - x, int[1] - y
         private readonly List<int[]> stars = new List<int[]>();
@@ -71,7 +71,12 @@ namespace Nova.Server.NewGame
         /// </summary>
         /// <param name="mapWidth">Width of the map in ly.</param>
         /// <param name="mapHeight">Height of the map in ly.</param>
-        public StarMapGenerator(int mapWidth, int mapHeight, int starSeparation, int starDensity, int starUniformity)
+        /// <param name="random">
+        /// The Random to draw star/homeworld positions from. Optional (defaults to a freshly-
+        /// seeded one) so existing callers are unaffected; pass in a shared, seeded Random to
+        /// make map generation reproducible - see GameSettings.Seed.
+        /// </param>
+        public StarMapGenerator(int mapWidth, int mapHeight, int starSeparation, int starDensity, int starUniformity, Random random = null)
         {
             this.mapWidth = mapWidth;
             this.mapHeight = mapHeight;
@@ -79,9 +84,9 @@ namespace Nova.Server.NewGame
             this.starSeparation = starSeparation;
             this.starDensity = starDensity;
             this.starUniformity = starUniformity;
-            
-            
-            
+
+            this.random = random ?? new Random();
+
             this.density = new double[mapWidth, mapHeight];
         }
         

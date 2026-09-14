@@ -26,7 +26,6 @@ namespace Nova.Server
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
-    using System.Windows.Forms;
     using System.Xml;
     
     using Nova.Common;
@@ -51,6 +50,7 @@ namespace Nova.Server
         public Dictionary<string, Race>         AllRaces        = new Dictionary<string, Race>(); // Data about the race (traits etc)
         public Dictionary<string, Star>         AllStars        = new Dictionary<string, Star>();
         public Dictionary<long, Minefield>      AllMinefields   = new Dictionary<long, Minefield>();
+        public Dictionary<long, Wormhole>       AllWormholes    = new Dictionary<long, Wormhole>();
         public List<Message>                    AllMessages     = new List<Message>(); // All messages generated this turn.
 
         public bool GameInProgress      = false;
@@ -158,11 +158,29 @@ namespace Nova.Server
                             textNode = xmlnode.FirstChild;
                             while (textNode != null)
                             {
-                                AllMinefields.Add(int.Parse(textNode.Attributes["Key"].Value, System.Globalization.NumberStyles.HexNumber), new Minefield(textNode));
+                                // A minefield laid by an owned empire (see EmpireData.GetNextMinefieldKey)
+                                // encodes that owner in the key's high bits, so its hex text almost
+                                // always exceeds int.MaxValue - re-parsing it here via int.Parse
+                                // would throw OverflowException. Minefield's own XmlNode constructor
+                                // (via Item's) already parses "Key" correctly as a long - reuse that
+                                // instead of re-parsing the same attribute a second time, matching
+                                // how Designs.Add(design.Key, design) is done elsewhere.
+                                Minefield minefield = new Minefield(textNode);
+                                AllMinefields.Add(minefield.Key, minefield);
                                 textNode = textNode.NextSibling;
                             }
                             break;
-                        
+
+                        case "allwormholes":
+                            textNode = xmlnode.FirstChild;
+                            while (textNode != null)
+                            {
+                                Wormhole wormhole = new Wormhole(textNode);
+                                AllWormholes.Add(wormhole.Key, wormhole);
+                                textNode = textNode.NextSibling;
+                            }
+                            break;
+
                         case "allmessages":
                             textNode = xmlnode.FirstChild;
                             while (textNode != null)
@@ -210,6 +228,7 @@ namespace Nova.Server
                         AllRaces        = restoredState.AllRaces;
                         AllStars        = restoredState.AllStars;
                         AllMinefields   = restoredState.AllMinefields;
+                        AllWormholes    = restoredState.AllWormholes;
                         AllMessages     = restoredState.AllMessages;
         
                         GameInProgress    = restoredState.GameInProgress;
@@ -248,13 +267,10 @@ namespace Nova.Server
             if (StatePathName == null)
             {
                 // TODO (priority 5) add the nicities. Update the game files location.
-                SaveFileDialog fd = new SaveFileDialog();
-                fd.Title = "Choose a location to save the game.";
-
-                DialogResult result = fd.ShowDialog();
-                if (result == DialogResult.OK)
+                string chosen = PlatformHooks.AskUserForSaveFile("Choose a location to save the game.");
+                if (chosen != null)
                 {
-                    StatePathName = fd.FileName;
+                    StatePathName = chosen;
                 }
                 else
                 {
@@ -344,7 +360,17 @@ namespace Nova.Server
                 xmlelAllMinefields.AppendChild(child);
             }
             xmlelServerState.AppendChild(xmlelAllMinefields);
-            
+
+            // Store the Wormholes
+            XmlElement xmlelAllWormholes = xmldoc.CreateElement("AllWormholes");
+            foreach (KeyValuePair<long, Wormhole> wormhole in AllWormholes)
+            {
+                child = wormhole.Value.ToXml(xmldoc);
+                child.SetAttribute("Key", wormhole.Key.ToString("X"));
+                xmlelAllWormholes.AppendChild(child);
+            }
+            xmlelServerState.AppendChild(xmlelAllWormholes);
+
             // Store the Messages
             XmlElement xmlelAllMessages = xmldoc.CreateElement("AllMessages");
             foreach (Message message in AllMessages)
@@ -458,6 +484,7 @@ namespace Nova.Server
             AllRaces.Clear();
             AllStars.Clear();
             AllMinefields.Clear();
+            AllWormholes.Clear();
             AllMessages.Clear();
             
             GameFolder     = null;

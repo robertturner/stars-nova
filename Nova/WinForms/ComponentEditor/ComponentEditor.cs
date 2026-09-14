@@ -108,7 +108,7 @@ namespace Nova.WinForms.ComponentEditor
           {
               this.basicProperties.Cost = value.Cost;
               this.basicProperties.Mass = value.Mass;
-              this.componentImage.Image = value.ComponentImage;
+              this.componentImage.Image = (Image)value.ComponentImage;
               this.componentName.Text = value.Name;
               this.description.Text = value.Description;
               this.restrictionSummary.Text = value.Restrictions.ToString();

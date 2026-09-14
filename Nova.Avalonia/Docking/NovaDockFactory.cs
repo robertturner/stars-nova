@@ -4,6 +4,7 @@ using Dock.Model.Core;
 using Dock.Model.Controls;
 using Dock.Model.Mvvm;
 using Dock.Model.Mvvm.Controls;
+using Nova.Client;
 using Nova.Avalonia.ViewModels.Panels;
 
 namespace Nova.Avalonia.Docking;
@@ -12,17 +13,26 @@ namespace Nova.Avalonia.Docking;
 /// Builds the default panel layout for the main game window: Navigator/Inspector
 /// tabbed on the left, the Star Map as the fixed center document, Production/Research
 /// tabbed on the right, and Messages/Summary tabbed along the bottom - matching the
-/// desktop layout from the approved "Nova Cockpit" design sketch. Every panel here is
-/// a placeholder (see ViewModels/Panels) until wired to real game data.
+/// desktop layout from the approved "Nova Cockpit" design sketch. Every panel is wired to a
+/// real loaded game (see GameSession) - Navigator/Inspector/Production react to the shared
+/// SelectionService, Research/Messages/Summary are empire-wide and static per turn, and the
+/// Star Map draws every known star. None of them support editing/orders yet.
 /// </summary>
 public class NovaDockFactory : Factory
 {
+    private readonly ClientData clientState;
+
+    public NovaDockFactory(ClientData clientState)
+    {
+        this.clientState = clientState;
+    }
+
     public override IRootDock CreateLayout()
     {
-        var navigator = new PlaceholderToolViewModel(
-            "Navigator", "Navigator", "Empire tree: planets, fleets, designs.");
-        var inspector = new PlaceholderToolViewModel(
-            "Inspector", "Inspector", "Details for whatever is selected on the map.");
+        var selection = new ViewModels.SelectionService();
+
+        var navigator = new NavigatorViewModel("Navigator", "Navigator", clientState, selection);
+        var inspector = new InspectorViewModel("Inspector", "Inspector", clientState, selection);
 
         var leftPane = new ToolDock
         {
@@ -33,8 +43,7 @@ public class NovaDockFactory : Factory
             Proportion = 0.22,
         };
 
-        var starMap = new PlaceholderDocumentViewModel(
-            "StarMap", "Star Map", "The main map view - always open, never closed.");
+        var starMap = new StarMapDocumentViewModel("StarMap", "Star Map", clientState, selection);
 
         var centerDocuments = new DocumentDock
         {
@@ -44,30 +53,36 @@ public class NovaDockFactory : Factory
             CanCreateDocument = false,
         };
 
-        var production = new PlaceholderToolViewModel(
-            "Production", "Production", "Production queue for the selected planet.");
-        var research = new PlaceholderToolViewModel(
-            "Research", "Research", "Tech levels and the research budget slider.");
+        var production = new ProductionViewModel("Production", "Production", clientState, selection);
+        var research = new ResearchViewModel("Research", "Research", clientState);
+        var shipDesign = new ShipDesignViewModel("ShipDesign", "Ship Design", clientState, selection);
 
         var rightPane = new ToolDock
         {
             Id = "RightPane",
             ActiveDockable = production,
-            VisibleDockables = CreateList<IDockable>(production, research),
+            VisibleDockables = CreateList<IDockable>(production, research, shipDesign),
             Alignment = Alignment.Right,
             Proportion = 0.22,
         };
 
-        var messages = new PlaceholderToolViewModel(
-            "Messages", "Messages", "This turn's events, oldest first.");
-        var summary = new PlaceholderToolViewModel(
-            "Summary", "Summary", "Empire-wide totals: planets, fleets, resources.");
+        var messages = new MessagesViewModel("Messages", "Messages", clientState);
+        var summary = new SummaryViewModel("Summary", "Summary", clientState);
+        var playerRelations = new PlayerRelationsViewModel("PlayerRelations", "Player Relations", clientState);
+        var battlePlans = new BattlePlansViewModel("BattlePlans", "Battle Plans", clientState);
+        var planetReport = new PlanetReportViewModel("PlanetReport", "Planet Report", clientState);
+        var fleetReport = new FleetReportViewModel("FleetReport", "Fleet Report", clientState);
+        var battleReport = new BattleReportViewModel("BattleReport", "Battle Report", clientState);
+        var scoreReport = new ScoreReportViewModel("ScoreReport", "Score Report", clientState);
+        var help = new HelpViewModel("Help", "Manual");
 
         var bottomPane = new ToolDock
         {
             Id = "BottomPane",
             ActiveDockable = messages,
-            VisibleDockables = CreateList<IDockable>(messages, summary),
+            VisibleDockables = CreateList<IDockable>(
+                messages, summary, playerRelations, battlePlans,
+                planetReport, fleetReport, battleReport, scoreReport, help),
             Alignment = Alignment.Bottom,
             Proportion = 0.22,
         };

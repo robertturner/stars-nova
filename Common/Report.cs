@@ -28,12 +28,13 @@
 
 using System;
 using System.Diagnostics;
-using System.Windows.Forms;
 
 namespace Nova.Common
 {
     /// <summary>
-    /// Provides a variety of message pop ups.
+    /// Provides a variety of message pop ups, via PlatformHooks so this class carries no direct
+    /// UI-toolkit dependency - each host (WinForms, Avalonia, a future Android head) wires these
+    /// to its own native message box at startup.
     /// </summary>
     public static class Report
     {
@@ -43,15 +44,8 @@ namespace Nova.Common
         /// <param name="text">Message to display.</param>
         public static void Error(string text)
         {
-            MessageBox.Show(
-                "Nova has encountered an error, but will continue anyway." + Environment.NewLine + "Details: " + text,
-                "Nova - Error ",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error,
-                MessageBoxDefaultButton.Button1,
-                MessageBoxOptions.DefaultDesktopOnly);
+            PlatformHooks.ShowError("Nova has encountered an error, but will continue anyway." + Environment.NewLine + "Details: " + text);
         }
-
 
         /// <summary>
         /// Raise a dialog to report an information message.
@@ -59,13 +53,7 @@ namespace Nova.Common
         /// <param name="text">Message to display.</param>
         public static void Information(string text)
         {
-            MessageBox.Show(
-                text,
-                "Nova - Information",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information,
-                MessageBoxDefaultButton.Button1,
-                MessageBoxOptions.DefaultDesktopOnly);
+            PlatformHooks.ShowInformation(text);
         }
 
         /// <summary>
@@ -74,13 +62,7 @@ namespace Nova.Common
         /// <param name="text">Message to display.</param>
         public static void FatalError(string text)
         {
-            MessageBox.Show(
-                text + "\r\n\r\n(This error will terminate the program)",
-                "Nova - Fatal Error",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Stop,
-                MessageBoxDefaultButton.Button1,
-                MessageBoxOptions.DefaultDesktopOnly);
+            PlatformHooks.ShowFatalError(text + "\r\n\r\n(This error will terminate the program)");
 
             Environment.Exit(1);
         }
@@ -92,13 +74,7 @@ namespace Nova.Common
         [Conditional("DEBUG")]
         public static void Debug(string text)
         {
-            MessageBox.Show(
-                text,
-                "Nova - Debug",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information,
-                MessageBoxDefaultButton.Button1,
-                MessageBoxOptions.DefaultDesktopOnly);
+            PlatformHooks.ShowDebug(text);
         }
     }
 }

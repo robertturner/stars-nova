@@ -47,21 +47,43 @@ namespace Nova.Common.Commands
             private set;
             get;
         }
-        
-                
+
+        /// <summary>
+        /// Only meaningful for CommandMode.Swap - the other queue index to exchange with Index.
+        /// </summary>
+        public int OtherIndex
+        {
+            private set;
+            get;
+        }
+
         public string StarKey
         {
             private set;
             get;
         }
-        
-        
+
+
         public ProductionCommand(CommandMode mode, ProductionOrder productionOrder, string starKey, int index = 0)
         {
             Mode = mode;
             ProductionOrder = productionOrder;
             StarKey = starKey;
-            Index = index;            
+            Index = index;
+        }
+
+        /// <summary>
+        /// Swap constructor - exchanges whatever is currently at index/otherIndex. See the
+        /// CommandMode.Swap doc comment in ICommand.cs for why this needs to be a distinct
+        /// operation rather than two Edit commands.
+        /// </summary>
+        public ProductionCommand(CommandMode mode, string starKey, int index, int otherIndex)
+        {
+            Mode = mode;
+            ProductionOrder = null;
+            StarKey = starKey;
+            Index = index;
+            OtherIndex = otherIndex;
         }
         
         
@@ -93,6 +115,10 @@ namespace Nova.Common.Commands
                     
                     case "starkey":
                         StarKey = mainNode.FirstChild.Value;
+                    break;
+
+                    case "otherindex":
+                        OtherIndex = int.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
                     break;
                 }
             
@@ -163,11 +189,23 @@ namespace Nova.Common.Commands
                     break;
                 
                 case CommandMode.Delete:
-                    // Check the order actually exists.                    
+                    // Check the order actually exists.
                     // if (!empire.OwnedStars[StarKey].ManufacturingQueue.Queue.Contains(ProductionOrder)) {return false;} // FIXME (priority 5) - flase positive prevents deletion of production items.
                     break;
+
+                case CommandMode.Swap:
+                    // Both indices must be real queue slots - a stale index (the route changed
+                    // between the client issuing this and the server processing it) would
+                    // otherwise throw and abort the whole turn's generation, not just this order.
+                    int count = empire.OwnedStars[StarKey].ManufacturingQueue.Queue.Count;
+                    if (Index < 0 || Index >= count || OtherIndex < 0 || OtherIndex >= count)
+                    {
+                        return false;
+                    }
+
+                    break;
             }
-            
+
             return true;
         }
         
@@ -186,7 +224,14 @@ namespace Nova.Common.Commands
                 case CommandMode.Delete:
                     empire.OwnedStars[StarKey].ManufacturingQueue.Queue.RemoveAt(Index);
                     break;
-            }    
+
+                case CommandMode.Swap:
+                    List<ProductionOrder> queue = empire.OwnedStars[StarKey].ManufacturingQueue.Queue;
+                    ProductionOrder atIndex = queue[Index];
+                    queue[Index] = queue[OtherIndex];
+                    queue[OtherIndex] = atIndex;
+                    break;
+            }
         }
         
         
@@ -201,12 +246,16 @@ namespace Nova.Common.Commands
             xmlelCom.SetAttribute("Type", "Production");
             Global.SaveData(xmldoc, xmlelCom, "Mode", Mode.ToString());
             Global.SaveData(xmldoc, xmlelCom, "StarKey", StarKey);
-            Global.SaveData(xmldoc, xmlelCom, "Index", Index.ToString(System.Globalization.CultureInfo.InvariantCulture));            
+            Global.SaveData(xmldoc, xmlelCom, "Index", Index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (Mode == CommandMode.Swap)
+            {
+                Global.SaveData(xmldoc, xmlelCom, "OtherIndex", OtherIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
             if (ProductionOrder != null)
             {
                 xmlelCom.AppendChild(ProductionOrder.ToXml(xmldoc));
             }
-            return xmlelCom; 
+            return xmlelCom;
         }
     }
 }

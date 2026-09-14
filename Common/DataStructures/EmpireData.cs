@@ -103,6 +103,7 @@ namespace Nova.Common
         // See associated properties.
         private long        fleetCounter             = 0;
         private long        designCounter            = 0;
+        private long        minefieldCounter         = 0;
         
         public Race Race
         {
@@ -148,6 +149,19 @@ namespace Nova.Common
         {
             ++fleetCounter;
             return (long)fleetCounter | ((long)empireId << 32);
+        }
+
+        /// <summary>
+        /// Gets the next available Key for a new Minefield laid by this empire - resolves
+        /// Minefield.cs's own "lacks a non-static unique id" TODO by mirroring GetNextFleetKey's
+        /// per-empire-counter-plus-owner-bits scheme, rather than that class's previous shared
+        /// static counter (which produced colliding keys across empires and was never actually
+        /// wired into a real Minefield's Key at all).
+        /// </summary>
+        public long GetNextMinefieldKey()
+        {
+            ++minefieldCounter;
+            return (long)minefieldCounter | ((long)empireId << 32);
         }
 
         /// <summary>
@@ -207,7 +221,11 @@ namespace Nova.Common
                     case "designcounter":
                         designCounter = long.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
                         break;
-                        
+
+                    case "minefieldcounter":
+                        minefieldCounter = long.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
+                        break;
+
                     case "turnyear":
                         TurnYear = int.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
                         break;
@@ -342,6 +360,7 @@ namespace Nova.Common
                         
             Global.SaveData(xmldoc, xmlelEmpireData, "FleetCounter", fleetCounter.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Global.SaveData(xmldoc, xmlelEmpireData, "DesignCounter", designCounter.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Global.SaveData(xmldoc, xmlelEmpireData, "MinefieldCounter", minefieldCounter.ToString(System.Globalization.CultureInfo.InvariantCulture));
             
             Global.SaveData(xmldoc, xmlelEmpireData, "TurnYear", TurnYear.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Global.SaveData(xmldoc, xmlelEmpireData, "TurnSubmitted", TurnSubmitted.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -679,9 +698,25 @@ namespace Nova.Common
 
                 if (star.Starbase != null)
                 {
-                    star.Starbase = OwnedFleets[star.Starbase.Key];        
+                    star.Starbase = OwnedFleets[star.Starbase.Key];
                 }
-            }    
+            }
+
+            // Same fix-up, but for this empire's own StarReports entries - without it, a report's
+            // Starbase.Composition stays permanently empty after a normal save/load round trip
+            // (StarIntel's XML constructor only recovers the placeholder Fleet(long) stub - see
+            // that constructor's own "Placeholder constructor" comment), which meant the star
+            // map's Stargate/Mass-Driver indicator dots (see StarMapDocumentViewModel) could never
+            // show for the player's own starbases, only their mere presence. Scoped to reports
+            // this empire itself owns - an enemy star's report doesn't carry full starbase
+            // component data to resolve against in the first place.
+            foreach (StarIntel report in StarReports.Values)
+            {
+                if (report.Owner == Id && report.Starbase != null && OwnedFleets.ContainsKey(report.Starbase.Key))
+                {
+                    report.Starbase = OwnedFleets[report.Starbase.Key];
+                }
+            }
         }
     }
 }

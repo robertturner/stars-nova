@@ -29,6 +29,7 @@ namespace Nova.WinForms.Gui
 
     using Nova.Client;
     using Nova.Common;
+    using Nova.Common.Commands;
 
     /// <Summary>
     /// Describes the possible player relation stances.
@@ -37,15 +38,24 @@ namespace Nova.WinForms.Gui
     {
         private Dictionary<ushort, EmpireIntel> empireReports;
         private ushort empireId;
+        private Stack<ICommand> commands;
 
         /// <Summary>
         /// Initializes a new instance of the PlayerRelations class.
         /// </Summary>
-        public PlayerRelations(Dictionary<ushort, EmpireIntel> empireReports, ushort empireId)
+        /// <param name="commands">
+        /// The empire's pending command stack. A relation change is a queued turn order (see
+        /// docs/behavior-specs-3/diplomacy-relations.md §2, verified against a decompile of the
+        /// exported client), not an immediate change - it's pushed here for the eventual
+        /// .orders file and applied to the local EmpireData immediately after for optimistic UI
+        /// feedback, the same pattern every other order-issuing dialog in this codebase follows.
+        /// </param>
+        public PlayerRelations(Dictionary<ushort, EmpireIntel> empireReports, ushort empireId, Stack<ICommand> commands)
         {
             this.empireReports = empireReports;
             this.empireId = empireId;
-            
+            this.commands = commands;
+
             InitializeComponent();
 
             foreach (ushort otherEmpireId in this.empireReports.Keys)
@@ -86,7 +96,7 @@ namespace Nova.WinForms.Gui
             {
                 enemyButton.Checked = true;
             }
-            else if (empireReports[selectedEmpire].Relation == PlayerRelation.Enemy)
+            else if (empireReports[selectedEmpire].Relation == PlayerRelation.Neutral)
             {
                 neutralButton.Checked = true;
             }
@@ -104,19 +114,31 @@ namespace Nova.WinForms.Gui
         private void RelationChanged(object sender, EventArgs e)
         {
             ushort selectedEmpire = (ushort)empireList.SelectedItem;
-            RadioButton button = sender as RadioButton;
+
+            PlayerRelation newRelation;
             if (enemyButton.Checked)
             {
-                empireReports[selectedEmpire].Relation = PlayerRelation.Enemy;
+                newRelation = PlayerRelation.Enemy;
             }
             else if (friendButton.Checked)
             {
-                empireReports[selectedEmpire].Relation = PlayerRelation.Friend;
+                newRelation = PlayerRelation.Friend;
             }
             else
             {
-                empireReports[selectedEmpire].Relation = PlayerRelation.Neutral;
+                newRelation = PlayerRelation.Neutral;
             }
+
+            if (empireReports[selectedEmpire].Relation == newRelation)
+            {
+                return;
+            }
+
+            commands.Push(new RelationCommand(selectedEmpire, newRelation));
+
+            // Applied immediately to the local report too, for optimistic UI feedback ahead of
+            // the real server-side turn processing - see the constructor's doc comment.
+            empireReports[selectedEmpire].Relation = newRelation;
         }
     }
 }

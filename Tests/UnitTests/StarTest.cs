@@ -62,8 +62,11 @@ namespace Nova.Tests.UnitTests
             // run the growth calculation
             int growth = star.CalculateGrowth(race);
 
-            // check the growth
-            Assert.AreEqual(-1500, growth);
+            // Relies on the race's default (unset) environment tolerance, which
+            // docs/behavior-specs-4/race-designer-ui-and-availability.md confirms should default
+            // to a 20-80 band, not the previous (incorrect) 15-85 - a narrower default band means
+            // more malus at the same out-of-range star value (10), hence larger population decline.
+            Assert.AreEqual(-3000, growth);
         }
 
         // Tests for population growth
@@ -142,8 +145,11 @@ namespace Nova.Tests.UnitTests
             // run the growth calculation
             int growth = star.CalculateGrowth(race);
 
-            // check the growth
-            Assert.AreEqual(-30000, growth);
+            // docs/behavior-specs-4/population-growth.md Example 3: population plateaus at
+            // capacity rather than declining further past it - no source was found for a
+            // population-loss mechanic purely from exceeding capacity on an otherwise-positive
+            // -habitability world, unlike the previously-asserted -30000 here.
+            Assert.AreEqual(0, growth);
         }
 
         [Test]
@@ -162,8 +168,9 @@ namespace Nova.Tests.UnitTests
             // run the growth calculation
             int growth = star.CalculateGrowth(race);
 
-            // check the growth
-            Assert.AreEqual(-600000, growth);
+            // docs/behavior-specs-4/population-growth.md Example 3: population plateaus at
+            // capacity rather than declining further past it - see OvercrowdedPopGrowth above.
+            Assert.AreEqual(0, growth);
         }
 
         [Test]
@@ -241,7 +248,12 @@ namespace Nova.Tests.UnitTests
             race.GravityTolerance.MaximumValue = 70;
             race.GravityTolerance.MinimumValue = 60;
             habitalValue = race.HabValue(star);
-            Assert.AreEqual(-0.90, habitalValue);
+            // docs/behavior-specs-4/population-growth.md confirms the single-axis habitability
+            // malus is capped at a hard, unconditional 15, not doubled to 30 for Total
+            // Terraforming (that doubling is a real, separate mechanic - TT's max TERRAFORM
+            // STEPS - that Race.GetMaxMalus previously, incorrectly, also applied here). Halving
+            // the malus cap halves this deeply-out-of-range result.
+            Assert.AreEqual(-0.45, habitalValue);
         }
 
         [Test]

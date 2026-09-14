@@ -1,0 +1,257 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             xmlns:conv="using:Nova.Avalonia.Converters"
+             x:Class="Nova.Avalonia.Views.Panels.StarMapDocumentView"
+             x:DataType="panels:StarMapDocumentViewModel">
+    <UserControl.Styles>
+        <Style Selector="Button.starMapMarker">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.starMapMarker:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#26ffffff" />
+        </Style>
+        <!-- Shared Canvas positioning for both the star and fleet ItemsControls below - both
+             view models derive from MapMarkerViewModel, which is where X/Y live. -->
+        <Style Selector="ItemsControl.mapLayer ContentPresenter" x:DataType="panels:MapMarkerViewModel">
+            <Setter Property="Canvas.Left" Value="{Binding X}" />
+            <Setter Property="Canvas.Top" Value="{Binding Y}" />
+        </Style>
+        <Style Selector="ItemsControl.scanLayer ContentPresenter" x:DataType="panels:StarMapScanCircleViewModel">
+            <Setter Property="Canvas.Left" Value="{Binding Left}" />
+            <Setter Property="Canvas.Top" Value="{Binding Top}" />
+        </Style>
+        <!-- Minefields already store their own top-left corner (see StarMapMineFieldViewModel),
+             so they position the same way as the scan-range washes, not the small star/fleet
+             markers above. -->
+        <Style Selector="ItemsControl.mineLayer ContentPresenter" x:DataType="panels:StarMapMineFieldViewModel">
+            <Setter Property="Canvas.Left" Value="{Binding X}" />
+            <Setter Property="Canvas.Top" Value="{Binding Y}" />
+        </Style>
+    </UserControl.Styles>
+    <Grid>
+        <ScrollViewer Name="MapScroll"
+                      Background="#0d1117"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      PointerWheelChanged="OnMapPointerWheelChanged">
+            <!-- Avalonia's ScrollViewer has no WPF/UWP-style PanningMode property - touch/pen
+                 drag-to-scroll instead needs an explicit ScrollGestureRecognizer (its default,
+                 with no recognizer at all, is mouse-wheel/scrollbar only), which is what "make
+                 the map draggable" turned out to mean in practice. -->
+            <ScrollViewer.GestureRecognizers>
+                <ScrollGestureRecognizer CanHorizontallyScroll="True" CanVerticallyScroll="True" />
+            </ScrollViewer.GestureRecognizers>
+        <LayoutTransformControl>
+            <LayoutTransformControl.LayoutTransform>
+                <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
+            </LayoutTransformControl.LayoutTransform>
+            <Panel Width="{Binding MapWidth}" Height="{Binding MapHeight}">
+            <!-- Scan-range washes render first (so they sit behind the stars/fleets below)
+                 and never intercept clicks. -->
+            <ItemsControl Classes="scanLayer" ItemsSource="{Binding ScanCircles}" IsHitTestVisible="False">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <Canvas />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="panels:StarMapScanCircleViewModel">
+                        <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}" Fill="{Binding Fill}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Minefields - a big clickable circle per field, selectable like a star or fleet
+                 (see StarMapMineFieldViewModel/InspectorViewModel.ShowMinefield). Drawn after
+                 scan washes but before the route/star/fleet layers, matching StarMap.cs's own
+                 "(3) Minefields" comment ordering. -->
+            <ItemsControl Classes="mineLayer" ItemsSource="{Binding Minefields}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <Canvas />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="panels:StarMapMineFieldViewModel">
+                        <Button Classes="starMapMarker" Command="{Binding SelectCommand}">
+                            <Panel Width="{Binding Diameter}" Height="{Binding Diameter}">
+                                <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}"
+                                         Fill="{Binding Color}" />
+                                <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}"
+                                         Stroke="Gold" StrokeThickness="2"
+                                         IsVisible="{Binding IsSelected}" />
+                            </Panel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Selected fleet's pending route - drawn after scan washes but before the
+                 star/fleet markers, matching StarMap.cs's WinForms draw order (routes(4) then
+                 stars(5)) so the clickable markers sit visually on top. -->
+            <ItemsControl Classes="routeLayer" ItemsSource="{Binding RouteLegs}" IsHitTestVisible="False">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <Canvas />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="panels:StarMapRouteLegViewModel">
+                        <Canvas>
+                            <Line StartPoint="{Binding Start}" EndPoint="{Binding End}"
+                                  Stroke="{Binding LineColor}" StrokeThickness="{Binding LineThickness}" />
+                            <Ellipse Canvas.Left="{Binding MarkerLeft}" Canvas.Top="{Binding MarkerTop}"
+                                     Width="{Binding MarkerDiameter}" Height="{Binding MarkerDiameter}"
+                                     Fill="{Binding MarkerColor}" />
+                            <!-- Points are already rotated/positioned in absolute Canvas
+                                 coordinates by StarMapRouteLegViewModel itself - no
+                                 RenderTransform needed (or wanted - see that class's own
+                                 comment on why one gave a slightly-off arrow tip). -->
+                            <Polygon Points="{Binding ArrowPoints}" Fill="{Binding LineColor}" />
+                        </Canvas>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <ItemsControl Classes="mapLayer" ItemsSource="{Binding Stars}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <Canvas />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="panels:StarMapStarViewModel">
+                        <!-- Root is an unconstrained local Canvas, not a StackPanel/auto-sizing
+                             Panel - the outer "mapLayer" style Canvas-positions this whole item
+                             at the star's raw logical (X,Y) (the same point the route-leg overlay
+                             draws to), and the icon/label below position independently relative
+                             to that local origin, each un-affected by the other's size. A shared
+                             auto-sizing parent (the previous StackPanel here) let a long star
+                             name's width push the icon off its true center - since Canvas.Left/
+                             Top there anchors the TOP-LEFT of that parent's whole declared
+                             footprint, not the icon's own center - which is exactly what made the
+                             route-line endpoint stop lining up with where the star actually drew. -->
+                        <Canvas>
+                            <Button Classes="starMapMarker" Command="{Binding SelectCommand}"
+                                    Canvas.Left="-8" Canvas.Top="-8" Width="16" Height="16">
+                                <Panel>
+                                    <Ellipse Width="16" Height="16"
+                                             Stroke="Gold" StrokeThickness="2"
+                                             IsVisible="{Binding IsSelected}" />
+                                    <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}"
+                                             Fill="{Binding Color}"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Panel>
+                            </Button>
+                            <!-- Orbiting-fleets ring - StarMap.cs's DrawOrbitingFleets ("orbiting
+                                 fleets (smaller circle)") for the WinForms original: an unfilled
+                                 white ring centered on the star icon itself (not an offset dot
+                                 like the three below), shown whenever a non-starbase fleet is
+                                 sitting here - see StarMapDocumentViewModel's own comment on why
+                                 this is computed fresh rather than from the game's own
+                                 never-updated HasFleetsInOrbit field. -->
+                            <Ellipse Width="12" Height="12" Canvas.Left="-6" Canvas.Top="-6"
+                                     Stroke="White" StrokeThickness="1.5" IsHitTestVisible="False"
+                                     IsVisible="{Binding HasFleetsInOrbit}"
+                                     ToolTip.Tip="Fleet(s) in orbit" />
+                            <!-- Starbase capability dots - docs/behavior-specs-3/client-interface.md's
+                                 "Starbase capability indicators" section: up to three small colored
+                                 squares, one per independent condition, each at its own fixed offset
+                                 from the star icon. IsHitTestVisible="False" so they never steal the
+                                 marker Button's click. Colors are this port's own choice - the
+                                 original client's actual colors couldn't be recovered by analysis. -->
+                            <Rectangle Width="4" Height="4" Fill="Yellow" IsHitTestVisible="False"
+                                       Canvas.Left="5" Canvas.Top="-8" IsVisible="{Binding HasStarbase}"
+                                       ToolTip.Tip="Starbase" />
+                            <Rectangle Width="4" Height="4" Fill="Cyan" IsHitTestVisible="False"
+                                       Canvas.Left="-9" Canvas.Top="-8" IsVisible="{Binding HasStargate}"
+                                       ToolTip.Tip="Stargate" />
+                            <Rectangle Width="4" Height="4" Fill="Magenta" IsHitTestVisible="False"
+                                       Canvas.Left="5" Canvas.Top="4" IsVisible="{Binding HasMassDriver}"
+                                       ToolTip.Tip="Mass Driver" />
+                            <!-- Horizontally centered on the same anchor point regardless of the
+                                 name's own width - the Avalonia equivalent of GDI+'s
+                                 StringFormat.Alignment=Center used by the WinForms
+                                 StarMap.DrawStar this ports - via a TranslateTransform bound to
+                                 this TextBlock's own measured Bounds.Width (Avalonia's
+                                 TransformOperations parser has no percentage-unit support, so
+                                 "translate(-50%,0)" isn't an option here). Not Margin/
+                                 HorizontalAlignment, which only center within a parent that's
+                                 already exactly as wide as the text, which this Canvas isn't. -->
+                            <TextBlock x:Name="StarNameLabel" Text="{Binding Name}" Foreground="White" FontSize="10"
+                                       Canvas.Left="0" Canvas.Top="10">
+                                <TextBlock.RenderTransform>
+                                    <TranslateTransform X="{Binding #StarNameLabel.Bounds.Width, Converter={x:Static conv:NegateHalfConverter.Instance}}" />
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
+                        </Canvas>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <ItemsControl Classes="mapLayer" ItemsSource="{Binding Fleets}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <Canvas />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="panels:StarMapFleetViewModel">
+                        <!-- Local Canvas root, same reasoning as the star marker above - the
+                             outer "mapLayer" style Canvas-positions this item's whole local
+                             Canvas at the fleet's raw logical (X,Y) (the exact point the
+                             route-leg overlay's Start/End also use), and Canvas.Left/Top="-7"
+                             below (half of the 14px icon) then centers the fixed-size icon box
+                             on that same local origin - a plain Canvas.Left/Top set directly on
+                             the Button here would have no effect, since attached Canvas
+                             properties only apply to a Canvas's direct children. -->
+                        <Canvas>
+                            <Button Classes="starMapMarker" Command="{Binding SelectCommand}"
+                                    Canvas.Left="-7" Canvas.Top="-7" Width="14" Height="14">
+                                <Panel>
+                                    <Ellipse Width="14" Height="14"
+                                             Stroke="Gold" StrokeThickness="2"
+                                             IsVisible="{Binding IsSelected}" />
+                                    <!-- Points form a triangle pointing DOWN at Bearing=0 (apex at
+                                         0,9 / base at 5,0-10,0), matching StarMap.cs's own
+                                         `triangle` field ((0,5),(-5,-5),(5,-5) - apex at +Y, base
+                                         at -Y, i.e. apex-down in screen coordinates) exactly - the
+                                         previous apex-up points here were 180 degrees off from the
+                                         WinForms original, so every fleet rendered pointing
+                                         opposite its real heading once RotateTransform
+                                         Angle=Bearing was applied on top. -->
+                                    <Polygon Points="5,9 10,0 0,0"
+                                             Fill="{Binding Color}"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                                             RenderTransformOrigin="50%,50%">
+                                        <Polygon.RenderTransform>
+                                            <RotateTransform Angle="{Binding Bearing}" />
+                                        </Polygon.RenderTransform>
+                                    </Polygon>
+                                </Panel>
+                            </Button>
+                        </Canvas>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            </Panel>
+        </LayoutTransformControl>
+        </ScrollViewer>
+        <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8"
+                Background="#aa000000" CornerRadius="4" Padding="8,4">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="{Binding Zoom, StringFormat='Zoom {0:P0}'}" Foreground="White" VerticalAlignment="Center" />
+                <!-- Explicit +/- buttons, not just the mouse-wheel handler - a touchscreen never
+                     raises a wheel event, so these are the only way to zoom at all on Android. -->
+                <Button Content="-" Command="{Binding ZoomOutCommand}" Padding="10,2" FontWeight="Bold" />
+                <Button Content="+" Command="{Binding ZoomInCommand}" Padding="10,2" FontWeight="Bold" />
+                <Button Content="Reset" Command="{Binding ResetZoomCommand}" Padding="6,2" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

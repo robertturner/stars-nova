@@ -93,6 +93,12 @@ namespace Nova.Common
             public static string RaceName = "-r";
             public static string StateFileName = "-s";
             public static string Turn = "-t";
+
+            /// <summary>Optional 0-7 AI personality-dispatch code (ai-opponent-behavior.md
+            /// section 1) - see DefaultAi for what each code selects. Omitted entirely on an
+            /// ordinary AI invocation, in which case DefaultAi falls back to its own documented
+            /// standard default.</summary>
+            public static string AiPersonality = "-n";
         }
 
         /// <summary>

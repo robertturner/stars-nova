@@ -154,6 +154,50 @@ namespace Nova.WinForms.Gui
         
         
         /// <summary>
+        /// Swaps the two production orders at the given (header-included) ListView positions -
+        /// the "Move Up"/"Move Down" affordance. Pushes a single atomic
+        /// ProductionCommand(Swap) rather than the two paired Edit commands this used to be
+        /// implemented with: ProductionCommand's Edit validity check blocks any edit that would
+        /// *decrease* the remaining/total cost at an index (an anti-cheat guard against quietly
+        /// substituting a cheaper order) - which also silently blocks half of all legitimate
+        /// reorders whenever the two adjacent orders have different costs, since exactly one of
+        /// the two paired Edits would then be moving a cheaper order into a pricier order's
+        /// slot. A real swap changes no order's cost at all, so it needs its own validity rule
+        /// (CommandMode.Swap) instead of going through Edit's.
+        /// </summary>
+        /// <param name="listIndexA">First ListView row (1-based - index 0 is the "Top of Queue" placeholder, never a real order).</param>
+        /// <param name="listIndexB">Second ListView row, same convention.</param>
+        public void SwapProductionOrders(int listIndexA, int listIndexB)
+        {
+            if (listIndexA < 1 || listIndexB < 1)
+            {
+                // Neither side of a swap can be the placeholder header row - it isn't a real
+                // ProductionOrder, so there is nothing there to exchange with.
+                return;
+            }
+
+            ICommand command = new ProductionCommand(CommandMode.Swap, starKey, listIndexA - 1, listIndexB - 1);
+            ProductionCommands.Enqueue(command);
+
+            ListViewItem itemA = Items[listIndexA];
+            ListViewItem itemB = Items[listIndexB];
+
+            string textA = itemA.Text;
+            object tagA = itemA.Tag;
+            string subA = itemA.SubItems[1].Text;
+
+            itemA.Text = itemB.Text;
+            itemA.Tag = itemB.Tag;
+            itemA.SubItems[1].Text = itemB.SubItems[1].Text;
+
+            itemB.Text = textA;
+            itemB.Tag = tagA;
+            itemB.SubItems[1].Text = subA;
+
+            itemB.Selected = true;
+        }
+
+        /// <summary>
         /// Removes a production order from the Queue control.
         /// </summary>
         /// <param name="productionOrder">ListViewItem to remove</param>

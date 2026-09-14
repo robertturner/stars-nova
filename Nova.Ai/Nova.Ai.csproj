@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Plain net9.0, not net9.0-windows/UseWindowsForms - extracted out of Nova.csproj (where
+         this folder used to live) so Nova.Avalonia (and, through it, Nova.Avalonia.Android) can
+         reference DefaultAi/AbstractAI directly for in-process AI turn processing, matching how
+         ServerState/Server.csproj was retargeted for Gameinitializer. The only WinForms/Drawing
+         coupling found in this folder (DefaultAIPlanner.cs's `(Bitmap)freighterHull.
+         ComponentImage` cast) was incidental - ComponentImage is a platform-loaded `object` (see
+         PlatformHooks.LoadImage), never actually a System.Drawing.Bitmap on this port, so the
+         cast was removed rather than kept and worked around. -->
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>Nova.Ai</AssemblyName>
+    <RootNamespace>Nova.Ai</RootNamespace>
+    <OutputType>Library</OutputType>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Configurations>Debug;Release</Configurations>
+    <Platforms>AnyCPU</Platforms>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <OutputPath>..\Build\Debug\</OutputPath>
+    <BaseOutputPath>..\Build\</BaseOutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <OutputPath>..\Build\Release\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\VersionInfo.cs" Link="VersionInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Common\Common.csproj" />
+    <ProjectReference Include="..\Nova.Client\Nova.Client.csproj" />
+  </ItemGroup>
+
+</Project>

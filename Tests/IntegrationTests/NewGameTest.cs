@@ -27,7 +27,12 @@
 // ===========================================================================
 #endregion
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
 using Nova.Common;
+using Nova.Common.Components;
 using Nova.Server;
 using Nova.Server.NewGame;
 using NUnit.Framework;
@@ -40,6 +45,195 @@ namespace Nova.Tests.IntegrationTests
     [TestFixture]
     public class NewGameTest
     {
+        /// <summary>
+        /// Builds a fresh, unpopulated ServerData with the given number of same-named-race
+        /// players, matching Map800x400Test's own setup - shared by the determinism tests below
+        /// so two independent generations start from byte-identical inputs.
+        /// </summary>
+        private static ServerData BuildServerState(int playerCount)
+        {
+            var serverState = new ServerData();
+            serverState.AllRaces.Clear();
+
+            for (int i = 0; i < playerCount; i++)
+            {
+                Race race = new Race { Name = "Seedrace" + i };
+                serverState.AllRaces.Add(race.Name, race);
+                serverState.AllPlayers.Add(new PlayerSettings());
+            }
+
+            return serverState;
+        }
+
+        /// <summary>
+        /// A minimal fingerprint of a generated galaxy - position, mineral concentration, and
+        /// name (which also indirectly proves the shared NameGenerator drew names in the same
+        /// order) for every star, keyed by generation order rather than by name (two runs with
+        /// different seeds may allocate the same star names in a different order).
+        /// </summary>
+        private static List<(int X, int Y, int Boranium, int Ironium, int Germanium, string Name)> Fingerprint(ServerData serverState)
+        {
+            return serverState.AllStars.Values
+                .OrderBy(star => star.Position.X).ThenBy(star => star.Position.Y)
+                .Select(star => (star.Position.X, star.Position.Y, star.MineralConcentration.Boranium, star.MineralConcentration.Ironium, star.MineralConcentration.Germanium, star.Name))
+                .ToList();
+        }
+
+        /// <summary>
+        /// The core reproducibility guarantee GameSettings.Seed exists for: two independent
+        /// StarMapinitializer runs given the same explicit seed must produce byte-identical
+        /// galaxies (star positions, mineral concentrations, and name allocation order) - proof
+        /// that every RNG-driven step (StarMapGenerator's placement, GenerateStars' minerals,
+        /// and the shared NameGenerator) is actually threaded through the one seeded Random
+        /// rather than silently falling back to its own independent new Random() somewhere.
+        /// </summary>
+        [Test]
+        public void SameSeedProducesIdenticalGalaxy()
+        {
+            GameSettings.Data.MapHeight = 400;
+            GameSettings.Data.MapWidth = 400;
+            GameSettings.Data.StarDensity = 60;
+            GameSettings.Data.StarSeparation = 10;
+            GameSettings.Data.StarUniformity = 60;
+
+            const int seed = 424242;
+
+            ServerData first = BuildServerState(4);
+            new StarMapinitializer(first, new Random(seed)).GenerateStars();
+
+            ServerData second = BuildServerState(4);
+            new StarMapinitializer(second, new Random(seed)).GenerateStars();
+
+            var firstFingerprint = Fingerprint(first);
+            var secondFingerprint = Fingerprint(second);
+
+            Assert.Greater(firstFingerprint.Count, 0, "Generation produced no stars - test setup is broken.");
+            CollectionAssert.AreEqual(firstFingerprint, secondFingerprint);
+        }
+
+        /// <summary>
+        /// The converse of SameSeedProducesIdenticalGalaxy - different seeds must (overwhelmingly
+        /// likely to) produce different galaxies, proving the seed actually has an effect rather
+        /// than being accepted and ignored.
+        /// </summary>
+        /// <summary>
+        /// docs/behavior-specs-3/diplomacy-relations.md §1 confirms (via decompile of the
+        /// exported client) that a newly created race's relationship toward every other race
+        /// initializes to Neutral - Gameinitializer.GenerateEmpires previously set every pair to
+        /// Enemy instead, meaning every new game started with all empires already at war with
+        /// everyone else.
+        /// </summary>
+        [Test]
+        public void NewGame_InitialRelationsAreNeutral()
+        {
+            GameSettings.Data.MapHeight = 400;
+            GameSettings.Data.MapWidth = 400;
+            GameSettings.Data.StarDensity = 60;
+            GameSettings.Data.StarSeparation = 10;
+            GameSettings.Data.StarUniformity = 60;
+            GameSettings.Data.GameName = "RelationsDefaultTest";
+
+            string tempFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "NovaTest_" + Guid.NewGuid().ToString("N"));
+            System.IO.Directory.CreateDirectory(tempFolder);
+
+            // Gameinitializer's private constructor writes this run's temp folder into
+            // nova.conf (a real, shared, cross-process file - not scoped to this test process),
+            // via Config's ServerFolder/GameSettingsFile keys. Once tempFolder is deleted below,
+            // anything that later falls back to those keys (e.g. a real Nova.exe launch trying
+            // to locate its settings file) breaks - confirmed live: this exact test corrupted
+            // nova.conf earlier this session and broke `Nova.exe --gui -i <intel>` afterward
+            // with a hidden "please locate Your Game Name.settings" dialog, until nova.conf was
+            // manually repaired. Snapshotting and restoring it here, unconditionally, prevents
+            // this test from ever leaking that kind of global side effect again.
+            string configFile = Nova.Common.FileSearcher.GetConfigFile();
+            bool configExisted = System.IO.File.Exists(configFile);
+            byte[] configBackup = configExisted ? System.IO.File.ReadAllBytes(configFile) : null;
+
+            try
+            {
+                Race raceA = new Race();
+                raceA.Name = "NeutralTestRaceA";
+                Race raceB = new Race();
+                raceB.Name = "NeutralTestRaceB";
+
+                var knownRaces = new Dictionary<string, Race> { { raceA.Name, raceA }, { raceB.Name, raceB } };
+                var players = new List<PlayerSettings>
+                {
+                    new PlayerSettings { PlayerNumber = 1, RaceName = raceA.Name, AiProgram = "Human" },
+                    new PlayerSettings { PlayerNumber = 2, RaceName = raceB.Name, AiProgram = "Human" },
+                };
+
+                // Drives Gameinitializer's private constructor + GenerateEmpires directly via
+                // reflection - the only two steps this test actually needs - rather than the
+                // full public Initialize pipeline, which also generates a star map and writes
+                // real game files to disk (unnecessary I/O for checking one default value).
+                var ctor = typeof(Gameinitializer).GetConstructor(
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+                    null, new[] { typeof(string) }, null);
+                object game = ctor.Invoke(new object[] { tempFolder });
+
+                var generateEmpires = typeof(Gameinitializer).GetMethod("GenerateEmpires", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                generateEmpires.Invoke(game, new object[] { players, knownRaces });
+
+                ServerData serverState = ((Gameinitializer)game).ServerState;
+
+                foreach (EmpireData empire in serverState.AllEmpires.Values)
+                {
+                    foreach (EmpireIntel report in empire.EmpireReports.Values)
+                    {
+                        Assert.AreEqual(PlayerRelation.Neutral, report.Relation,
+                            $"Empire {empire.Id}'s initial relation toward empire {report.Id} should be Neutral, not {report.Relation}.");
+                    }
+                }
+            }
+            finally
+            {
+                try
+                {
+                    if (configExisted)
+                    {
+                        System.IO.File.WriteAllBytes(configFile, configBackup);
+                    }
+                    else if (System.IO.File.Exists(configFile))
+                    {
+                        System.IO.File.Delete(configFile);
+                    }
+                }
+                catch
+                {
+                    // Best-effort restore - see the comment above on why this matters, but a
+                    // failure here shouldn't also fail the assertion this test already made.
+                }
+
+                try
+                {
+                    System.IO.Directory.Delete(tempFolder, true);
+                }
+                catch
+                {
+                    // Best-effort cleanup - not the point of the test.
+                }
+            }
+        }
+
+        [Test]
+        public void DifferentSeedsProduceDifferentGalaxies()
+        {
+            GameSettings.Data.MapHeight = 400;
+            GameSettings.Data.MapWidth = 400;
+            GameSettings.Data.StarDensity = 60;
+            GameSettings.Data.StarSeparation = 10;
+            GameSettings.Data.StarUniformity = 60;
+
+            ServerData first = BuildServerState(4);
+            new StarMapinitializer(first, new Random(111)).GenerateStars();
+
+            ServerData second = BuildServerState(4);
+            new StarMapinitializer(second, new Random(222)).GenerateStars();
+
+            CollectionAssert.AreNotEqual(Fingerprint(first), Fingerprint(second));
+        }
+
         /// ----------------------------------------------------------------------------
         /// <Summary>
         /// Test rectangular map generation.
@@ -148,6 +342,15 @@ namespace Nova.Tests.IntegrationTests
                 if (star.Owner == itEmpire.Id)
                 {
                     itOwnedStars++;
+
+                    // Both of IT's planets should have a Stargate-equipped starbase (docs/
+                    // behavior-specs/race-traits.md §2: "IT: Starts with two Stargate-equipped
+                    // planets") - previously only the primary home star got a starbase at all,
+                    // and even that one had no Gate component.
+                    Assert.IsNotNull(star.Starbase, $"{star.Name} should have a starbase");
+                    ShipDesign design = star.Starbase.Composition.Values.First().Design;
+                    design.Update();
+                    Assert.IsTrue(design.Summary.Properties.ContainsKey("Gate"), $"{star.Name}'s starbase should have a Stargate");
                 }
                 if (star.Owner == normalEmpire.Id)
                 {
@@ -157,6 +360,62 @@ namespace Nova.Tests.IntegrationTests
 
             Assert.AreEqual(2, itOwnedStars, "Interstellar Traveler should start with two planets");
             Assert.AreEqual(1, normalOwnedStars, "A race without PP/IT should start with only one planet");
+        }
+
+        /// <Summary>
+        /// Packet Physics' second planet should get a Mass-Driver-equipped starbase too - without
+        /// one, PP's whole signature mechanic (flinging mineral packets between its two home
+        /// worlds) has nothing to fling from. Mirrors GeneratePlayerAssets_
+        /// PacketPhysicsAndInterstellarTraveler_GetSecondPlanet above but checks PP specifically.
+        /// </Summary>
+        [Test]
+        public void GeneratePlayerAssets_PacketPhysics_SecondPlanetHasMassDriverStarbase()
+        {
+            ServerData serverState = new ServerData();
+
+            GameSettings.Data.MapHeight = 400;
+            GameSettings.Data.MapWidth = 400;
+            GameSettings.Data.StarDensity = 60;
+            GameSettings.Data.StarSeparation = 10;
+            GameSettings.Data.StarUniformity = 60;
+
+            Race ppRace = new Race();
+            ppRace.Name = "PPRace";
+            ppRace.Traits.SetPrimary("PP");
+            serverState.AllRaces.Add(ppRace.Name, ppRace);
+
+            serverState.AllPlayers.Add(new PlayerSettings());
+
+            EmpireData ppEmpire = new EmpireData();
+            ppEmpire.Id = 1;
+            ppEmpire.Race = ppRace;
+            serverState.AllEmpires[ppEmpire.Id] = ppEmpire;
+
+            StarMapinitializer starMapInitializer = new StarMapinitializer(serverState);
+            starMapInitializer.GenerateStars();
+            starMapInitializer.GeneratePlayerAssets();
+
+            int starbasesWithMassDriver = 0;
+            int ppOwnedStars = 0;
+            foreach (Star star in serverState.AllStars.Values)
+            {
+                if (star.Owner != ppEmpire.Id)
+                {
+                    continue;
+                }
+
+                ppOwnedStars++;
+                Assert.IsNotNull(star.Starbase, $"{star.Name} should have a starbase");
+                ShipDesign design = star.Starbase.Composition.Values.First().Design;
+                design.Update();
+                if (design.Summary.Properties.ContainsKey("Mass Driver"))
+                {
+                    starbasesWithMassDriver++;
+                }
+            }
+
+            Assert.AreEqual(2, ppOwnedStars, "Packet Physics should start with two planets");
+            Assert.AreEqual(2, starbasesWithMassDriver, "Both of Packet Physics' starbases should have a Mass Driver");
         }
     }
 }

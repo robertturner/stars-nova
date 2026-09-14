@@ -22,21 +22,20 @@
 namespace Nova.Common
 {
     using System;
-    using System.Drawing;
     using System.Xml;
 
     /// <summary>
-    /// This object defines the class ShipIcon which manages an icon as a paired
-    /// Bitmap and a String holding the image file's path. The Bitmap is for 
-    /// display purposes and the file path is for loading/saving.
+    /// This object defines the class ShipIcon which manages an icon as a paired image (a
+    /// platform-specific object - see PlatformHooks.LoadImage) and a String holding the image
+    /// file's path. The image is for display purposes and the file path is for loading/saving.
     /// </summary>
     [Serializable]
     public class ShipIcon : ICloneable
     {
         private readonly int index;
         public string Source = string.Empty;
-        private Bitmap image;
-        public Bitmap Image
+        private object image;
+        public object Image
         {
             get
             {
@@ -45,7 +44,7 @@ namespace Nova.Common
                     // atempt to retrieve image
                     try
                     {
-                        image = new Bitmap(Source);
+                        image = PlatformHooks.LoadImage(Source);
                     }
                     catch
                     {
@@ -71,7 +70,7 @@ namespace Nova.Common
         /// </summary>
         /// <param name="source">The path and file name to the icon.</param>
         /// <param name="image">The loaded image.</param>
-        public ShipIcon(string source, Bitmap image)
+        public ShipIcon(string source, object image)
         {
             Source = source;
             Image = image;

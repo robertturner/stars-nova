@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text;
 
 using System.Diagnostics;
-using System.Windows.Forms;
 
 namespace Nova.Common.RaceDefinition
 {
@@ -384,7 +383,9 @@ namespace Nova.Common.RaceDefinition
                 if (tmpPoints < -4 && (race.ColonistsPerResource / 100) < 10) points -= 190;
             }
             if (race.Traits.Contains("ExtraTech")) points -= 180;
-            if (PRT == PRT_AR && race.ResearchCosts[TechLevel.ResearchField.Energy] == 50/*50% less*/) points -= 100;
+            // docs/behavior-specs-4/race-traits.md item 9: this penalty applies when Energy
+            // research is set to EXPENSIVE (175), not Cheap - it was inverted here previously.
+            if (PRT == PRT_AR && race.ResearchCosts[TechLevel.ResearchField.Energy] == 175/*expensive*/) points -= 100;
 
             /*cout << "Step 8, points = " << points << endl;*/
 

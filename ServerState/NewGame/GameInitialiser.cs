@@ -35,7 +35,8 @@ namespace Nova.Server.NewGame
     {
         private ServerData serverState;
         private StarMapinitializer starMapinitializer;
-        private NameGenerator nameGenerator = new NameGenerator();
+        private readonly Random random;
+        private NameGenerator nameGenerator;
         
         public ServerData ServerState
         {
@@ -60,7 +61,20 @@ namespace Nova.Server.NewGame
         private Gameinitializer(string gameFolderPath)
         {
             serverState = new ServerData();
-            
+
+            // Resolve the game's generation seed once, here, before anything is generated -
+            // a null Seed (never explicitly set, e.g. by NewGameWizard's "Randomize"/blank-seed
+            // default) becomes a freshly-generated one, written straight back so the actual
+            // value used is always recorded in the saved settings and can be shown to the user.
+            // One Random built from it is shared by every generation step below (race-name
+            // de-duplication here, and everything StarMapinitializer does), so the whole
+            // process is reproducible from that single seed - see GameSettings.Seed.
+            int seed = GameSettings.Data.Seed ?? Environment.TickCount;
+            GameSettings.Data.Seed = seed;
+            random = new Random(seed);
+            nameGenerator = new NameGenerator(random);
+
+
             // store the updated Game Folder information
             using (Config conf = new Config())
             {
@@ -84,7 +98,7 @@ namespace Nova.Server.NewGame
                 conf[Global.ServerStateKey] = serverState.StatePathName;
             }
             
-            starMapinitializer = new StarMapinitializer(serverState);
+            starMapinitializer = new StarMapinitializer(serverState, random);
         }
 
 
@@ -130,7 +144,10 @@ namespace Nova.Server.NewGame
                 empireData.AvailableComponents = new RaceComponents(empireData.Race, empireData.ResearchLevels);
             }
             
-            // Create initial relations.
+            // Create initial relations. docs/behavior-specs-3/diplomacy-relations.md §1
+            // confirms (via decompile of the exported client) that a newly created race's
+            // relationship toward every other race initializes to Neutral, not Enemy - every
+            // new game previously started with all empires already at war with each other.
             foreach (EmpireData wolf in serverState.AllEmpires.Values)
             {
                 foreach (EmpireData lamb in serverState.AllEmpires.Values)
@@ -138,7 +155,7 @@ namespace Nova.Server.NewGame
                     if (wolf.Id != lamb.Id)
                     {
                         wolf.EmpireReports.Add(lamb.Id, new EmpireIntel(lamb));
-                        wolf.EmpireReports[lamb.Id].Relation = PlayerRelation.Enemy;
+                        wolf.EmpireReports[lamb.Id].Relation = PlayerRelation.Neutral;
                     }
                 }
             }
@@ -147,7 +164,8 @@ namespace Nova.Server.NewGame
 
         private void GenerateStarMap()
         {
-            starMapinitializer.GenerateStars();   
+            starMapinitializer.GenerateStars();
+            starMapinitializer.GenerateWormholes();
         }
 
 

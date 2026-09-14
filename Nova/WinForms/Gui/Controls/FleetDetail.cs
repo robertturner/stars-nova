@@ -269,6 +269,98 @@ namespace Nova.WinForms.Gui
         }
 
         /// <Summary>
+        /// Enable/disable the Move Up/Down buttons for whichever waypoint is now selected.
+        /// Waypoints[0] (the fleet's current position) is immovable - mirroring the existing
+        /// Delete-key guard (index > 0) in OnKeyDown/OnKeyPress above - so Up is only available
+        /// from index 2 onward (index 1 would otherwise swap into the immovable slot 0), and
+        /// Down is unavailable at index 0 or the last index.
+        /// </Summary>
+        private void UpdateWaypointReorderButtons(int index)
+        {
+            waypointUp.Enabled = index >= 2;
+            waypointDown.Enabled = index >= 1 && index < selectedFleet.Waypoints.Count - 1;
+        }
+
+        /// <Summary>
+        /// Move the selected waypoint one position earlier in the route by swapping its payload
+        /// with the previous waypoint - two WaypointCommand(Edit,...) pushes, the same "swap
+        /// adjacent rows" idiom ProductionDialog.QueueUp_Click already uses for the production
+        /// queue, rather than a new CommandMode.
+        /// </Summary>
+        private void WaypointUp_Click(object sender, EventArgs e)
+        {
+            int index = SelectedWaypointIndex;
+            if (index < 2)
+            {
+                return;
+            }
+
+            SwapWaypoints(index, index - 1);
+        }
+
+        /// <Summary>
+        /// Move the selected waypoint one position later in the route. See WaypointUp_Click.
+        /// </Summary>
+        private void WaypointDown_Click(object sender, EventArgs e)
+        {
+            int index = SelectedWaypointIndex;
+            if (index < 1 || index >= selectedFleet.Waypoints.Count - 1)
+            {
+                return;
+            }
+
+            SwapWaypoints(index, index + 1);
+        }
+
+        /// <Summary>
+        /// Swap the waypoints currently at indexA/indexB by pushing an Edit command for each,
+        /// carrying the other's payload - after this, whatever was at indexA is at indexB and
+        /// vice versa. Refreshes the bound list and keeps the moved waypoint selected at its new
+        /// position (unlike UpdateWaypointList, which always jumps to the last item - appropriate
+        /// for "a waypoint was added/deleted", not for "the user is actively reordering").
+        /// </Summary>
+        private void SwapWaypoints(int indexA, int indexB)
+        {
+            Waypoint waypointA = CloneWaypointFully(selectedFleet.Waypoints[indexA]);
+            Waypoint waypointB = CloneWaypointFully(selectedFleet.Waypoints[indexB]);
+
+            PushWaypointEdit(waypointB, indexA);
+            PushWaypointEdit(waypointA, indexB);
+
+            ((CurrencyManager)wayPoints.BindingContext[wayPoints.DataSource]).Refresh();
+            wayPoints.SelectedIndex = indexB;
+
+            if (StarmapChanged != null)
+            {
+                OnStarmapChanged(EventArgs.Empty);
+            }
+        }
+
+        /// <Summary>
+        /// Waypoint's own copy constructor deliberately drops Task ("used for editing purposes" -
+        /// its own doc comment; reassigning a waypoint's destination reasonably clears any task
+        /// tied to the old one). That's wrong for a reorder, which must preserve every field
+        /// exactly - only the position in the list should change - so Task is restored explicitly
+        /// here rather than reusing that constructor as-is.
+        /// </Summary>
+        private static Waypoint CloneWaypointFully(Waypoint source)
+        {
+            return new Waypoint(source) { Task = source.Task };
+        }
+
+        private void PushWaypointEdit(Waypoint waypoint, int index)
+        {
+            WaypointCommand command = new WaypointCommand(CommandMode.Edit, waypoint, selectedFleet.Key, index);
+
+            commands.Push(command);
+
+            if (command.IsValid(empireState))
+            {
+                command.ApplyToState(empireState);
+            }
+        }
+
+        /// <Summary>
         /// If a waypoint task changes, and a waypoint is selected, change the task at
         /// that waypoint.
         /// </Summary>
@@ -387,6 +479,8 @@ namespace Nova.WinForms.Gui
         /// <param name="index">Index of the waypoint to display.</param>
         private void DisplayLegDetails(int index)
         {
+            UpdateWaypointReorderButtons(index);
+
             Waypoint thisWaypoint = selectedFleet.Waypoints[index];
 
             WaypointTasks.Text = thisWaypoint.Task.Name;

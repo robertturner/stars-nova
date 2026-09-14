@@ -64,6 +64,15 @@ namespace Nova.WinForms.Gui
         /// </Summary>
         public Func<int> GetWaypointInsertIndex;
 
+        /// <Summary>
+        /// Optional callback returning the map-overlay mode currently chosen in the Minefield
+        /// Inspector - queried only for whichever minefield is currently selected, so the map
+        /// can vary that one minefield's overlay (radius circle vs. mine-count vs. safe-speed
+        /// label) without touching the Minefield object itself. Defaults to a radius circle
+        /// (matching prior behavior) when unset.
+        /// </Summary>
+        public Func<MinefieldDisplayMode> GetMinefieldDisplayMode;
+
         private readonly Point[] triangle =
         { 
             new Point(0, 5), 
@@ -260,6 +269,12 @@ namespace Nova.WinForms.Gui
                 }
             }
 
+            // Query the current selection once - used below both to vary the selected
+            // minefield's overlay and (further down) to draw the selected fleet's route.
+            SelectionArgs selectionArgs = new SelectionArgs(null);
+            OnSelectionRequested(selectionArgs);
+            Minefield selectedMinefield = selectionArgs.Selection as Minefield;
+
             // (3) Minefields
 
             foreach (Minefield minefield in this.visibleMinefields.Values)
@@ -278,21 +293,47 @@ namespace Nova.WinForms.Gui
                     cf = Color.FromArgb(128, 128, 0, 128);
                 }
 
-
                 HatchStyle style = HatchStyle.DiagonalCross | HatchStyle.Percent50;
                 HatchBrush srMineBrush = new HatchBrush(style, cf, cb);
                 int radius = minefield.Radius;
-                DrawCircle(g, srMineBrush, (Point)minefield.Position, radius);
+
+                // Only the currently selected minefield's overlay can differ from the default
+                // radius circle - ports client-ui-dialog-catalog.md's minefield inspector's map-
+                // overlay selector. Everything else always gets the plain circle, unaffected.
+                MinefieldDisplayMode mode = MinefieldDisplayMode.RadiusCircle;
+                if (selectedMinefield != null && selectedMinefield.Key == minefield.Key && GetMinefieldDisplayMode != null)
+                {
+                    mode = GetMinefieldDisplayMode();
+                }
+
+                switch (mode)
+                {
+                    case MinefieldDisplayMode.MineCountLabel:
+                        DrawCircle(g, srMineBrush, (Point)minefield.Position, radius);
+                        g.DrawString(minefield.NumberOfMines.ToString(System.Globalization.CultureInfo.InvariantCulture), nameFont, Brushes.White, (Point)minefield.Position);
+                        break;
+
+                    case MinefieldDisplayMode.SafeSpeedLabel:
+                        DrawCircle(g, srMineBrush, (Point)minefield.Position, radius);
+                        g.DrawString("Warp " + minefield.SafeSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture), nameFont, Brushes.White, (Point)minefield.Position);
+                        break;
+
+                    default:
+                        DrawCircle(g, srMineBrush, (Point)minefield.Position, radius);
+                        break;
+                }
             }
 
 
             // (4) Visible fleets.
 
+            Fleet selectedFleet = selectionArgs.Selection as Fleet;
+
             foreach (FleetIntel report in clientState.EmpireState.FleetReports.Values)
             {
                 if (report.Type != ItemType.Starbase)
                 {
-                    DrawFleet(g, report);
+                    DrawFleet(g, report, selectedFleet);
                 }
             }
 
@@ -384,7 +425,10 @@ namespace Nova.WinForms.Gui
         /// orbiting fleets are handled in the drawing of the Star.
         /// </Summary>
         /// <param name="fleet">The fleet to draw.</param>
-        private void DrawFleet(Graphics g, FleetIntel report)
+        /// <param name="selectedFleet">The currently selected fleet (if any) - only its route is
+        /// drawn, per client-interface.md's "Selecting a fleet displays its pending route...
+        /// Deselecting... removes the overlay."</param>
+        private void DrawFleet(Graphics g, FleetIntel report, Fleet selectedFleet)
         {
             if (report.InOrbit == false)
             {
@@ -408,23 +452,58 @@ namespace Nova.WinForms.Gui
             if (report.Owner == clientState.EmpireState.Id)
             {
                 Fleet fleet = clientState.EmpireState.OwnedFleets[report.Key];
-                
-                Waypoint first = fleet.Waypoints[0];
-                NovaPoint from = LogicalToDevice(first.Position);
 
-                foreach (Waypoint waypoint in fleet.Waypoints)
+                if (selectedFleet != null && selectedFleet.Key == fleet.Key)
                 {
-                    NovaPoint position = waypoint.Position;                 
-        
-                    g.DrawLine(Pens.Blue, (Point)from, (Point)LogicalToDevice(position));
-                    from = LogicalToDevice(position);
+                    DrawFleetRoute(g, fleet);
+                }
+            }
+        }
+
+        /// <Summary>
+        /// Draw the selected fleet's pending route as an ordered series of legs from its current
+        /// position (Waypoints[0]) through each remaining waypoint - the first leg (route origin)
+        /// is drawn distinctly from later legs, each leg carries an arrowhead showing direction of
+        /// travel, and each waypoint is marked with a dot (a larger, differently-colored one at the
+        /// final destination) - satisfying client-interface.md's requirement that "current
+        /// position, route origin, intermediate waypoints, destination, and leg direction are
+        /// visually distinguishable."
+        /// </Summary>
+        private void DrawFleetRoute(Graphics g, Fleet fleet)
+        {
+            if (fleet.Waypoints.Count < 2)
+            {
+                return;
+            }
+
+            NovaPoint from = LogicalToDevice(fleet.Waypoints[0].Position);
+
+            using (AdjustableArrowCap arrowCap = new AdjustableArrowCap(4, 6))
+            {
+                for (int i = 1; i < fleet.Waypoints.Count; i++)
+                {
+                    NovaPoint to = LogicalToDevice(fleet.Waypoints[i].Position);
+                    bool isFirstLeg = i == 1;
+                    bool isFinalLeg = i == fleet.Waypoints.Count - 1;
+
+                    using (Pen pen = new Pen(isFirstLeg ? Color.Yellow : Color.Cyan, isFirstLeg ? 3f : 2f))
+                    {
+                        pen.CustomEndCap = arrowCap;
+                        g.DrawLine(pen, (Point)from, (Point)to);
+                    }
+
+                    int markerRadius = isFinalLeg ? 5 : 3;
+                    Brush markerBrush = isFinalLeg ? Brushes.Yellow : Brushes.Cyan;
+                    g.FillEllipse(markerBrush, (float)to.X - markerRadius, (float)to.Y - markerRadius, markerRadius * 2, markerRadius * 2);
+
+                    from = to;
                 }
             }
         }
 
         /// <Summary>
         /// Draw a Star. The Star is just a small circle which is a bit bigger if we've
-        /// explored it. 
+        /// explored it.
         /// </Summary>
         /// <remarks>
         /// The color of the Star symbol is based on its Star report (reports for stars
@@ -1019,6 +1098,17 @@ namespace Nova.WinForms.Gui
                 }
             }
 
+            // Minefields are large circles rather than points, so "near" means "inside the
+            // field's radius" - reusing the same overlap test the visibility scan already uses,
+            // with the click treated as a zero-radius circle.
+            foreach (Minefield minefield in this.visibleMinefields.Values)
+            {
+                if (PointUtilities.CirclesOverlap(minefield.Position, position, minefield.Radius, 0))
+                {
+                    nearObjects.Add(minefield);
+                }
+            }
+
             nearObjects.Sort(ItemSorter);
             return nearObjects;
         }
@@ -1130,6 +1220,11 @@ namespace Nova.WinForms.Gui
             if (SelectionChanged != null) {
                 SelectionChanged(this, e);
             }
-        }        
+
+            // The selected-fleet route overlay (see DrawFleetRoute) depends on which object is
+            // currently selected, so any selection change - not just a fleet being selected -
+            // must repaint the map to pick up or clear that overlay.
+            RefreshStarMap(this, EventArgs.Empty);
+        }
     }
 }

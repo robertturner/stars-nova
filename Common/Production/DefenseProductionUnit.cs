@@ -98,7 +98,10 @@ namespace Nova.Common
                 return true;
             }
 
-            if (star.ResourcesOnHand.Energy <= 0 || star.ResourcesOnHand.Ironium <= 0 || star.ResourcesOnHand.Boranium <= 0 || star.ResourcesOnHand.Germanium <= 0)
+            // Defenses need only resources (see Global.DefenseIroniumCost's own comment) - a
+            // mineral-on-hand check here would block construction whenever the planet simply
+            // hadn't stockpiled some unrelated mineral, even though none is actually required.
+            if (star.ResourcesOnHand.Energy <= 0)
             {
                 return true;
             }

@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             x:Class="Nova.Avalonia.Views.Panels.SummaryView"
+             x:DataType="panels:SummaryViewModel">
+    <StackPanel Margin="8" Spacing="4">
+        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Year" Opacity="0.7" />
+            <TextBlock Grid.Column="1" Text="{Binding Year}" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Planets" Opacity="0.7" />
+            <TextBlock Grid.Column="1" Text="{Binding PlanetCount}" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Fleets" Opacity="0.7" />
+            <TextBlock Grid.Column="1" Text="{Binding FleetCount}" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Population" Opacity="0.7" />
+            <TextBlock Grid.Column="1" Text="{Binding TotalPopulation, StringFormat='{}{0:N0}'}" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Ironium" Opacity="0.7" />
+            <TextBlock Grid.Column="1" Text="{Binding TotalIronium, StringFormat='{}{0}kT'}" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Boranium" Opacity="0.7" />
+            <TextBlock Grid.Column="1" Text="{Binding TotalBoranium, StringFormat='{}{0}kT'}" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Germanium" Opacity="0.7" />
+            <TextBlock Grid.Column="1" Text="{Binding TotalGermanium, StringFormat='{}{0}kT'}" />
+        </Grid>
+    </StackPanel>
+</UserControl>

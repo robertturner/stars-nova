@@ -329,7 +329,7 @@ namespace Nova.Server
         /// <returns>Returns 1 if the second place score is exceeded by the required amount, 0 otherwise.</returns>
         private int ExceedsSecondPlace(int empireId)
         {
-            if (GameSettings.Data.CapitalShips.IsChecked == false)
+            if (GameSettings.Data.SecondPlaceScore.IsChecked == false)
             {
                 return 0;
             }
@@ -353,7 +353,11 @@ namespace Nova.Server
                 }
             }
 
-            secondPlaceScore *= GameSettings.Data.SecondPlaceScore.NumericValue;
+            // NumericValue is a PERCENTAGE ("exceeds the second-place race's score by this
+            // percentage" - docs/behavior-specs-4/victory-conditions.md's condition 5), so the
+            // default of 100 should require double the second-place score, not a flat
+            // multiplication by 100 (which made this condition effectively unreachable).
+            secondPlaceScore = secondPlaceScore * (100 + GameSettings.Data.SecondPlaceScore.NumericValue) / 100;
 
             if (ourScore > secondPlaceScore)
             {

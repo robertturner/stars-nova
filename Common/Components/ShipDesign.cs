@@ -504,7 +504,22 @@ namespace Nova.Common.Components
                 return StandardMines.LayerRate;
             }
         }
-        
+
+        /// <summary>Total remote-mining capacity (mine-equivalents) this design contributes per
+        /// ship - docs/behavior-specs-4/population-growth.md's `mineEquivalents` term, summed
+        /// from every installed "Mining Robot" component. The per-fleet 4,000 cap described
+        /// there applies at the Fleet level (Fleet.MineEquivalents), not here.</summary>
+        public int MineEquivalents
+        {
+            get
+            {
+                Update();
+                return Summary.Properties.ContainsKey("Mining Robot")
+                    ? ((IntegerProperty)Summary.Properties["Mining Robot"]).Value
+                    : 0;
+            }
+        }
+
         /// <summary>
         /// Get if this ship has weapons.
         /// </summary>
@@ -623,6 +638,19 @@ namespace Nova.Common.Components
             // Start by copying the basic properties of the hull
             Summary = new Component(Blueprint);
 
+            // These six fields aren't part of Summary (see their own declaring comment - "can't
+            // be fully sumarised, as their properties can't be simply added"), so unlike Summary
+            // they were never reset here - each call accumulated more onto whatever a PREVIOUS
+            // call had already summed, growing without bound the more often any property that
+            // triggers Update() (MineCount, HasWeapons, etc.) was read. Real bug, since these
+            // getters call Update() on every single access, not just once per design.
+            Weapons.Clear();
+            ConventionalBombs = new Bomb(0, 0, 0, false);
+            SmartBombs = new Bomb(0, 0, 0, true);
+            StandardMines = new MineLayer();
+            HeavyMines = new MineLayer();
+            SpeedBumbMines = new MineLayer();
+
             // Add those properties which are included with the hull
 
             IntegerProperty armor = new IntegerProperty(Hull.ArmorStrength);
@@ -721,6 +749,8 @@ namespace Nova.Common.Components
                 case "Driver":
                 case "Fuel":
                 case "Jammer":
+                case "Mass Driver":
+                case "Mining Robot":
                 case "Movement":
                 case "Orbital Adjuster":
                 case "Radiation":

@@ -23,8 +23,7 @@ namespace Nova.Server.NewGame
 {
     using System;
     using System.Collections.Generic;
-    using System.Drawing;
-    
+
     using Nova.Common;
     using Nova.Common.Components;
     using Nova.Common.DataStructures;
@@ -37,19 +36,29 @@ namespace Nova.Server.NewGame
     {
         private ServerData serverState;
         private StarMapGenerator map;
-        private NameGenerator nameGenerator = new NameGenerator();
+        private readonly Random random;
+        private NameGenerator nameGenerator;
         private Resources homeStarDefaultMineralConcentration = new Resources();
         private Resources homeStarDefaultSurfaceMinerals = new Resources();
-        
-        public StarMapinitializer(ServerData serverState)
+
+        /// <param name="random">
+        /// The Random to draw every map/mineral/homeworld-slot value from, and to construct the
+        /// shared NameGenerator with. Optional (defaults to a freshly-seeded one) so existing
+        /// callers are unaffected; pass in the same seeded Random Gameinitializer uses elsewhere
+        /// to make a whole game's generation reproducible from one seed - see GameSettings.Seed.
+        /// </param>
+        public StarMapinitializer(ServerData serverState, Random random = null)
         {
             this.serverState = serverState;
+            this.random = random ?? new Random();
+            this.nameGenerator = new NameGenerator(this.random);
             this.map = new StarMapGenerator(
                 GameSettings.Data.MapWidth,
                 GameSettings.Data.MapHeight,
                 GameSettings.Data.StarSeparation,
                 GameSettings.Data.StarDensity,
-                GameSettings.Data.StarUniformity);
+                GameSettings.Data.StarUniformity,
+                this.random);
         }
 
 
@@ -67,7 +76,6 @@ namespace Nova.Server.NewGame
         {
             map.Generate(serverState.AllPlayers.Count);
 
-            Random random = new Random(); // NB: do this outside the loop so that random is seeded only once.
             foreach (int[] starPosition in map.Stars)
             {
                 Star star = new Star();
@@ -94,7 +102,92 @@ namespace Nova.Server.NewGame
                 serverState.AllStars[star.Name] = star;
             }
         }
-        
+
+        /// <summary>
+        /// Places a handful of Wormhole pairs around the galaxy, each end far enough from any
+        /// star (a real gravity well) and from every other special object - docs/behavior-specs-4/
+        /// fleet-movement-scanning-cargo.md's "Wormholes" section. Must run after GenerateStars()
+        /// so there are real star positions to keep clear of.
+        ///
+        /// Two simplifications from that section, both disclosed there and in Wormhole.cs's own
+        /// comment: this uses a plain minimum-distance check rather than the spec's own
+        /// unquantified "four squared-distance tiers" placement scoring, and the pair COUNT itself
+        /// (one pair per ~20 stars, minimum 1) is an invented, reasonable density - the spec
+        /// doesn't state how many wormholes a galaxy should generate with.
+        /// </summary>
+        public void GenerateWormholes()
+        {
+            const double minimumDistanceFromAnyObject = 30.0;
+            const int maxPlacementAttempts = 200;
+
+            int pairCount = Math.Max(1, serverState.AllStars.Count / 20);
+
+            for (int i = 0; i < pairCount; i++)
+            {
+                Wormhole first = PlaceOneWormhole(minimumDistanceFromAnyObject, maxPlacementAttempts);
+                if (first == null)
+                {
+                    continue; // galaxy too crowded to fit another pair - stop trying for more
+                }
+
+                Wormhole second = PlaceOneWormhole(minimumDistanceFromAnyObject, maxPlacementAttempts);
+                if (second == null)
+                {
+                    serverState.AllWormholes.Remove(first.Key);
+                    continue;
+                }
+
+                first.PairedKey = second.Key;
+                second.PairedKey = first.Key;
+            }
+        }
+
+        private Wormhole PlaceOneWormhole(double minimumDistanceFromAnyObject, int maxAttempts)
+        {
+            for (int attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                NovaPoint candidate = new NovaPoint(random.Next(0, GameSettings.Data.MapWidth), random.Next(0, GameSettings.Data.MapHeight));
+
+                bool tooClose = false;
+                foreach (Star star in serverState.AllStars.Values)
+                {
+                    if (PointUtilities.Distance(candidate, star.Position) < minimumDistanceFromAnyObject)
+                    {
+                        tooClose = true;
+                        break;
+                    }
+                }
+
+                if (!tooClose)
+                {
+                    foreach (Wormhole existing in serverState.AllWormholes.Values)
+                    {
+                        if (PointUtilities.Distance(candidate, existing.Position) < minimumDistanceFromAnyObject)
+                        {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (tooClose)
+                {
+                    continue;
+                }
+
+                Wormhole wormhole = new Wormhole();
+                wormhole.Key = nextWormholeKey++;
+                wormhole.Position = candidate;
+                wormhole.StabilityTier = random.Next(7); // 0 (Rock Solid) - 6 (Very Unstable)
+                serverState.AllWormholes.Add(wormhole.Key, wormhole);
+                return wormhole;
+            }
+
+            return null;
+        }
+
+        private long nextWormholeKey = 1;
+
 
         /// <summary>
         /// Initialize the general game data for each player. E,g, picking a home.
@@ -183,7 +276,7 @@ namespace Nova.Server.NewGame
                     module.ComponentCount = 1;
                 }
             }
-            cs.Icon = new ShipIcon(colonyShipHull.ImageFile, (Bitmap)colonyShipHull.ComponentImage);
+            cs.Icon = new ShipIcon(colonyShipHull.ImageFile, colonyShipHull.ComponentImage);
 
             cs.Type = ItemType.Ship;
             cs.Name = "Santa Maria";
@@ -204,7 +297,7 @@ namespace Nova.Server.NewGame
                     module.ComponentCount = 1;
                 }
             }
-            scout.Icon = new ShipIcon(scoutHull.ImageFile, (Bitmap)scoutHull.ComponentImage);
+            scout.Icon = new ShipIcon(scoutHull.ImageFile, scoutHull.ComponentImage);
 
             scout.Type = ItemType.Ship;
             scout.Name = "Scout";
@@ -214,7 +307,7 @@ namespace Nova.Server.NewGame
             starbase.Name = "Starbase";
             starbase.Blueprint = starbaseHull;
             starbase.Type = ItemType.Starbase;
-            starbase.Icon = new ShipIcon(starbaseHull.ImageFile, (Bitmap)starbaseHull.ComponentImage);
+            starbase.Icon = new ShipIcon(starbaseHull.ImageFile, starbaseHull.ComponentImage);
             bool weaponSwitcher = false; // start with laser
             bool armorSwitcher = false; // start with armor
             foreach (HullModule module in starbase.Hull.Modules)
@@ -249,6 +342,31 @@ namespace Nova.Server.NewGame
                     }
                     module.ComponentCount = 8;
                     armorSwitcher = !armorSwitcher;
+                }
+            }
+
+            // Interstellar Traveler and Packet Physics both start with a starbase equipped for
+            // their signature mechanic - see ProcessPrimaryTraits' own comments ("2 planets with
+            // 100/250 stargates" for IT; the Energy=24 starting research level exists specifically
+            // so Mass Driver 5's tech requirement is already met for PP). Every starbase this
+            // empire ever starts with (both InitializeHomeStar's primary home star and its PP/IT
+            // second planet, added below) shares this one Design, so equipping it once here here
+            // covers both. The Space Station hull's two "Orbital or Electrical" slots (cells 11
+            // and 13) are otherwise left empty by the loop above.
+            if (empire.Race.HasTrait("IT") || empire.Race.HasTrait("PP"))
+            {
+                Component orbitalComponent = empire.Race.HasTrait("IT")
+                    ? components.Fetch("Stargate 100/250")
+                    : components.Fetch("Mass Driver 5");
+
+                foreach (HullModule module in starbase.Hull.Modules)
+                {
+                    if (module.ComponentType == "Orbital or Electrical" && module.AllocatedComponent == null)
+                    {
+                        module.AllocatedComponent = orbitalComponent;
+                        module.ComponentCount = 1;
+                        break;
+                    }
                 }
             }
 
@@ -305,15 +423,16 @@ namespace Nova.Server.NewGame
 
         private void PrepareResources()
         {
-            Random random = new Random();
-
             this.homeStarDefaultSurfaceMinerals.Boranium = random.Next(300, 500);
             this.homeStarDefaultSurfaceMinerals.Ironium = random.Next(300, 500);
             this.homeStarDefaultSurfaceMinerals.Germanium = random.Next(300, 500);
 
-            this.homeStarDefaultMineralConcentration.Boranium = random.Next(50, 100);
-            this.homeStarDefaultMineralConcentration.Ironium = random.Next(50, 100);
-            this.homeStarDefaultMineralConcentration.Germanium = random.Next(50, 100);
+            // docs/behavior-specs-3/new-game-setup.md §3 confirms (via decompile of the exported
+            // client) home-world mineral concentrations randomize to 100-299 inclusive, not the
+            // previous 50-99 - Random.Next's upper bound is exclusive, hence 300 here.
+            this.homeStarDefaultMineralConcentration.Boranium = random.Next(100, 300);
+            this.homeStarDefaultMineralConcentration.Ironium = random.Next(100, 300);
+            this.homeStarDefaultMineralConcentration.Germanium = random.Next(100, 300);
         }
         
         /// <summary>
@@ -327,9 +446,7 @@ namespace Nova.Server.NewGame
         {
             if (map.Homeworlds.Count > 0)
             {
-                Random random = new Random();
-                
-                int[] starPosition = map.Homeworlds[random.Next(map.Homeworlds.Count)];   
+                int[] starPosition = map.Homeworlds[random.Next(map.Homeworlds.Count)];
                 
                 Star star = new Star();
                 star.Owner = empire.Id;
@@ -354,16 +471,22 @@ namespace Nova.Server.NewGame
                 // second slot here would leave a later player with no home star at all and hit
                 // the FatalError below. Instead it grants the nearest currently-unowned regular
                 // star generated by GenerateStars(), converted to the same habitability/
-                // population/resources treatment as a real homeworld. IT's specific "Stargate-
-                // equipped" detail is not yet reflected (stargates themselves aren't implemented
-                // in this codebase yet), and PP's "(non-tiny universes)" qualifier is not
-                // checked - both are open follow-ups; see PROJECT-STATUS.md.
+                // population/resources treatment as a real homeworld, plus a starbase (see
+                // AllocateStarbase below) - equipped with a Stargate for IT, or a Mass Driver for
+                // PP, per PrepareDesigns' own comment. PP's "(non-tiny universes)" qualifier is
+                // still not checked - an open follow-up; see PROJECT-STATUS.md.
                 if (empire.Race.HasTrait("PP") || empire.Race.HasTrait("IT"))
                 {
                     Star secondStar = FindNearestUnownedStar(star.Position);
                     if (secondStar != null)
                     {
                         AllocateHomeStarResources(secondStar, empire);
+
+                        // Both PRTs' second planet gets a starbase too (see PrepareDesigns' own
+                        // comment for how that shared Design is equipped for each) - just not a
+                        // second full colony-ship/scout fleet, which real Stars! doesn't grant
+                        // here either.
+                        AllocateStarbase(secondStar, empire);
                     }
                 }
 
@@ -450,26 +573,37 @@ namespace Nova.Server.NewGame
             
             ShipToken scout = new ShipToken(scoutDesign, 1);
             Fleet scoutFleet = new Fleet(scout, star, empire.GetNextFleetKey());
-            scoutFleet.Name = "Scout #1";       
+            scoutFleet.Name = "Scout #1";
             empire.AddOrUpdateFleet(scoutFleet);
- 
+
+            AllocateStarbase(star, empire);
+        }
+
+        /// <summary>
+        /// Builds and attaches this empire's starbase to the given star - factored out of
+        /// AllocateHomeStarOrbitalInstallations so it can also be called for Interstellar
+        /// Traveler/Packet Physics' second starting planet (see InitializeHomeStar), which gets a
+        /// starbase but not a fresh colony-ship/scout fleet like a true home star does.
+        /// </summary>
+        private void AllocateStarbase(Star star, EmpireData empire)
+        {
             ShipDesign starbaseDesign = null;
             foreach (ShipDesign design in empire.Designs.Values)
             {
                 if (design.Name == "Starbase")
                 {
-                    starbaseDesign = design;    
+                    starbaseDesign = design;
                 }
             }
-            
+
             ShipToken starbase = new ShipToken(starbaseDesign, 1);
-            Fleet starbaseFleet = new Fleet(starbase, star, empire.GetNextFleetKey());            
+            Fleet starbaseFleet = new Fleet(starbase, star, empire.GetNextFleetKey());
             starbaseFleet.Name = star.Name + " Starbase";
             star.Starbase = starbaseFleet;
             empire.AddOrUpdateFleet(starbaseFleet);
         }
 
-        
+
         /// <summary>
         /// Allocate an initial set of resources to a player's "home" star system. for
         /// each player giving it some colonists and initial resources. 
@@ -478,8 +612,6 @@ namespace Nova.Server.NewGame
         /// <param name="e">A <see cref="EventArgs"/> that contains the event data.</param>
         private void AllocateHomeStarResources(Star star, EmpireData empire)
         {
-            Random random = new Random();
-
             // Set the owner of the home star in order to obtain proper
             // starting resources.
             star.Owner = empire.Id;

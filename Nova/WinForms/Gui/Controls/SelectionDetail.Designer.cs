@@ -30,32 +30,43 @@ namespace Nova.WinForms.Gui
       {
           this.planetDetail = new PlanetDetail(empireState, clientState);
           this.fleetDetail = new FleetDetail(clientState);
+          this.minefieldInspector = new MinefieldInspector();
           this.SuspendLayout();
-          // 
+          //
           // planetDetail1
-          // 
+          //
           this.planetDetail.Dock = System.Windows.Forms.DockStyle.Fill;
           this.planetDetail.Location = new System.Drawing.Point(0, 0);
           this.planetDetail.Margin = new System.Windows.Forms.Padding(0);
           this.planetDetail.Name = "planetDetail1";
           this.planetDetail.Size = new System.Drawing.Size(361, 399);
-          this.planetDetail.TabIndex = 0;   
-          // 
+          this.planetDetail.TabIndex = 0;
+          //
           // fleetDetail1
-          // 
+          //
           this.fleetDetail.Dock = System.Windows.Forms.DockStyle.Fill;
           this.fleetDetail.Location = new System.Drawing.Point(0, 0);
           this.fleetDetail.Margin = new System.Windows.Forms.Padding(0);
           this.fleetDetail.Name = "fleetDetail1";
           this.fleetDetail.Size = new System.Drawing.Size(361, 399);
-          this.fleetDetail.TabIndex = 1;          
-          // 
+          this.fleetDetail.TabIndex = 1;
+          //
+          // minefieldInspector1
+          //
+          this.minefieldInspector.Dock = System.Windows.Forms.DockStyle.Fill;
+          this.minefieldInspector.Location = new System.Drawing.Point(0, 0);
+          this.minefieldInspector.Margin = new System.Windows.Forms.Padding(0);
+          this.minefieldInspector.Name = "minefieldInspector1";
+          this.minefieldInspector.Size = new System.Drawing.Size(361, 399);
+          this.minefieldInspector.TabIndex = 2;
+          //
           // SelectionDetail
-          // 
+          //
           this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
           this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
           this.Controls.Add(this.planetDetail);
           this.Controls.Add(this.fleetDetail);
+          this.Controls.Add(this.minefieldInspector);
           this.Margin = new System.Windows.Forms.Padding(0);
           this.Name = "SelectionDetail";
           this.Size = new System.Drawing.Size(361, 399);
@@ -67,6 +78,7 @@ namespace Nova.WinForms.Gui
 
       private PlanetDetail planetDetail;
       private FleetDetail fleetDetail;
+      private MinefieldInspector minefieldInspector;
 
    }
 }

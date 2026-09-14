@@ -34,6 +34,7 @@ namespace Nova.WinForms.RaceDesigner
     using System;
     using System.Collections;
     using System.ComponentModel;
+    using System.Drawing;
     using System.IO;
     using System.Windows.Forms;
     using System.Xml;
@@ -143,6 +144,7 @@ namespace Nova.WinForms.RaceDesigner
         private OpenFileDialog openFileDialog;
         private NumericUpDown maxGrowth;
         private Label label4;
+        private Label worldAvailability;
         private CheckBox extraTech;
         private TabPage leftoverPointsTab;
         private GroupBox groupBox10;
@@ -180,7 +182,7 @@ namespace Nova.WinForms.RaceDesigner
         {
             AllRaceIcons.Restore();
             this.currentRaceIcon = AllRaceIcons.Data.IconList[0];
-            this.pictureBox.Image = this.currentRaceIcon.Image;
+            this.pictureBox.Image = (Image)this.currentRaceIcon.Image;
             this.iconIndex.Text = Path.GetFileNameWithoutExtension(this.currentRaceIcon.Source);
 
             // Can't trust the windows designer generate code to set the environment range before setting the environment value, so set it here to be sure.
@@ -261,6 +263,7 @@ namespace Nova.WinForms.RaceDesigner
             this.groupBox9 = new System.Windows.Forms.GroupBox();
             this.maxGrowth = new System.Windows.Forms.NumericUpDown();
             this.label4 = new System.Windows.Forms.Label();
+            this.worldAvailability = new System.Windows.Forms.Label();
             this.productionTab = new System.Windows.Forms.TabPage();
             this.groupBox12 = new System.Windows.Forms.GroupBox();
             this.label9 = new System.Windows.Forms.Label();
@@ -375,7 +378,7 @@ namespace Nova.WinForms.RaceDesigner
             this.tabConrol.Location = new System.Drawing.Point(16, 73);
             this.tabConrol.Name = "tabConrol";
             this.tabConrol.SelectedIndex = 0;
-            this.tabConrol.Size = new System.Drawing.Size(400, 422);
+            this.tabConrol.Size = new System.Drawing.Size(400, 444);
             this.tabConrol.TabIndex = 0;
             // 
             // raceTab
@@ -469,6 +472,7 @@ namespace Nova.WinForms.RaceDesigner
             this.password.Name = "password";
             this.password.Size = new System.Drawing.Size(132, 20);
             this.password.TabIndex = 3;
+            this.password.UseSystemPasswordChar = true;
             // 
             // label12
             // 
@@ -868,7 +872,7 @@ namespace Nova.WinForms.RaceDesigner
             this.environmentTab.Controls.Add(this.groupBox9);
             this.environmentTab.Location = new System.Drawing.Point(4, 22);
             this.environmentTab.Name = "environmentTab";
-            this.environmentTab.Size = new System.Drawing.Size(392, 396);
+            this.environmentTab.Size = new System.Drawing.Size(392, 418);
             this.environmentTab.TabIndex = 4;
             this.environmentTab.Text = "Environment";
             this.environmentTab.UseVisualStyleBackColor = true;
@@ -877,16 +881,28 @@ namespace Nova.WinForms.RaceDesigner
             // 
             this.groupBox9.Controls.Add(this.maxGrowth);
             this.groupBox9.Controls.Add(this.label4);
+            this.groupBox9.Controls.Add(this.worldAvailability);
             this.groupBox9.Controls.Add(this.radiationTolerance);
             this.groupBox9.Controls.Add(this.temperatureTolerance);
             this.groupBox9.Controls.Add(this.gravityTolerance);
             this.groupBox9.FlatStyle = System.Windows.Forms.FlatStyle.System;
             this.groupBox9.Location = new System.Drawing.Point(17, 17);
             this.groupBox9.Name = "groupBox9";
-            this.groupBox9.Size = new System.Drawing.Size(353, 353);
+            this.groupBox9.Size = new System.Drawing.Size(353, 375);
             this.groupBox9.TabIndex = 0;
             this.groupBox9.TabStop = false;
             this.groupBox9.Text = "Environment Tolerance";
+            //
+            // worldAvailability
+            //
+            // Ports race-designer-ui-and-availability.md's live "estimated worlds" display -
+            // see WorldAvailabilityEstimate()/UpdateWorldAvailability() below.
+            this.worldAvailability.AutoSize = true;
+            this.worldAvailability.Location = new System.Drawing.Point(23, 348);
+            this.worldAvailability.Name = "worldAvailability";
+            this.worldAvailability.Size = new System.Drawing.Size(220, 13);
+            this.worldAvailability.TabIndex = 11;
+            this.worldAvailability.Text = "Estimated compatible worlds: --";
             // 
             // maxGrowth
             // 
@@ -1671,6 +1687,7 @@ namespace Nova.WinForms.RaceDesigner
         private void Tolerance_RangeChanged(object sender, int newLeftPos, int newRightPos, int oldLeftPos, int oldRightPos)
         {
             ShowAvailablePoints();
+            UpdateWorldAvailability();
             this.parametersChanged = true;
         }
 
@@ -1682,9 +1699,34 @@ namespace Nova.WinForms.RaceDesigner
         private void Tolerance_CheckChanged(object sender, int value)
         {
             ShowAvailablePoints();
+            UpdateWorldAvailability();
             this.parametersChanged = true;
         }
-        
+
+        /// <Summary>
+        /// Live "estimated compatible worlds" display for the Environment tab - ports
+        /// race-designer-ui-and-availability.md's galaxy-wide availability estimate. This is a
+        /// distinct calculation from Race.HabValue's per-planet habitability formula (see that
+        /// method's own remarks) - it estimates how COMMON a compatible world is across the
+        /// galaxy, not how habitable any one specific planet is. The actual formula now lives in
+        /// the portable Common/RaceDefinition/WorldAvailabilityEstimator.cs, shared with the
+        /// Avalonia port's RaceDesignerViewModel - extracted from here (it only ever touched
+        /// plain ints/bools despite taking Nova.ControlLibrary.Range controls directly) so both
+        /// UIs compute the same figure from one implementation.
+        /// </Summary>
+        private void UpdateWorldAvailability()
+        {
+            double displayed = Nova.Common.WorldAvailabilityEstimator.EstimateCompatibleWorldsPercent(
+                (this.gravityTolerance.MinimumValue, this.gravityTolerance.MaximumValue, this.gravityTolerance.Immune),
+                (this.temperatureTolerance.MinimumValue, this.temperatureTolerance.MaximumValue, this.temperatureTolerance.Immune),
+                (this.radiationTolerance.MinimumValue, this.radiationTolerance.MaximumValue, this.radiationTolerance.Immune));
+
+            this.worldAvailability.Text = string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "Estimated compatible worlds: {0:0.##}%",
+                displayed);
+        }
+
         /// <Summary>
         /// This function is called when the Exit button is pressed. Provide a warning
         /// that this will discard the race definition and see if he really wants
@@ -1964,7 +2006,7 @@ namespace Nova.WinForms.RaceDesigner
         private void NextImage_Click(object sender, EventArgs e)
         {
             ++this.currentRaceIcon;
-            this.pictureBox.Image = this.currentRaceIcon.Image;
+            this.pictureBox.Image = (Image)this.currentRaceIcon.Image;
             this.iconIndex.Text = Path.GetFileNameWithoutExtension(this.currentRaceIcon.Source);
         }
         
@@ -1976,7 +2018,7 @@ namespace Nova.WinForms.RaceDesigner
         private void PreviousImage_Click(object sender, EventArgs e)
         {
             --this.currentRaceIcon;
-            this.pictureBox.Image = this.currentRaceIcon.Image;
+            this.pictureBox.Image = (Image)this.currentRaceIcon.Image;
             this.iconIndex.Text = Path.GetFileNameWithoutExtension(this.currentRaceIcon.Source);
         }
 

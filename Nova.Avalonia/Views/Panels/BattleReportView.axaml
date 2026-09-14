@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             xmlns:dg="using:Avalonia.Controls"
+             x:Class="Nova.Avalonia.Views.Panels.BattleReportView"
+             x:DataType="panels:BattleReportViewModel">
+    <Grid RowDefinitions="Auto,*,Auto,*">
+        <TextBlock Grid.Row="0" Text="Battles" FontWeight="Bold" Opacity="0.8" Margin="6,4" />
+        <dg:DataGrid Grid.Row="1" ItemsSource="{Binding Battles}" SelectedItem="{Binding SelectedBattle}"
+                     IsReadOnly="True" AutoGenerateColumns="False" GridLinesVisibility="Horizontal"
+                     CanUserSortColumns="True" CanUserResizeColumns="True" SelectionMode="Single">
+            <dg:DataGrid.Columns>
+                <dg:DataGridTextColumn Header="Location" Binding="{Binding Location}" />
+                <dg:DataGridTextColumn Header="Sides" Binding="{Binding Sides}" />
+                <dg:DataGridTextColumn Header="Our Ships" Binding="{Binding OurShips}" />
+                <dg:DataGridTextColumn Header="Their Ships" Binding="{Binding TheirShips}" />
+                <dg:DataGridTextColumn Header="Our Losses" Binding="{Binding OurLosses}" />
+                <dg:DataGridTextColumn Header="Their Losses" Binding="{Binding TheirLosses}" />
+            </dg:DataGrid.Columns>
+        </dg:DataGrid>
+
+        <TextBlock Grid.Row="2" Text="Battle Log" FontWeight="Bold" Opacity="0.8" Margin="6,8,6,4"
+                   IsVisible="{Binding SelectedBattle, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <ScrollViewer Grid.Row="3">
+            <ItemsControl ItemsSource="{Binding StepLog}" Margin="6,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,1" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

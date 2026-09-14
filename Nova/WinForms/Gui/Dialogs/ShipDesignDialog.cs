@@ -376,7 +376,7 @@ namespace Nova.WinForms.Gui
         private void PrevImageButton_Click(object sender, EventArgs e)
         {
             shipIcon--;
-            HullImage.Image = shipIcon.Image;
+            HullImage.Image = (Image)shipIcon.Image;
         }
 
         /// <Summary>
@@ -387,7 +387,7 @@ namespace Nova.WinForms.Gui
         private void NextImageButton_Click(object sender, EventArgs e)
         {
             shipIcon++;
-            HullImage.Image = shipIcon.Image;
+            HullImage.Image = (Image)shipIcon.Image;
         }
         
 
@@ -406,7 +406,7 @@ namespace Nova.WinForms.Gui
             Hull hullProperties = selectedHull.Properties["Hull"] as Hull;
             HullGrid.ActiveModules = hullProperties.Modules;
             shipIcon = AllShipIcons.Data.GetIconBySource(selectedHull.ImageFile);
-            HullImage.Image = shipIcon.Image;
+            HullImage.Image = (Image)shipIcon.Image;
 
             Description.Text = selectedHull.Description;
 
@@ -440,7 +440,7 @@ namespace Nova.WinForms.Gui
                 if (component != null)
                 {
                     this.imageIndices[component.Name] = index;
-                    this.componentImages.Images.Add(component.ComponentImage);
+                    this.componentImages.Images.Add((Image)component.ComponentImage);
                     index++;
                 }
             }

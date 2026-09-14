@@ -1,0 +1,185 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Nova.Avalonia.ViewModels"
+             x:Class="Nova.Avalonia.Views.NewGameView"
+             x:DataType="vm:NewGameViewModel">
+    <!-- RaceDesignerHost overlays the whole screen (same Grid cell as everything else below)
+         when a player row's "New Race..." button is clicked - see OpenGameView's own
+         RaceDesignerHost for the same pattern used at the top-level startup screen. The main
+         content's own IsVisible is tied to the negation of that same flag - RaceDesignerView
+         has no opaque background of its own, so without hiding what's behind it, both screens
+         render on top of each other (confirmed live as a "graphics quirk"). -->
+    <Grid>
+    <Grid Margin="16" RowDefinitions="Auto,Auto,*,Auto" IsVisible="{Binding !ShowRaceDesignerOverlay}">
+        <TextBlock Grid.Row="0" Text="New Game" FontSize="18" FontWeight="Bold" Margin="0,0,0,8" />
+
+        <StackPanel Grid.Row="1" Spacing="2" Margin="0,0,0,8">
+            <TextBlock Text="Section" />
+            <ComboBox ItemsSource="{Binding PageLabels}" SelectedItem="{Binding SelectedPageLabel}"
+                      HorizontalAlignment="Stretch" />
+        </StackPanel>
+
+        <Grid Grid.Row="2">
+            <ScrollViewer IsVisible="{Binding ShowGameOptionsPage}">
+                <StackPanel Spacing="10">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Game name" />
+                        <TextBox Text="{Binding GameName}" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Game folder" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding GameFolder}" />
+                            <Button Grid.Column="1" Content="Browse..." Click="BrowseFolderButton_Click" Margin="8,0,0,0" />
+                        </Grid>
+                    </StackPanel>
+
+                    <CheckBox Content="Accelerated start" IsChecked="{Binding AcceleratedStart}" />
+
+                    <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Map" FontWeight="Bold" />
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Width (light years)" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding MapWidth}" Minimum="300" Maximum="9999" FormatString="0" Width="120" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Height (light years)" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding MapHeight}" Minimum="300" Maximum="9999" FormatString="0" Width="120" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Minimum star separation (ly)" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding StarSeparation}" Minimum="5" Maximum="50" FormatString="0" Width="120" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Star density" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding StarDensity}" Minimum="1" Maximum="100" FormatString="0" Width="120" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Star uniformity" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding StarUniformity}" Minimum="1" Maximum="100" FormatString="0" Width="120" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto,Auto">
+                                <TextBlock Grid.Column="0" Text="Seed" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding Seed}" Minimum="-2147483648" Maximum="2147483647" FormatString="0" Width="140" Margin="0,0,8,0" />
+                                <Button Grid.Column="2" Content="Randomize" Command="{Binding RandomizeSeedCommand}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer IsVisible="{Binding ShowPlayersPage}">
+                <StackPanel Spacing="10">
+                    <ItemsControl ItemsSource="{Binding Players}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:NewGamePlayerRowViewModel">
+                                <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,8">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock FontWeight="Bold">
+                                            <Run Text="Player" /><Run Text="{Binding DisplayNumber}" />
+                                        </TextBlock>
+
+                                        <ComboBox ItemsSource="{Binding RaceOptions}" SelectedItem="{Binding SelectedRaceName}"
+                                                  HorizontalAlignment="Stretch" />
+
+                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                            <Button Grid.Column="0" Content="New Race..." Command="{Binding NewRaceCommand}" HorizontalAlignment="Stretch" />
+                                            <Button Grid.Column="1" Content="Load Race..." Command="{Binding LoadRaceCommand}" HorizontalAlignment="Stretch" />
+                                        </Grid>
+
+                                        <ComboBox ItemsSource="{Binding AiProgramOptions}" SelectedItem="{Binding SelectedAiProgram}"
+                                                  HorizontalAlignment="Stretch" />
+
+                                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                                            <Button Grid.Column="0"
+                                                    Command="{Binding $parent[ItemsControl].((vm:NewGameViewModel)DataContext).MoveUpCommand}"
+                                                    CommandParameter="{Binding}" Content="Up" HorizontalAlignment="Stretch" />
+                                            <Button Grid.Column="1"
+                                                    Command="{Binding $parent[ItemsControl].((vm:NewGameViewModel)DataContext).MoveDownCommand}"
+                                                    CommandParameter="{Binding}" Content="Down" HorizontalAlignment="Stretch" />
+                                            <Button Grid.Column="2"
+                                                    Command="{Binding $parent[ItemsControl].((vm:NewGameViewModel)DataContext).RemovePlayerCommand}"
+                                                    CommandParameter="{Binding}" Content="Remove" HorizontalAlignment="Stretch" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Button Content="Add Player" Command="{Binding AddPlayerCommand}" HorizontalAlignment="Stretch" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer IsVisible="{Binding ShowVictoryConditionsPage}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="A player wins once at least this many of the checked conditions are met:" TextWrapping="Wrap" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="Number of targets to meet" VerticalAlignment="Center" />
+                        <NumericUpDown Grid.Column="1" Value="{Binding TargetsToMeet}" Minimum="1" Maximum="8" FormatString="0" Width="120" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="Minimum game time (years)" VerticalAlignment="Center" />
+                        <NumericUpDown Grid.Column="1" Value="{Binding MinimumGameTime}" Minimum="10" Maximum="10000" FormatString="0" Width="120" />
+                    </Grid>
+
+                    <StackPanel>
+                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding PlanetsOwned}" Margin="0,4">
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
+                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding TechLevels}" Margin="0,4">
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
+                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding NumberOfFields}" Margin="0,4">
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
+                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding ProductionCapacity}" Margin="0,4">
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
+                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding CapitalShips}" Margin="0,4">
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
+                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding HighestScore}" Margin="0,4">
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
+                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding TotalScore}" Margin="0,4">
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
+                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding SecondPlaceScore}" Margin="0,4">
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
+                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
+                            </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <StackPanel Grid.Row="3" Spacing="6" Margin="0,8,0,0">
+            <TextBlock Text="{Binding StatusMessage}" Opacity="0.7" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <Button Grid.Column="0" Content="Cancel" Click="CancelButton_Click" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="1" Content="Create Game" Command="{Binding CreateGameCommand}" HorizontalAlignment="Stretch" />
+            </Grid>
+        </StackPanel>
+    </Grid>
+
+        <ContentControl Name="RaceDesignerHost" IsVisible="{Binding ShowRaceDesignerOverlay}" />
+    </Grid>
+</UserControl>

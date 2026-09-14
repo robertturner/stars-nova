@@ -25,9 +25,11 @@ namespace Nova.Common
     using System;
     using System.Collections.Generic;
     using System.Globalization;
+    using System.Linq;
     using System.Xml;
-    
+
     using Nova.Common;
+    using Nova.Common.Components;
 
     /// <summary>
     /// This object represents a Star system, the basic unit of stars-nova settlement/expansion.
@@ -268,13 +270,18 @@ namespace Nova.Common
             }
              
             int minesInUse = GetMinesInUse();
-            
+
             // This operation needs to be done with implicit float converstion (the 100.0 value)
             // and then casted to int, otherwise the normalized concentration is always zero
             // and no mining occurs. -Aeglos
-            int rate = (int)(((minesInUse / Global.MinesPerMineProductionUnit) * ThisRace.MineProductionRate)
-                              * (concentration / 100.0));
-            return rate;
+            //
+            // docs/behavior-specs-4/population-growth.md confirms the exported client applies
+            // unbiased stochastic rounding here rather than truncating (a true value of X.37 kT
+            // rounds up 37% of the time) - Global.StochasticRound replaces the previous plain
+            // (int) truncation, which always rounded down and so systematically under-mined.
+            double rawRate = ((minesInUse / Global.MinesPerMineProductionUnit) * ThisRace.MineProductionRate)
+                              * (concentration / 100.0);
+            return Global.StochasticRound(rawRate);
         }
         
         /// <summary>
@@ -361,20 +368,17 @@ namespace Nova.Common
                 double crowdingFactor = Global.BaseCrowdingFactor * (1.0 - capacity) * (1.0 - capacity);
                 populationGrowth *= crowdingFactor;
             }
-            else if (capacity == 1.0)
+            else // capacity >= 1.0: full or over-full planet
             {
-                // full planet
+                // docs/behavior-specs-4/population-growth.md Example 3: population plateaus at
+                // capacity rather than declining - the sourced table shows crowdingFactor hitting
+                // exactly 0 at 100% capacity with no further data point past it, and the spec
+                // notes no source was found for a population-LOSS mechanic purely from exceeding
+                // capacity on an otherwise-positive-habitability world (unlike the genuinely
+                // sourced negative-habitability decline above, which is a different case). The
+                // previous "over full"/"very over full" branches here invented such a decline
+                // with no spec basis, old or new.
                 populationGrowth = 0;
-            }
-            else if (capacity > 1.0 && capacity < 4.0)
-            {
-                // over full planet
-                populationGrowth = Colonists * (capacity - 1) * -4.0 / 100.0; // .04% per 1% over capacity
-            }
-            else if (capacity >= 4.0)
-            {
-                // very over full planet: crowding deaths cap at 12%
-                populationGrowth = Colonists * -0.12;
             }
             
             // As per vanilla Stars! the minimal colonist growth unit
@@ -517,7 +521,19 @@ namespace Nova.Common
             // operated by 10K colonists.
 
             int mined = GetMiningRate(concentration);
+            return ApplyMining(mined, ref concentration, ref miningProgress);
+        }
 
+        /// <summary>
+        /// Applies an already-computed raw mined amount against this mineral's concentration and
+        /// carried mining progress, sharing the same depletion curve regardless of whether the
+        /// mining came from the planet's own mines (<see cref="Mine"/>) or an orbiting
+        /// remote-mining fleet (<see cref="MineForFleet"/>) - docs/behavior-specs-4/
+        /// population-growth.md documents both as driven by "a single function" in the original
+        /// game, with concentration drawn down between successive applications in the same turn.
+        /// </summary>
+        private static int ApplyMining(int mined, ref int concentration, ref int miningProgress)
+        {
             // Concentration drops by one point each time the cumulative kT mined toward it
             // (carried across turns) crosses the threshold for the current concentration level.
             miningProgress += mined;
@@ -533,6 +549,46 @@ namespace Nova.Common
             }
 
             return mined;
+        }
+
+        /// <summary>
+        /// Mines this mineral on behalf of an orbiting remote-mining fleet (as opposed to the
+        /// planet's own mines - see <see cref="Mine"/>), applying the spec-confirmed
+        /// <c>mineEquivalents * concentration / 100</c> formula (with the same stochastic
+        /// rounding used elsewhere - see Global.StochasticRound) against the SAME concentration/
+        /// progress state the planet's own mines share, so multiple mining sources at one star
+        /// correctly deplete concentration in sequence rather than each seeing the turn's
+        /// starting concentration.
+        /// </summary>
+        /// <param name="mineEquivalents">The mining fleet's total mine-equivalents (see
+        /// Fleet.MineEquivalents), already capped at the per-fleet maximum.</param>
+        /// <param name="concentration">The mineral concentration in this system, mutated in
+        /// place.</param>
+        /// <param name="miningProgress">kT mined so far toward the next 1-point drop in
+        /// concentration, mutated in place.</param>
+        /// <returns>The number of kT of this mineral mined by the fleet this application.</returns>
+        public static int MineForFleet(int mineEquivalents, ref int concentration, ref int miningProgress)
+        {
+            int mined = Global.StochasticRound(mineEquivalents * (concentration / 100.0));
+            return ApplyMining(mined, ref concentration, ref miningProgress);
+        }
+
+        /// <summary>
+        /// This star's operational Stargate, if its Starbase has one, or null. Stargates are
+        /// only ever built on starbases (an Orbital-class hull item), never on ordinary ships -
+        /// see docs/behavior-specs-4/client-interface.md's "Starbase capability indicators" note,
+        /// which checks the same "Gate" property for the map's Stargate dot.
+        /// </summary>
+        public Gate GetStargate()
+        {
+            ShipToken token = Starbase?.Composition.Values.FirstOrDefault();
+            if (token == null)
+            {
+                return null;
+            }
+
+            token.Design.Update();
+            return token.Design.Summary.Properties.TryGetValue("Gate", out ComponentProperty gate) ? gate as Gate : null;
         }
 
         public int Defenses

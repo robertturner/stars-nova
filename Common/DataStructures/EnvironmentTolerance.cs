@@ -38,8 +38,10 @@ namespace Nova.Common
         private const string MaxIdentifier = "Max";
         private const string ImmuneIdentifier = "Immune";
 
-        private int minimumInternalValue = 15;
-        private int maximumInternalValue = 85;
+        // docs/behavior-specs-4/race-designer-ui-and-availability.md confirms the real default
+        // reset band is 20-80 (centered on 50), not 15-85.
+        private int minimumInternalValue = 20;
+        private int maximumInternalValue = 80;
         private bool immune = false;
 
         /// <summary>

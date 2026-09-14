@@ -116,9 +116,15 @@ namespace Nova.Common
        public const int ColonistsPerOperableMiningUnit      = 10000;
        public const int MinesPerMineProductionUnit          = 10;
 
-       public const int DefenseIroniumCost = 5;
-       public const int DefenseBoraniumCost = 5;
-       public const int DefenseGermaniumCost = 5;
+       // docs/behavior-specs-4/production-queue.md's Overview: "mines, defenses, and terraforming
+       // typically need only resources" - defenses previously (and incorrectly) also charged
+       // minerals here. The exact no-trait resource total is a genuine open discrepancy in that
+       // same spec (the exported client's decompiled cost calculator shows three race-derived
+       // branches of 25/44/48 resources, none matching this 15 - but which branch is the
+       // no-trait default wasn't determined, so 15 is left as-is rather than guessing).
+       public const int DefenseIroniumCost = 0;
+       public const int DefenseBoraniumCost = 0;
+       public const int DefenseGermaniumCost = 0;
        public const int DefenseEnergyCost = 15;
         
        // Research constants
@@ -135,7 +141,16 @@ namespace Nova.Common
        public const int MaxFleetAmount              = 512;
        public const int MaxDesignsAmount            = 16;
        public const int MaxStarbaseDesignsAmount    = 10;
-       
+       // docs/behavior-specs-4/client-interface.md confirms the applicable plan limit is exactly
+       // 15 ADDITIONAL plans per race on top of the un-removable first plan (a v4 finding - v3 had
+       // no concrete number here) - so 16 total, since this constant is checked as a total count
+       // (battlePlans.Count &gt;= MaxBattlePlans) that already includes that first plan.
+       public const int MaxBattlePlans               = 16;
+       // docs/behavior-specs-4/population-growth.md's "Remote mining fleet cap": a single fleet's
+       // remote-mining contribution is capped at 4,000 mine-equivalents - stacking more mining
+       // capacity into one fleet beyond that produces no extra minerals.
+       public const int MaxRemoteMiningEquivalents  = 4000;
+
        // Defaults
        public const int Nobody = 0x00000000; // As an empire Id cannot be 0, it is used for no owner.
        public const int Everyone = Nobody;
@@ -151,6 +166,22 @@ namespace Nova.Common
        #region Methods
 
        #region Xml
+
+       private static readonly Random StochasticRoundingRandom = new Random();
+
+       /// <summary>Random proportional rounding: the fractional remainder becomes the
+       /// probability of rounding up by one, rather than always being truncated away - the
+       /// long-run expected value stays equal to the exact (fractional) input instead of
+       /// systematically under-delivering every time this is applied. Confirmed by inspection of
+       /// the exported client for both planetary bombing (docs/behavior-specs-4/combat-resolution.md
+       /// §9) and mineral mining (docs/behavior-specs-4/population-growth.md) as "the same...
+       /// shape as other percentage-based mechanics" in the original game.</summary>
+       public static int StochasticRound(double value)
+       {
+           int whole = (int)value;
+           double remainder = value - whole;
+           return StochasticRoundingRandom.NextDouble() < remainder ? whole + 1 : whole;
+       }
 
        /// <summary>
        /// Do some common setup work for creating a new xml document.

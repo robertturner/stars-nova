@@ -155,6 +155,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Common\Common.csproj" />
     <ProjectReference Include="..\ControlLibrary\ControlLibrary.csproj" />
+    <ProjectReference Include="..\Nova.Ai\Nova.Ai.csproj" />
+    <ProjectReference Include="..\Nova.Client\Nova.Client.csproj" />
     <ProjectReference Include="..\ServerState\Server.csproj" />
   </ItemGroup>
 

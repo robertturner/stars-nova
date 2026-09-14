@@ -503,7 +503,7 @@ namespace Nova.ControlLibrary
         {
             HullModule cell = panel.Tag as HullModule;
             panel.BackColor = Color.FromName(KnownColor.Control.ToString());
-            panel.BackgroundImage = cell.AllocatedComponent.ComponentImage;
+            panel.BackgroundImage = (Image)cell.AllocatedComponent.ComponentImage;
 
             if (cell.ComponentMaximum > 1)
             {

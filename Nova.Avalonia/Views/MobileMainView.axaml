@@ -1,0 +1,91 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Nova.Avalonia.ViewModels"
+             xmlns:panels="using:Nova.Avalonia.Views.Panels"
+             x:Class="Nova.Avalonia.Views.MobileMainView"
+             x:DataType="vm:MobileMainViewModel">
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="8">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+            <TextBlock Grid.Column="0" Text="Stars! Nova" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Content="About" Command="{Binding ShowAboutCommand}" />
+        </Grid>
+
+        <!-- Section selector, not a TabControl or a row of buttons - both have their own
+             confirmed-live touch bugs on this app (see RaceDesignerViewModel.Page's own
+             comment); a ComboBox is already proven reliable via touch elsewhere. "Map" groups
+             everything about the Star Map and whatever's currently selected on it (see
+             MobileMainViewModel's own comment); everything else gets its own page here. -->
+        <StackPanel Grid.Row="1" Spacing="2" Margin="0,0,0,8">
+            <TextBlock Text="Section" />
+            <ComboBox ItemsSource="{Binding PageLabels}" SelectedItem="{Binding SelectedPageLabel}"
+                      HorizontalAlignment="Stretch" />
+        </StackPanel>
+
+        <Grid Grid.Row="2">
+            <!-- The map itself, then Inspector (planet/fleet detail plus fleet order editing)
+                 and Production (the selected planet's build queue) stacked directly beneath it -
+                 all three already react to the same shared SelectionService, so tapping
+                 something on the map immediately updates both without any extra plumbing here. -->
+            <Grid IsVisible="{Binding ShowMapPage}" RowDefinitions="2*,1*,1*" RowSpacing="4">
+                <panels:StarMapDocumentView Grid.Row="0" DataContext="{Binding StarMap}" />
+                <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
+                    <panels:InspectorView DataContext="{Binding Inspector}" />
+                </Border>
+                <Border Grid.Row="2" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
+                    <panels:ProductionView DataContext="{Binding Production}" />
+                </Border>
+            </Grid>
+
+            <!-- Each page is wrapped in a plain Border rather than putting IsVisible directly
+                 on the hosted view - that view's own DataContext override (switching it to its
+                 own panel view model) would otherwise also apply to IsVisible on the SAME
+                 element, resolving "ShowXxxPage" against the wrong (child) view model instead of
+                 this screen's own. The wrapper keeps the ambient MobileMainViewModel DataContext
+                 for IsVisible, while only the inner view's own DataContext is overridden. -->
+            <Border IsVisible="{Binding ShowNavigatorPage}">
+                <panels:NavigatorView DataContext="{Binding Navigator}" />
+            </Border>
+            <Border IsVisible="{Binding ShowResearchPage}">
+                <panels:ResearchView DataContext="{Binding Research}" />
+            </Border>
+            <Border IsVisible="{Binding ShowShipDesignPage}">
+                <panels:ShipDesignView DataContext="{Binding ShipDesign}" />
+            </Border>
+            <Border IsVisible="{Binding ShowBattlePlansPage}">
+                <panels:BattlePlansView DataContext="{Binding BattlePlans}" />
+            </Border>
+            <Border IsVisible="{Binding ShowMessagesPage}">
+                <panels:MessagesView DataContext="{Binding Messages}" />
+            </Border>
+            <Border IsVisible="{Binding ShowSummaryPage}">
+                <panels:SummaryView DataContext="{Binding Summary}" />
+            </Border>
+            <Border IsVisible="{Binding ShowPlayerRelationsPage}">
+                <panels:PlayerRelationsView DataContext="{Binding PlayerRelations}" />
+            </Border>
+            <Border IsVisible="{Binding ShowPlanetReportPage}">
+                <panels:PlanetReportView DataContext="{Binding PlanetReport}" />
+            </Border>
+            <Border IsVisible="{Binding ShowFleetReportPage}">
+                <panels:FleetReportView DataContext="{Binding FleetReport}" />
+            </Border>
+            <Border IsVisible="{Binding ShowBattleReportPage}">
+                <panels:BattleReportView DataContext="{Binding BattleReport}" />
+            </Border>
+            <Border IsVisible="{Binding ShowScoreReportPage}">
+                <panels:ScoreReportView DataContext="{Binding ScoreReport}" />
+            </Border>
+            <Border IsVisible="{Binding ShowHelpPage}">
+                <panels:HelpView DataContext="{Binding Help}" />
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="3" Padding="8,4" Margin="0,8,0,0" Background="#1a1a1a" CornerRadius="4">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" Foreground="White" FontSize="12"
+                           VerticalAlignment="Center" IsVisible="{Binding HasStatusMessage}" />
+                <Button Grid.Column="1" Content="End Turn" Command="{Binding SubmitTurnCommand}" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

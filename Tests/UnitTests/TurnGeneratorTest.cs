@@ -221,6 +221,110 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
+        public void Generate_LayMines_CreatesAMinefield()
+        {
+            // Regression test for LayMinesTask.Perform() being a complete no-op (the code that
+            // would actually create/update a minefield was commented out with a "TODO: Implement
+            // per empire minefields" note, since Common/Waypoints/LayMinesTask.cs has no way to
+            // reach ServerData.AllMinefields). See ServerState/LayMines.cs.
+            serverData = new SimpleServerData();
+            empireData = new SimpleEmpireData();
+            empireData.Id = 1;
+            serverData.AllEmpires.Add(empireData.Id, empireData);
+
+            Fleet fleet = new Fleet(4);
+            fleet.Owner = 1;
+            fleet.Position = new NovaPoint(5, 5);
+
+            ShipDesign shipDesign = new ShipDesign(4);
+            shipDesign.Blueprint = new Component();
+            Hull hull = new Hull();
+            hull.Modules = new List<HullModule>();
+
+            HullModule mineLayerModule = new HullModule();
+            Component mineLayerComponent = new Component();
+            mineLayerComponent.Properties.Add("Mine Layer", new MineLayer { LayerRate = 40 });
+            mineLayerModule.AllocatedComponent = mineLayerComponent;
+            hull.Modules.Add(mineLayerModule);
+
+            shipDesign.Blueprint.Properties.Add("Hull", hull);
+            ShipToken shipToken = new ShipToken(shipDesign, 5); // 5 ships x 40/ship = 200 mines/turn
+            fleet.Composition.Add(shipToken.Key, shipToken);
+
+            Waypoint waypoint = new Waypoint();
+            waypoint.Position = fleet.Position;
+            waypoint.WarpFactor = 0;
+            waypoint.Task = new LayMinesTask();
+            waypoint.Destination = "deep space";
+            fleet.Waypoints.Add(waypoint);
+
+            empireData.AddOrUpdateFleet(fleet);
+
+            SimpleTurnGenerator turnGenerator = new SimpleTurnGenerator(serverData);
+            turnGenerator.Generate();
+
+            Assert.AreEqual(1, serverData.AllMinefields.Count, "Expected exactly one minefield to have been laid");
+            Minefield minefield = serverData.AllMinefields.Values.First();
+            Assert.AreEqual(200, minefield.NumberOfMines);
+            Assert.AreEqual(1, minefield.Owner);
+        }
+
+        [Test]
+        public void LayMines_AddsToAnExistingNearbyFieldOfOurs_InsteadOfStartingANewOne()
+        {
+            // Exercises LayMines.Lay directly rather than through a full TurnGenerator.Generate()
+            // turn - CheckForMinefields.Check's own decay step (applied once per waypoint
+            // processed, a separately-flagged, pre-existing FIXME: "decay has nothing to do with
+            // moving fleets and should be processed separately") would otherwise make an
+            // exact-count assertion here dependent on how many waypoints happen to be processed
+            // that turn, which isn't what this test is about.
+            serverData = new SimpleServerData();
+            empireData = new SimpleEmpireData();
+            empireData.Id = 1;
+            serverData.AllEmpires.Add(empireData.Id, empireData);
+
+            Fleet fleet = new Fleet(6);
+            fleet.Owner = 1;
+            fleet.Position = new NovaPoint(5, 5);
+
+            ShipDesign shipDesign = new ShipDesign(6);
+            shipDesign.Blueprint = new Component();
+            Hull hull = new Hull();
+            hull.Modules = new List<HullModule>();
+            HullModule mineLayerModule = new HullModule();
+            Component mineLayerComponent = new Component();
+            mineLayerComponent.Properties.Add("Mine Layer", new MineLayer { LayerRate = 40 });
+            mineLayerModule.AllocatedComponent = mineLayerComponent;
+            hull.Modules.Add(mineLayerModule);
+            shipDesign.Blueprint.Properties.Add("Hull", hull);
+            ShipToken shipToken = new ShipToken(shipDesign, 5); // 200 mines/application
+            fleet.Composition.Add(shipToken.Key, shipToken);
+
+            LayMines layMines = new LayMines(serverData);
+
+            layMines.Lay(fleet);
+            Assert.AreEqual(1, serverData.AllMinefields.Count);
+            Assert.AreEqual(200, serverData.AllMinefields.Values.First().NumberOfMines);
+
+            // Same fleet, same position, laying again - should grow the existing field.
+            layMines.Lay(fleet);
+            Assert.AreEqual(1, serverData.AllMinefields.Count, "A second Lay Mines application at the same spot should grow the existing field, not create a new one");
+            Assert.AreEqual(400, serverData.AllMinefields.Values.First().NumberOfMines);
+
+            // A field belonging to a DIFFERENT empire at the same spot must not be added to.
+            EmpireData otherEmpire = new SimpleEmpireData();
+            otherEmpire.Id = 2;
+            serverData.AllEmpires.Add(otherEmpire.Id, otherEmpire);
+            Fleet otherFleet = new Fleet(7);
+            otherFleet.Owner = 2;
+            otherFleet.Position = fleet.Position;
+            otherFleet.Composition.Add(shipToken.Key, shipToken);
+
+            new LayMines(serverData).Lay(otherFleet);
+            Assert.AreEqual(2, serverData.AllMinefields.Count, "A different empire's mines at the same spot should start a separate field");
+        }
+
+        [Test]
         public void SetFleetOrbit()
         {
             Fleet fleet = new Fleet(1);

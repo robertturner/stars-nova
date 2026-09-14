@@ -1,0 +1,90 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             x:Class="Nova.Avalonia.Views.Panels.ShipDesignView"
+             x:DataType="panels:ShipDesignViewModel">
+    <ScrollViewer>
+    <StackPanel Margin="8" Spacing="4">
+        <TextBlock Text="My Designs" FontWeight="Bold" Opacity="0.8" />
+        <ItemsControl ItemsSource="{Binding OwnedDesigns}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="panels:OwnedDesignRowViewModel">
+                    <Border BorderBrush="Gray" BorderThickness="0,0,0,1" Padding="0,4" Margin="0,2">
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Name}" FontWeight="Bold" VerticalAlignment="Center" />
+                            <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Content="Delete" Command="{Binding DeleteCommand}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Spacing="12">
+                                <TextBlock Text="{Binding CostSummary}" Opacity="0.7" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding QuantityInUse, StringFormat='{}{0} in use'}" Opacity="0.7" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Text="Create Design" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
+
+        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Hull" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding HullOptions}" SelectedItem="{Binding SelectedHull}"
+                      HorizontalAlignment="Stretch">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="panels:HullOptionViewModel">
+                        <TextBlock Text="{Binding Name}" />
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+        </Grid>
+
+        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox Grid.Column="1" Text="{Binding DesignName}" />
+        </Grid>
+
+        <ItemsControl ItemsSource="{Binding SlotRows}" Margin="0,8,0,0">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="panels:HullSlotRowViewModel">
+                    <Border BorderBrush="Gray" BorderThickness="0,0,0,1" Padding="0,4" Margin="0,2">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{Binding Label}" Opacity="0.7" />
+                            <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="panels:ComponentOptionViewModel">
+                                        <TextBlock Text="{Binding Name}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <NumericUpDown Value="{Binding Quantity}" Minimum="0" Maximum="{Binding Maximum}"
+                                           FormatString="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="4,0" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Text="Stats" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
+        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,2">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Cost" Margin="0,0,8,2" />
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CostSummary}" Margin="0,0,12,2" />
+            <TextBlock Grid.Row="0" Grid.Column="2" Text="Mass" Margin="0,0,8,2" />
+            <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding MassValue}" Margin="0,0,0,2" />
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Armor" Margin="0,0,8,2" />
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ArmorValue}" Margin="0,0,12,2" />
+            <TextBlock Grid.Row="1" Grid.Column="2" Text="Shield" Margin="0,0,8,2" />
+            <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding ShieldValue}" Margin="0,0,0,2" />
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Cargo" Margin="0,0,8,2" />
+            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding CargoValue}" Margin="0,0,12,2" />
+            <TextBlock Grid.Row="2" Grid.Column="2" Text="Fuel" Margin="0,0,8,2" />
+            <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding FuelValue}" Margin="0,0,0,2" />
+        </Grid>
+        <TextBlock Text="No engine fitted" Foreground="OrangeRed" IsVisible="{Binding !HasEngine}" Margin="0,2" />
+
+        <Button Content="Save Design" Command="{Binding SaveCommand}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+        <TextBlock Text="{Binding SaveStatusMessage}" Opacity="0.7" IsVisible="{Binding HasSaveStatusMessage}" />
+    </StackPanel>
+    </ScrollViewer>
+</UserControl>

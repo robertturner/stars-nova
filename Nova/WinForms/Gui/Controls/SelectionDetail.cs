@@ -54,7 +54,13 @@ namespace Nova.WinForms.Gui
             get { return fleetDetail; }
             set { fleetDetail = value; }
         }
-        
+
+        public MinefieldInspector MinefieldInspector
+        {
+            get { return minefieldInspector; }
+            set { minefieldInspector = value; }
+        }
+
         
         /// <Summary>
         /// Initializes a new instance of the SelectionDetail class.
@@ -76,11 +82,12 @@ namespace Nova.WinForms.Gui
         /// <param name="Item">The <see cref="Item"/> to display (a <see cref="Fleet"/> or <see cref="Star"/>).</param>
         private void DisplayPlanet(Star star)
         {
-            PlanetDetail.Value = star;            
+            PlanetDetail.Value = star;
             selectedControl = PlanetDetail;
-            
+
             PlanetDetail.Show();
-            FleetDetail.Hide();  
+            FleetDetail.Hide();
+            MinefieldInspector.Hide();
             Invalidate();
         }
 
@@ -93,9 +100,26 @@ namespace Nova.WinForms.Gui
         {
             FleetDetail.Value = fleet;
             selectedControl = FleetDetail;
-            
+
             FleetDetail.Show();
-            PlanetDetail.Hide(); 
+            PlanetDetail.Hide();
+            MinefieldInspector.Hide();
+            Invalidate();
+        }
+
+        /// <Summary>
+        /// Display minefield Detail. Unlike planets and fleets, a minefield's Detail is shown
+        /// regardless of ownership - it's read-only information about anything currently visible
+        /// on the map (own or scanned enemy minefields alike), not an editable order surface.
+        /// </Summary>
+        private void DisplayMinefield(Minefield minefield)
+        {
+            MinefieldInspector.Value = minefield;
+            selectedControl = MinefieldInspector;
+
+            MinefieldInspector.Show();
+            PlanetDetail.Hide();
+            FleetDetail.Hide();
             Invalidate();
         }
 
@@ -112,6 +136,16 @@ namespace Nova.WinForms.Gui
             if (item == null)
             {
                 Enabled = false;
+                return;
+            }
+
+            // Minefields are read-only information, not an editable order surface, so they're
+            // shown regardless of ownership - the Star Map already restricts which minefields
+            // are visible at all (owned, or within a scanner's range) before one can be selected.
+            if (item is Minefield minefield)
+            {
+                Enabled = true;
+                DisplayMinefield(minefield);
                 return;
             }
 
@@ -179,6 +213,11 @@ namespace Nova.WinForms.Gui
         /// </summary>
         public Mappable Reload()
         {
+            if (selectedControl == MinefieldInspector)
+            {
+                return MinefieldInspector.Value as Mappable;
+            }
+
             return isPlanetDetail() ? PlanetDetail.Value as Mappable : FleetDetail.Value as Mappable;
         }
     }

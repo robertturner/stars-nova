@@ -1,0 +1,77 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             x:Class="Nova.Avalonia.Views.Panels.ResearchView"
+             x:DataType="panels:ResearchViewModel">
+    <ScrollViewer>
+    <StackPanel Margin="8" Spacing="4">
+        <ItemsControl ItemsSource="{Binding Fields}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="panels:ResearchFieldRowViewModel">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,3">
+                        <TextBlock Grid.Column="0" Text="&#9679;" Foreground="Gold" Margin="0,0,6,0"
+                                   IsVisible="{Binding IsCurrentTarget}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Field}" />
+                        <TextBlock Grid.Column="2" Text="{Binding Level, StringFormat='Level {0}'}" Margin="0,0,12,0" />
+                        <TextBlock Grid.Column="3" Text="{Binding ResourcesBanked, StringFormat='{}{0} banked'}" Opacity="0.6" />
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Text="Change research" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
+
+        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Target" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding TargetFieldOptions}" SelectedItem="{Binding SelectedTargetField}" HorizontalAlignment="Stretch" />
+        </Grid>
+        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Budget %" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <NumericUpDown Grid.Column="1" Value="{Binding EditableBudget}" Minimum="0" Maximum="100" FormatString="0"
+                           HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="4,0" />
+        </Grid>
+
+        <Button Content="Apply" Command="{Binding ApplyCommand}" HorizontalAlignment="Left" Margin="0,4,0,0" />
+        <TextBlock Text="{Binding StatusMessage}" Opacity="0.7" IsVisible="{Binding HasStatusMessage}" />
+
+        <!-- Live preview for whatever target field/budget is currently selected above - not yet
+             applied - matching WinForms ResearchDialog's ParameterChanged, which recomputes on
+             every RadioButton/NumericUpDown change rather than only once Apply/OK is clicked. -->
+        <TextBlock Text="Completing next level" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
+        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Available energy" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBlock Grid.Column="1" Text="{Binding AvailableEnergy}" />
+        </Grid>
+        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Budgeted this turn" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBlock Grid.Column="1" Text="{Binding BudgetedEnergy}" />
+        </Grid>
+        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Resources needed" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBlock Grid.Column="1" Text="{Binding CompletionResourcesText}" />
+        </Grid>
+        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Years to complete" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBlock Grid.Column="1" Text="{Binding CompletionTimeText}" />
+        </Grid>
+
+        <!-- Every not-yet-available component that further research in the selected target
+             field alone would eventually unlock - ports WinForms ResearchDialog's "Expected
+             Research Benefits" list, including its color legend (brighter/more prominent colors
+             for sooner unlocks). -->
+        <TextBlock Text="Expected research benefits" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
+        <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,4">
+            <TextBlock Text="Next level" Foreground="LimeGreen" FontSize="11" />
+            <TextBlock Text="2-4 levels away" Foreground="DodgerBlue" FontSize="11" />
+            <TextBlock Text="5+ levels away" Foreground="White" FontSize="11" />
+        </StackPanel>
+        <ItemsControl ItemsSource="{Binding Benefits}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="panels:ResearchBenefitRowViewModel">
+                    <TextBlock Text="{Binding Text}" Foreground="{Binding Color}" Margin="0,1" />
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+    </ScrollViewer>
+</UserControl>

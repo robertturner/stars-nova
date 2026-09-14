@@ -1,0 +1,39 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Nova.Avalonia.ViewModels"
+             xmlns:dock="using:Dock.Avalonia.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+             x:Class="Nova.Avalonia.Views.MainView"
+             x:DataType="vm:MainViewModel">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_Game">
+                <MenuItem Header="_End Turn" Command="{Binding SubmitTurnCommand}" />
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="_About Stars! Nova" Command="{Binding ShowAboutCommand}" />
+            </MenuItem>
+        </Menu>
+        <!-- A real, always-visible button, not just the menu item above - end-of-turn is
+             frequent enough action to deserve a direct control rather than a menu detour. Any
+             AI players' own orders are usually already computed by the time this is clicked
+             (TurnHost runs them in the background from the moment the turn opens), so clicking
+             this normally advances the turn immediately rather than making the player wait. -->
+        <Border DockPanel.Dock="Bottom" Padding="8,4" Background="#1a1a1a">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" Foreground="White" FontSize="12"
+                           VerticalAlignment="Center" IsVisible="{Binding HasStatusMessage}" />
+                <Button Grid.Column="1" Content="End Turn" Command="{Binding SubmitTurnCommand}" />
+            </Grid>
+        </Border>
+        <DockControl Layout="{Binding Layout}" />
+    </DockPanel>
+
+</UserControl>

@@ -24,8 +24,9 @@ namespace Nova.WinForms.Gui
 {
     using System;
     using System.Collections.Generic;
+    using System.Drawing;
     using System.Windows.Forms;
-    
+
     using Nova.Client;
     using Nova.Common;
     using Nova.Common.Commands;
@@ -314,7 +315,7 @@ Are you sure you want to do this?";
             design.Update(clientState.EmpireState.Race);
             Hull hullProperties = design.Hull;
             this.hullGrid.ActiveModules = hullProperties.Modules;
-            this.hullImage.Image = design.Blueprint.ComponentImage;
+            this.hullImage.Image = (Image)design.Blueprint.ComponentImage;
             this.designResources.Value = design.Cost;
             this.designName.Text = design.Name;
             this.shipMass.Text = design.Mass.ToString(System.Globalization.CultureInfo.InvariantCulture);

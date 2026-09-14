@@ -108,12 +108,29 @@ namespace Nova.Common
                         throw;
                     }
                 }
-            } 
+            }
             while (waitForFile);
         }
 
+        /// <summary>
+        /// Load a Race from an already-open stream, rather than a local file path - needed on
+        /// platforms where a user-picked file may only be reachable via a content:// handle
+        /// (e.g. Android's SAF document picker for a location outside this app's own storage),
+        /// which a plain FileStream/File.Exists-based path can't open at all.
+        /// </summary>
+        /// <param name="stream">An open, readable stream over a race's saved XML data.</param>
+        public static Race LoadFromStream(System.IO.Stream stream)
+        {
+            XmlDocument xmldoc = new XmlDocument();
+            xmldoc.Load(stream);
 
-        
+            Race race = new Race();
+            race.LoadRaceFromXml(xmldoc.DocumentElement);
+            return race;
+        }
+
+
+
         /// <summary>
         /// Calculate this race's Habitability for a given star.
         /// </summary>
@@ -220,14 +237,14 @@ namespace Nova.Common
             return advantagePoints;
         }
 
+        /// <summary>docs/behavior-specs-4/population-growth.md confirms the single-axis
+        /// habitability penalty is capped at exactly 15, full stop - a hard, unconditional
+        /// constant, unlike Total Terraforming's genuinely-doubled 15/30 max terraform-step count
+        /// (see TerraformProductionUnit.cs) which this method previously (and incorrectly)
+        /// mirrored.</summary>
         private int GetMaxMalus()
         {
-            int maxMalus = 15;
-            if (HasTrait("TT"))
-            {
-                maxMalus = 30;
-            }
-            return maxMalus;
+            return 15;
         }
 
         private int GetMalusForEnvironment(EnvironmentTolerance tolerance, int starValue, int maxMalus)

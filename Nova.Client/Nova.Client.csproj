@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Deliberately NOT net9.0-windows / UseWindowsForms - this is the portable client-data
+         layer (ClientData/IntelReader/OrderWriter) shared between Nova.exe (WinForms) and
+         Nova.Avalonia (desktop today, Android eventually) - see docs/PROJECT-STATUS.md's
+         Android-portability section. Extracted out of Nova.csproj, which physically also holds
+         the WinForms-only SelectRaceDialog that used to live alongside these files; that dialog
+         stayed behind, decoupled from ClientData via PlatformHooks.AskUserToSelectRace/
+         AskUserForFile instead of being constructed directly. -->
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>Nova.Client</AssemblyName>
+    <RootNamespace>Nova.Client</RootNamespace>
+    <OutputType>Library</OutputType>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Configurations>Debug;Release</Configurations>
+    <Platforms>AnyCPU</Platforms>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <OutputPath>..\Build\Debug\</OutputPath>
+    <BaseOutputPath>..\Build\</BaseOutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <OutputPath>..\Build\Release\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\VersionInfo.cs" Link="VersionInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Common\Common.csproj" />
+  </ItemGroup>
+
+</Project>

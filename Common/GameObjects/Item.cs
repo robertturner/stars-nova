@@ -23,7 +23,6 @@
 namespace Nova.Common
 {
     using System;
-    using System.Drawing;
     using System.Xml;
 
     using Nova.Common.DataStructures;

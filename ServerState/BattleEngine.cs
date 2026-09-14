@@ -22,9 +22,8 @@
 
 namespace Nova.Server
 {
-    using System;    
+    using System;
     using System.Collections.Generic;
-    using System.Drawing;
     using System.Linq;
 
     using Nova.Common;
@@ -410,7 +409,7 @@ namespace Nova.Server
         public void PositionStacks(List<Stack> battlingStacks)
         {
             Dictionary<int, int> empires = new Dictionary<int, int>();
-            Dictionary<int, Point> racePositions = new Dictionary<int, Point>();
+            Dictionary<int, NovaPoint> racePositions = new Dictionary<int, NovaPoint>();
 
             foreach (Stack stack in battlingStacks)
             {
@@ -433,8 +432,8 @@ namespace Nova.Server
 
             foreach (int empireId in empires.Values)
             {
-                Rectangle newPosition = spaceAllocator.GetBox();
-                Point position = new Point();
+                NovaRect newPosition = spaceAllocator.GetBox();
+                NovaPoint position = new NovaPoint();
 
                 position.X = newPosition.X + (newPosition.Width / 2);
                 position.Y = newPosition.Y + (newPosition.Height / 2);
@@ -658,7 +657,13 @@ namespace Nova.Server
             {
                 return true;
             }
+            else if (battlePlan.Attack == "Enemies and Neutrals" &&
+                     (lambRelation == PlayerRelation.Enemy || lambRelation == PlayerRelation.Neutral))
+            {
+                return true;
+            }
 
+            // "None" (or an unrecognized value) falls through here deliberately - no targets.
             return false;
         }
 

@@ -34,9 +34,12 @@ namespace Nova.Common
     [Serializable]
     public class TraitEntry
     {
-        public string Name;        // e.g. "Hyper Expansion" or "Regenerating Shields" (may contain spaces)
-        public string Code;        // e.g. "HE" or "RS" (must be unique, all caps, no spaces or punctuation) 
-        public string Description; // Detailed description (paragraph).
+        // Public properties, not fields - Avalonia (like WPF/UWP) can only data-bind to
+        // properties, never to plain public fields, and RaceDesignerView binds these directly
+        // for the primary-trait picker.
+        public string Name { get; set; }        // e.g. "Hyper Expansion" or "Regenerating Shields" (may contain spaces)
+        public string Code { get; set; }        // e.g. "HE" or "RS" (must be unique, all caps, no spaces or punctuation)
+        public string Description { get; set; } // Detailed description (paragraph).
 
         /// <summary>
         /// Trait constructor. In most instances a string containing the trait code is 

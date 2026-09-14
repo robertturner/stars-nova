@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>23</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ApplicationId>com.starsnova.avalonia</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+    <!-- Android head: the actual app (Views/ViewModels/App.axaml/ShellView, everything
+         platform-agnostic) lives in Nova.Avalonia.csproj (built as Nova.Avalonia.Core.dll),
+         shared with the Windows desktop head (Nova.Avalonia.Desktop.csproj). This project is
+         just the Android-specific entry point (MainActivity/Application, both using
+         ShellView/App from the shared project via App.axaml.cs's IActivityApplicationLifetime
+         branch - see that file) plus the Android manifest/resources an Activity needs, and
+         AssetExtractor.cs, which solves the game-data-bundling gap this file used to flag as
+         unsolved: game data (components.xml, Graphics/, HelpContent/) is bundled below as
+         AndroidAsset items (packaged inside the APK's assets/ folder, unlike Content items which
+         copy next to a desktop exe) and extracted to the app's private writable storage
+         (Context.FilesDir) once at startup by AssetExtractor, called from Application.OnCreate -
+         see that file and PlatformHooks.NovaRootOverride (Common/PlatformHooks.cs) for how
+         everything downstream (AllComponents, HelpViewModel) finds the extracted copies through
+         ordinary File.Open/Path.Combine, unchanged from how they already work on desktop. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AndroidResource Include="Icon.png">
+      <Link>Resources\drawable\Icon.png</Link>
+    </AndroidResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AndroidAsset Include="..\components.xml" Link="Assets\components.xml" />
+    <AndroidAsset Include="..\Graphics\**\*.*" Link="Assets\Graphics\%(RecursiveDir)%(Filename)%(Extension)" />
+    <AndroidAsset Include="..\HelpContent\**\*.*" Link="Assets\HelpContent\%(RecursiveDir)%(Filename)%(Extension)" />
+    <AndroidAsset Include="..\DefaultRaces\**\*.*" Link="Assets\DefaultRaces\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Android" Version="12.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nova.Avalonia\Nova.Avalonia.csproj" />
+  </ItemGroup>
+</Project>

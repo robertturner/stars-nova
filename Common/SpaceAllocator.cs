@@ -25,7 +25,8 @@ namespace Nova.Common
     using System;
     using System.Collections;
     using System.Collections.Generic;
-    using System.Drawing;
+
+    using Nova.Common.DataStructures;
 
     /// <summary>
     /// SpaceAllocator chops up the available space into a number of boxes which
@@ -36,7 +37,7 @@ namespace Nova.Common
     {
         public int GridAxisCount;
 
-        private readonly List<Rectangle> availableBoxes = new List<Rectangle>();
+        private readonly List<NovaRect> availableBoxes = new List<NovaRect>();
         private readonly Random random = new Random();
 
         /// <summary>
@@ -80,8 +81,7 @@ namespace Nova.Common
                 GridAxisCount = 1;
             }
             int boxSide = spaceSize / GridAxisCount;
-            Size boxSize = new Size(boxSide, boxSide);
-            Point currentPosition = new Point();
+            NovaPoint currentPosition = new NovaPoint();
 
             for (int y = 0; y < GridAxisCount; y++)
             {
@@ -90,7 +90,7 @@ namespace Nova.Common
                 for (int x = 0; x < GridAxisCount; x++)
                 {
                     currentPosition.X = x * boxSide;
-                    Rectangle box = new Rectangle(currentPosition, boxSize);
+                    NovaRect box = new NovaRect(currentPosition, boxSide, boxSide);
                     this.availableBoxes.Add(box);
                 }
             }
@@ -101,10 +101,10 @@ namespace Nova.Common
         /// available boxes.
         /// </summary>
         /// <returns></returns>
-        public Rectangle GetBox()
+        public NovaRect GetBox()
         {
             int boxNumber = this.random.Next(0, this.availableBoxes.Count - 1);
-            Rectangle box = availableBoxes[boxNumber];
+            NovaRect box = availableBoxes[boxNumber];
 
             this.availableBoxes.RemoveAt(boxNumber);
             return box;

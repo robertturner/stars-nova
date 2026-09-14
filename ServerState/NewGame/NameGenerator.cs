@@ -32,20 +32,27 @@ namespace Nova.Server.NewGame
     /// </summary>
     public class NameGenerator
     {
-        private readonly Random randomGenerator = new Random();
+        private readonly Random randomGenerator;
         private readonly List<string> starNamePool = new List<string>();
         private readonly List<string> raceNamePool = new List<string>();
         private readonly HashSet<string> usedRaceNames = new HashSet<string>();
-  
-        
+
+
         /// <summary>
         /// Initializes a new instance of the ShipDesignDialog class.
         /// <para>Put all of our star names into our hat.</para>
         /// </summary>
-        public NameGenerator()
+        /// <param name="random">
+        /// The Random to draw names from. Optional (defaults to a freshly-seeded one) so existing
+        /// callers that don't care about reproducibility are unaffected; pass in the same shared
+        /// Random used elsewhere in game generation to make name allocation part of a seeded,
+        /// reproducible game (see GameSettings.Seed and Gameinitializer.Initialize).
+        /// </param>
+        public NameGenerator(Random random = null)
         {
+            this.randomGenerator = random ?? new Random();
             this.starNamePool.AddRange(this.starNames);
-            this.raceNamePool.AddRange(this.raceNames);        
+            this.raceNamePool.AddRange(this.raceNames);
         }
 
 

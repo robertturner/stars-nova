@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Nova.Avalonia.ViewModels"
+             x:Class="Nova.Avalonia.Views.OpenGameView"
+             x:DataType="vm:OpenGameViewModel">
+    <Grid Margin="16" RowDefinitions="Auto,*">
+        <TextBlock Grid.Row="0" Text="Stars! Nova" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"
+                   IsVisible="{Binding ShowStartupHeader}" />
+
+        <!-- A Grid (not a StackPanel) so whichever screen is showing gets the full remaining
+             height to lay out in - RaceDesignerHost in particular needs a real bound here, or
+             its own TabControl grows past the screen and pushes its Save/Cancel footer off it. -->
+        <Grid Grid.Row="1">
+            <StackPanel Spacing="10" IsVisible="{Binding ShowStartupChoices}">
+                <Button Content="Continue Game" Command="{Binding ContinueCommand}" HorizontalAlignment="Stretch" />
+                <Button Content="Open Game..." Command="{Binding ShowOpenGameCommand}" HorizontalAlignment="Stretch" />
+                <Button Content="New Game..." Command="{Binding NewGameCommand}" HorizontalAlignment="Stretch" />
+                <Button Content="Race Designer..." Command="{Binding RaceDesignerCommand}" HorizontalAlignment="Stretch" />
+                <TextBlock Text="{Binding ContinueStatusMessage}" Opacity="0.7" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding StatusMessage}" Opacity="0.7" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Spacing="10" IsVisible="{Binding ShowOpenGameBrowse}">
+                <TextBlock Text="Pick a race's .intel file from an existing game folder." Opacity="0.7" TextWrapping="Wrap" />
+
+                <Button Content="Browse..." Click="BrowseButton_Click" HorizontalAlignment="Left" />
+
+                <Grid ColumnDefinitions="Auto,*" Margin="0,4" IsVisible="{Binding HasRaceOptions}">
+                    <TextBlock Grid.Column="0" Text="Play as" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding RaceOptions}" SelectedItem="{Binding SelectedRace}"
+                              HorizontalAlignment="Stretch" />
+                </Grid>
+
+                <TextBlock Text="{Binding StatusMessage}" Opacity="0.7" TextWrapping="Wrap" />
+
+                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
+                    <Button Grid.Column="0" Content="&lt; Back" Command="{Binding BackToStartCommand}" />
+                    <Button Grid.Column="2" Content="Open" Command="{Binding OpenCommand}" />
+                </Grid>
+            </StackPanel>
+
+            <ContentControl Name="RaceDesignerHost" IsVisible="{Binding ShowRaceDesigner}" />
+            <ContentControl Name="NewGameHost" IsVisible="{Binding ShowNewGame}" />
+        </Grid>
+    </Grid>
+</UserControl>

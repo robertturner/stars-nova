@@ -51,6 +51,17 @@ namespace Nova.Common.Commands
         // an existing route. Kept separate from Add rather than making Add respect Index, since
         // several existing Add call sites pass an Index value that ApplyToState has always
         // ignored - changing Add's meaning would silently change their behavior.
-        Insert
+        Insert,
+
+        // Only handled by ProductionCommand (see its ApplyToState/OtherIndex) - atomically
+        // exchanges the two queue entries at Index and OtherIndex. Deliberately NOT implemented
+        // as two paired Edit commands (swap A into B's slot, then B into A's): ProductionCommand.
+        // IsValid's Edit case blocks any edit that would *decrease* the remaining/total cost at
+        // an index (an anti-cheat guard against quietly substituting a cheaper order) - which
+        // also blocks a perfectly legitimate reorder whenever the two adjacent orders have
+        // different costs, since exactly one of the two paired Edits would then be moving a
+        // cheaper order into a pricier order's slot. Since a real swap changes no order's cost
+        // at all, it needs its own validity rule instead of going through Edit's.
+        Swap
     }
 }

@@ -64,6 +64,8 @@ namespace Nova.WinForms.Gui
             this.buttonGotoPlanet = new System.Windows.Forms.Button();
             this.groupBox3 = new System.Windows.Forms.GroupBox();
             this.checkBoxRepeatOrders = new System.Windows.Forms.CheckBox();
+            this.waypointUp = new System.Windows.Forms.Button();
+            this.waypointDown = new System.Windows.Forms.Button();
             this.buttonWaypointTarget = new System.Windows.Forms.Button();
             this.contextMenuWaypointTargets = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.blahToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -312,6 +314,8 @@ namespace Nova.WinForms.Gui
             // groupBox3
             // 
             this.groupBox3.Controls.Add(this.checkBoxRepeatOrders);
+            this.groupBox3.Controls.Add(this.waypointUp);
+            this.groupBox3.Controls.Add(this.waypointDown);
             this.groupBox3.Controls.Add(this.buttonWaypointTarget);
             this.groupBox3.Controls.Add(this.wayPoints);
             this.groupBox3.Controls.Add(this.label1);
@@ -346,7 +350,32 @@ namespace Nova.WinForms.Gui
             this.checkBoxRepeatOrders.TabIndex = 95;
             this.checkBoxRepeatOrders.Text = "Repeat Orders";
             this.checkBoxRepeatOrders.UseVisualStyleBackColor = true;
-            // 
+            //
+            // waypointUp
+            //
+            // Reorders the selected waypoint by swapping its payload with the adjacent one via
+            // two WaypointCommand(Edit,...) pushes - the same "swap adjacent rows" idiom
+            // ProductionDialog's QueueUp/QueueDown buttons already use for the production queue,
+            // rather than introducing a new CommandMode. Waypoints[0] (current position) is
+            // immovable, matching the existing Delete-key guard just above.
+            this.waypointUp.Location = new System.Drawing.Point(9, 225);
+            this.waypointUp.Name = "waypointUp";
+            this.waypointUp.Size = new System.Drawing.Size(73, 23);
+            this.waypointUp.TabIndex = 96;
+            this.waypointUp.Text = "Move Up";
+            this.waypointUp.UseVisualStyleBackColor = true;
+            this.waypointUp.Click += new System.EventHandler(this.WaypointUp_Click);
+            //
+            // waypointDown
+            //
+            this.waypointDown.Location = new System.Drawing.Point(88, 225);
+            this.waypointDown.Name = "waypointDown";
+            this.waypointDown.Size = new System.Drawing.Size(73, 23);
+            this.waypointDown.TabIndex = 97;
+            this.waypointDown.Text = "Move Down";
+            this.waypointDown.UseVisualStyleBackColor = true;
+            this.waypointDown.Click += new System.EventHandler(this.WaypointDown_Click);
+            //
             // buttonWaypointTarget
             // 
             this.buttonWaypointTarget.BackColor = System.Drawing.Color.Transparent;
@@ -712,6 +741,8 @@ namespace Nova.WinForms.Gui
         private Label label11;
         private Button btnRename;
         private Button buttonWaypointTarget;
+        private Button waypointUp;
+        private Button waypointDown;
         private GroupBox groupBox2;
         private ComboBox WaypointTasks;
         private CheckBox checkBoxRepeatOrders;

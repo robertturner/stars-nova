@@ -1,0 +1,197 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Nova.Avalonia.ViewModels"
+             xmlns:controls="using:Nova.Avalonia.Views.Controls"
+             x:Class="Nova.Avalonia.Views.RaceDesignerView"
+             x:DataType="vm:RaceDesignerViewModel">
+    <Grid Margin="16" RowDefinitions="Auto,Auto,*,Auto">
+        <TextBlock Grid.Row="0" Text="Race Designer" FontSize="18" FontWeight="Bold" Margin="0,0,0,8" />
+
+        <!-- A ComboBox, not a TabControl or a row of buttons - TabControl's default tab
+             strip wraps onto several lines once the headers no longer fit one row (confirmed
+             live on a phone-width Android emulator: six tabs, one titled "Leftover Points",
+             wrapped to five stacked rows), crushing the page content below it down to a
+             sliver; a hand-rolled horizontally-scrolling button row avoided the wrapping but
+             turned out to have its own live-confirmed touch bug of its own (tapping a button
+             shifted the ScrollViewer's scroll position without ever raising Click). A
+             ComboBox is a control already proven to work reliably via touch elsewhere on
+             this exact screen. Sits at the very top, above every page, so every page below
+             gets the full remaining content area to itself. -->
+        <StackPanel Grid.Row="1" Spacing="2" Margin="0,0,0,8">
+            <TextBlock Text="Section" />
+            <ComboBox ItemsSource="{Binding PageLabels}" SelectedItem="{Binding SelectedPageLabel}"
+                      HorizontalAlignment="Stretch" />
+        </StackPanel>
+
+        <Grid Grid.Row="2">
+            <ScrollViewer IsVisible="{Binding ShowIdentityPage}">
+                <StackPanel Spacing="8">
+                    <!-- Label stacked above its own full-width field, not side-by-side in
+                         shared Grid columns - two label+field pairs squeezed into one row
+                         overlapped on a narrow phone screen (confirmed live: the tail of
+                         "Race name"/"Password" rendered behind the following TextBox).
+                         Stacking removes any dependency on available width. -->
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Race name" />
+                        <TextBox Text="{Binding Name}" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Plural name" />
+                        <TextBox Text="{Binding PluralName}" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Password" />
+                        <TextBox Text="{Binding Password}" PasswordChar="*" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Primary trait" />
+                        <ComboBox ItemsSource="{Binding PrimaryTraitOptions}" SelectedItem="{Binding SelectedPrimaryTrait}"
+                                  HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding Description}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="Auto,Auto">
+                        <TextBlock Grid.Column="0" Text="Icon:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <Border Grid.Column="1" BorderBrush="Gray" BorderThickness="1" Width="40" Height="40">
+                            <Image Source="{Binding SelectedIcon.Image}" Stretch="Uniform" />
+                        </Border>
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding IconOptions}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Margin="4" Padding="4"
+                                        Command="{Binding $parent[ItemsControl].((vm:RaceDesignerViewModel)DataContext).SelectIconCommand}"
+                                        CommandParameter="{Binding}">
+                                    <Image Source="{Binding Image}" Width="48" Height="48" Stretch="Uniform" />
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer IsVisible="{Binding ShowTraitsPage}">
+                <ItemsControl ItemsSource="{Binding SecondaryTraitOptions}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox Content="{Binding Title}" IsChecked="{Binding IsSelected}"
+                                      ToolTip.Tip="{Binding Description}" Margin="0,2" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <ScrollViewer IsVisible="{Binding ShowEnvironmentPage}">
+                <StackPanel Spacing="10">
+                    <controls:EnvironmentToleranceEditor DataContext="{Binding GravityTolerance}" />
+                    <controls:EnvironmentToleranceEditor DataContext="{Binding TemperatureTolerance}" />
+                    <controls:EnvironmentToleranceEditor DataContext="{Binding RadiationTolerance}" />
+                    <TextBlock Margin="0,4">
+                        <Run Text="Estimated compatible worlds:" /><Run Text="{Binding WorldAvailabilityPercent, StringFormat={}{0:F0}%}" />
+                    </TextBlock>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer IsVisible="{Binding ShowProductionPage}">
+                <StackPanel Spacing="10">
+                    <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="Colonists required to generate one resource each year" VerticalAlignment="Center" />
+                            <NumericUpDown Grid.Column="1" Value="{Binding ColonistsPerResource}" Minimum="700" Maximum="2500" Increment="100" FormatString="0" Width="120" />
+                        </Grid>
+                    </Border>
+                    <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Factories" FontWeight="Bold" />
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Resources produced by each set of 10 factories" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding FactoryProduction}" Minimum="5" Maximum="15" FormatString="0" Width="120" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Resources required to build each factory" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding FactoryBuildCost}" Minimum="5" Maximum="25" FormatString="0" Width="120" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Factories that can be operated by 10k colonists" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding OperableFactories}" Minimum="5" Maximum="25" FormatString="0" Width="120" />
+                            </Grid>
+                            <CheckBox Content="{Binding CheapFactoriesTrait.Title}" IsChecked="{Binding CheapFactoriesTrait.IsSelected}"
+                                      ToolTip.Tip="{Binding CheapFactoriesTrait.Description}" />
+                        </StackPanel>
+                    </Border>
+                    <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Mines" FontWeight="Bold" />
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Mineral production (kT) per set of 10 mines" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding MineProductionRate}" Minimum="5" Maximum="25" FormatString="0" Width="120" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Number of resources required to build a mine" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding MineBuildCost}" Minimum="2" Maximum="15" FormatString="0" Width="120" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Mines that can be operated by 10k colonists" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding OperableMines}" Minimum="5" Maximum="25" FormatString="0" Width="120" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="Maximum colonist growth per year (%)" VerticalAlignment="Center" />
+                        <NumericUpDown Grid.Column="1" Value="{Binding GrowthRate}" Minimum="1" Maximum="20" FormatString="0" Width="120" />
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer IsVisible="{Binding ShowResearchPage}">
+                <StackPanel Spacing="10">
+                    <controls:ResearchCostSelector DataContext="{Binding Biotechnology}" />
+                    <controls:ResearchCostSelector DataContext="{Binding Electronics}" />
+                    <controls:ResearchCostSelector DataContext="{Binding Energy}" />
+                    <controls:ResearchCostSelector DataContext="{Binding Propulsion}" />
+                    <controls:ResearchCostSelector DataContext="{Binding Weapons}" />
+                    <controls:ResearchCostSelector DataContext="{Binding Construction}" />
+                    <CheckBox Content="{Binding ExtraTechTrait.Title}" IsChecked="{Binding ExtraTechTrait.IsSelected}"
+                              ToolTip.Tip="{Binding ExtraTechTrait.Description}" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <StackPanel Spacing="10" IsVisible="{Binding ShowLeftoverPointsPage}">
+                <TextBlock Text="Spend up to 50 leftover advantage points on:" />
+                <ComboBox ItemsSource="{Binding LeftoverPointTargetOptions}"
+                          SelectedItem="{Binding LeftoverPointTarget}" HorizontalAlignment="Stretch" />
+            </StackPanel>
+        </Grid>
+
+        <StackPanel Grid.Row="3" Spacing="6" Margin="0,8,0,0">
+            <Grid ColumnDefinitions="Auto,Auto,*">
+                <TextBlock Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
+                    <Run Text="Advantage points:" /><Run Text="{Binding AdvantagePoints}" />
+                </TextBlock>
+                <TextBlock Grid.Column="1" VerticalAlignment="Center">
+                    <Run Text="Leftover:" /><Run Text="{Binding LeftoverPoints}" />
+                </TextBlock>
+            </Grid>
+            <TextBlock Text="{Binding StatusMessage}" Opacity="0.7" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                <Button Grid.Column="0" Content="Load..." Click="LoadButton_Click" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelCommand}" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="2" Content="Save" Command="{Binding SaveCommand}" HorizontalAlignment="Stretch" />
+            </Grid>
+        </StackPanel>
+    </Grid>
+</UserControl>

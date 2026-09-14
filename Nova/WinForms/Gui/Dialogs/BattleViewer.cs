@@ -25,39 +25,42 @@ namespace Nova.WinForms.Gui
     using System;
     using System.Collections.Generic;
     using System.Drawing;
-    using System.Linq;
     using System.Text;
     using System.Windows.Forms;
-    
+
     using Nova.Common;
     using Nova.Common.DataStructures;
 
     /// <Summary>
-    /// Dialog for viewing battle progress and outcome.
+    /// Dialog for viewing battle progress and outcome. Ports client-ui-dialog-catalog.md's
+    /// "Event replay" surface: "a current playback position and transport controls... moving
+    /// playback position changes the displayed event state only... cannot change the saved game
+    /// state or event recording."
+    ///
+    /// The original stepped only forward and mutated `theBattle.Stacks` directly (despite its own
+    /// constructor comment saying it deep-copies into `myStacks` "so we don't disturb the master
+    /// copy") - a real bug, since every step handler actually read/wrote `theBattle.Stacks`, not
+    /// the copy; opening a battle report and stepping through it permanently mutated the stored
+    /// report. Fixed here by making every step a pure function of (state, step), and deriving the
+    /// display at any position by folding the full step list from scratch on a fresh clone of the
+    /// ORIGINAL stacks each time - see GoToStep/ApplyStep.
     /// </Summary>
     public partial class BattleViewer : Form
     {
         private readonly BattleReport theBattle;
-        private readonly Dictionary<long, Stack> myStacks = new Dictionary<long, Stack>();
+        private Dictionary<long, Stack> myStacks = new Dictionary<long, Stack>();
         private int eventCount;
+        private bool playing;
 
         /// <Summary>
         /// Initializes a new instance of the BattleViewer class.
         /// </Summary>
-        /// <param name="thisBattle">The <see cref="BattleReport"/> to be displayed.</param>
+        /// <param name="report">The <see cref="BattleReport"/> to be displayed.</param>
         public BattleViewer(BattleReport report)
         {
             InitializeComponent();
             theBattle = report;
             eventCount = 0;
-
-            // Take a copy of all of the stacks so that we can mess with them
-            // without disturbing the master copy in the global turn file.
-
-            foreach (Stack stack in theBattle.Stacks.Values)
-            {
-                myStacks[stack.Key] = new Stack(stack);
-            }
         }
 
         /// <Summary>
@@ -71,7 +74,11 @@ namespace Nova.WinForms.Gui
 
             battlePanel.BackgroundImage = Nova.Properties.Resources.Plasma;
             battlePanel.BackgroundImageLayout = ImageLayout.Stretch;
-            SetStepNumber(theBattle.Steps[eventCount]);
+
+            stepPosition.Minimum = 0;
+            stepPosition.Maximum = Math.Max(0, theBattle.Steps.Count - 1);
+
+            GoToStep(0);
         }
 
         /// <Summary>
@@ -94,164 +101,215 @@ namespace Nova.WinForms.Gui
 
             foreach (Stack stack in myStacks.Values)
             {
-                graphics.DrawImage(stack.Icon.Image, (Point)stack.Position);
+                graphics.DrawImage((Image)stack.Icon.Image, (Point)stack.Position);
             }
         }
 
         /// <Summary>
-        /// Step through each battle event.
+        /// Recomputes the entire display state for the given step position from scratch: clone
+        /// the ORIGINAL stacks fresh, then fold every step from 0 up to and including this
+        /// position through ApplyStep. This is the "jump to any position" primitive that both
+        /// Next/Previous and the scrub bar are built on - a battle's step count is realistically
+        /// tens (capped by BattleEngine's maxBattleRounds), so re-folding from scratch on every
+        /// move is cheap, and it means no per-step-type inverse/undo logic is ever needed.
         /// </Summary>
-        /// <param name="sender">The source of the event.</param>
-        /// <param name="e">A <see cref="EventArgs"/> that contains the event data.</param>
-        private void NextStep_Click(object sender, EventArgs e)
+        private void GoToStep(int position)
         {
-            object thisStep = theBattle.Steps[eventCount];
-            SetStepNumber((BattleStep) thisStep);
-
-            if (thisStep is BattleStepMovement)
+            if (theBattle.Steps.Count == 0)
             {
-                DoBattleStepMovement(thisStep as BattleStepMovement);
-            }
-            else if (thisStep is BattleStepTarget)
-            {
-                DoBattleStepTarget(thisStep as BattleStepTarget);
-            }
-            else if (thisStep is BattleStepWeapons)
-            {
-                DoBattleStepFireWeapon(thisStep as BattleStepWeapons);
-            }
-            else if (thisStep is BattleStepDestroy)
-            {
-                UpdateDestroy(thisStep as BattleStepDestroy);
+                return;
             }
 
-            if (eventCount < theBattle.Steps.Count - 1)
-            {
-                eventCount++;
-            }
-            else
-            {
-                nextStep.Enabled = false;
-            }
+            position = Math.Max(0, Math.Min(position, theBattle.Steps.Count - 1));
+            eventCount = position;
 
-        }
+            // Not solely reliant on OnLoad having already run - GoToStep is the one place that
+            // actually needs stepPosition.Maximum to be correct, so it sets it itself.
+            stepPosition.Maximum = Math.Max(0, theBattle.Steps.Count - 1);
 
+            myStacks = CloneOriginalStacks();
 
-        /// <Summary>
-        /// Update the movement of a stack.
-        /// </Summary>
-        /// <param name="battleStep">Movement to display.</param>
-        private void DoBattleStepMovement(BattleStepMovement battleStep)
-        {
-            Stack stack = null;
-            theBattle.Stacks.TryGetValue(battleStep.StackKey, out stack);
-
-            if (stack != null)
+            for (int i = 0; i < position; i++)
             {
-                UpdateStackDetails(stack);
-                stack.Position = battleStep.Position; // move the icon
-            }
-            else
-            {
-                ClearStackDetails();
+                ApplyStep(theBattle.Steps[i], myStacks);
             }
 
-            movedFrom.Text = stack.Position.ToString();
-            movedTo.Text = battleStep.Position.ToString();
-            stack.Position = battleStep.Position;
+            // The step currently being displayed gets its "before" state captured (for
+            // Movement's from/to fields) immediately before it's applied, matching what the
+            // detail panel is meant to show for that one step specifically.
+            BattleStep currentStep = theBattle.Steps[position];
+            NovaPoint? movedFromPosition = null;
+            if (currentStep is BattleStepMovement movement &&
+                myStacks.TryGetValue(movement.StackKey, out Stack stackBeforeMove))
+            {
+                movedFromPosition = stackBeforeMove.Position;
+            }
 
-            // We have moved, clear out the other fields as they are not relevant to this step.
-            ClearTargetDetails();
-            ClearWeapons();
+            ApplyStep(currentStep, myStacks);
+            ShowStepDetails(currentStep, movedFromPosition);
+            SetStepNumber(currentStep);
+
+            stepPosition.Value = position;
+            previousStep.Enabled = position > 0;
+            nextStep.Enabled = position < theBattle.Steps.Count - 1;
 
             battlePanel.Invalidate();
         }
 
-        /// <Summary>
-        /// Update the current target (and stack) details.
-        /// </Summary>
-        /// <param name="target">Target ship to display.</param>
-        private void DoBattleStepTarget(BattleStepTarget battleStep)
+        private Dictionary<long, Stack> CloneOriginalStacks()
         {
-            if (battleStep == null)
+            var clone = new Dictionary<long, Stack>();
+            foreach (Stack stack in theBattle.Stacks.Values)
             {
-                Report.Error("BattleViewer.cs DoBattleStepTarget(): battleStep is null.");
-                ClearTargetDetails();
+                clone[stack.Key] = new Stack(stack);
             }
-            else
+
+            return clone;
+        }
+
+        /// <Summary>
+        /// Pure state transition - mutates only the passed-in dictionary, never
+        /// `theBattle.Stacks`. BattleStepTarget carries no state change of its own (targeting
+        /// info only), so it's a no-op here; its fields are read directly by ShowStepDetails.
+        /// </Summary>
+        private static void ApplyStep(BattleStep step, Dictionary<long, Stack> state)
+        {
+            switch (step)
             {
-                Stack lamb = null;
-                Stack wolf = null;
+                case BattleStepMovement movement:
+                    if (state.TryGetValue(movement.StackKey, out Stack movedStack))
+                    {
+                        movedStack.Position = movement.Position;
+                    }
 
-                theBattle.Stacks.TryGetValue(battleStep.TargetKey, out lamb);
-                theBattle.Stacks.TryGetValue(battleStep.StackKey, out wolf);
+                    break;
 
-                UpdateStackDetails(wolf);
-                ClearMovementDetails();
-                ClearWeapons();
-                UpdateTargetDetails(lamb);
+                case BattleStepWeapons weapons:
+                    if (state.TryGetValue(weapons.WeaponTarget.TargetKey, out Stack lamb))
+                    {
+                        if (weapons.Targeting == BattleStepWeapons.TokenDefence.Shields)
+                        {
+                            lamb.Token.Shields -= weapons.Damage;
+                        }
+                        else
+                        {
+                            lamb.Token.Armor -= weapons.Damage;
+                        }
+                    }
+
+                    break;
+
+                case BattleStepDestroy destroy:
+                    state.Remove(destroy.StackKey);
+                    break;
             }
         }
 
         /// <Summary>
-        /// Deal with weapons being fired.
+        /// Updates the detail panel labels for whichever step is now current - reads from
+        /// `myStacks` (the state already folded up to and including this step) so target
+        /// shields/armor reflect the value AFTER this step's effect, matching the original's own
+        /// "apply then show" behavior for weapons fire.
         /// </Summary>
-        /// <param name="weapons">Weapon to display.</param>
-        private void DoBattleStepFireWeapon(BattleStepWeapons weapons)
+        private void ShowStepDetails(BattleStep step, NovaPoint? movedFromPosition)
         {
-            if (weapons == null)
+            ClearMovementDetails();
+            ClearTargetDetails();
+            ClearWeapons();
+
+            switch (step)
             {
-                Report.Error("BattleViewer.cs DoBattleStepFireWeapon() weapons is null.");
-                ClearWeapons();
-            }
-            else
-            {
-                BattleStepTarget target = weapons.WeaponTarget;
+                case BattleStepMovement movement:
+                    myStacks.TryGetValue(movement.StackKey, out Stack movedStack);
+                    UpdateStackDetails(movedStack);
+                    movedFrom.Text = movedFromPosition?.ToString() ?? "";
+                    movedTo.Text = movement.Position.ToString();
+                    break;
 
-                Stack lamb = null;
-                Stack wolf = null;
+                case BattleStepTarget target:
+                    myStacks.TryGetValue(target.TargetKey, out Stack lambTarget);
+                    myStacks.TryGetValue(target.StackKey, out Stack wolfTarget);
+                    UpdateStackDetails(wolfTarget);
+                    UpdateTargetDetails(lambTarget);
+                    break;
 
-                theBattle.Stacks.TryGetValue(target.TargetKey, out lamb);
-                theBattle.Stacks.TryGetValue(target.StackKey, out wolf);
+                case BattleStepWeapons weapons:
+                    myStacks.TryGetValue(weapons.WeaponTarget.TargetKey, out Stack lambWeapons);
+                    myStacks.TryGetValue(weapons.WeaponTarget.StackKey, out Stack wolfWeapons);
+                    UpdateStackDetails(wolfWeapons);
+                    UpdateTargetDetails(lambWeapons);
 
-                UpdateStackDetails(wolf);
-                UpdateTargetDetails(lamb);
-                ClearMovementDetails();
-
-                // damge taken
-                weaponPower.Text = weapons.Damage.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-                // "Damage to shields" or "Damage to armor"
-                if (weapons.Targeting == BattleStepWeapons.TokenDefence.Shields)
-                {
-                    componentTarget.Text = "Damage to shields";
+                    weaponPower.Text = weapons.Damage.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    componentTarget.Text = weapons.Targeting == BattleStepWeapons.TokenDefence.Shields
+                        ? "Damage to shields"
+                        : "Damage to armor";
                     damage.Text = weaponPower.Text + " " + componentTarget.Text;
-                    lamb.Token.Shields -= weapons.Damage;
-                    UpdateTargetDetails(lamb);
-                }
-                else
-                {
-                    componentTarget.Text = "Damage to armor";
-                    damage.Text = weaponPower.Text + " " + componentTarget.Text;
-                    lamb.Token.Armor -= weapons.Damage;
-                    UpdateTargetDetails(lamb);
-                }
+                    break;
 
-                
+                case BattleStepDestroy destroy:
+                    damage.Text = "Ship destroyed";
+                    break;
             }
         }
 
-        /// <summary>
-        /// Clear the details of the stack in the BattleViewer->BattleDetails->Stack
-        /// </summary>
-        private void ClearStackDetails()
+        /// <Summary>
+        /// Step forward one position.
+        /// </Summary>
+        private void NextStep_Click(object sender, EventArgs e)
         {
-            stackKey.Text = "";
-            stackOwner.Text = "";
-            stackDesign.Text = "";
-            stackShields.Text = "";
-            stackArmor.Text = "";
+            GoToStep(eventCount + 1);
+        }
 
+        /// <Summary>
+        /// Step backward one position.
+        /// </Summary>
+        private void PreviousStep_Click(object sender, EventArgs e)
+        {
+            GoToStep(eventCount - 1);
+        }
+
+        /// <Summary>
+        /// Drag the scrub bar to jump directly to any position.
+        /// </Summary>
+        private void StepPosition_Scroll(object sender, EventArgs e)
+        {
+            StopPlaying();
+            GoToStep(stepPosition.Value);
+        }
+
+        /// <Summary>
+        /// Toggle auto-advance playback.
+        /// </Summary>
+        private void PlayPauseButton_Click(object sender, EventArgs e)
+        {
+            if (playing)
+            {
+                StopPlaying();
+            }
+            else
+            {
+                playing = true;
+                playPauseButton.Text = "Pause";
+                playTimer.Start();
+            }
+        }
+
+        private void PlayTimer_Tick(object sender, EventArgs e)
+        {
+            if (eventCount >= theBattle.Steps.Count - 1)
+            {
+                StopPlaying();
+                return;
+            }
+
+            GoToStep(eventCount + 1);
+        }
+
+        private void StopPlaying()
+        {
+            playing = false;
+            playPauseButton.Text = "Play";
+            playTimer.Stop();
         }
 
         /// <summary>
@@ -271,7 +329,11 @@ namespace Nova.WinForms.Gui
             }
             else
             {
-                ClearStackDetails();
+                stackKey.Text = "";
+                stackOwner.Text = "";
+                stackDesign.Text = "";
+                stackShields.Text = "";
+                stackArmor.Text = "";
             }
         }
 
@@ -296,7 +358,7 @@ namespace Nova.WinForms.Gui
                 ClearTargetDetails();
             }
         }
-        
+
         /// <Summary>
         /// Set the details for the target to "" on the UI.
         /// </Summary>
@@ -308,7 +370,6 @@ namespace Nova.WinForms.Gui
             targetArmor.Text = "";
         }
 
-        
         /// <summary>
         /// Clear the BattleViewer weapon details.
         /// </summary>
@@ -326,25 +387,7 @@ namespace Nova.WinForms.Gui
         {
             movedFrom.Text = "";
             movedTo.Text = "";
-               
         }
-
-        /// <Summary>
-        /// Deal with a ship being destroyed. Remove it from the containing stack and,
-        /// if the token count drops to zero, destroy the whole stack.
-        /// </Summary>
-        /// <param name="destroy"></param>
-        private void UpdateDestroy(BattleStepDestroy destroy)
-        {
-            damage.Text = "Ship destroyed";
-
-            // Stacks have 1 token, so remove the stack at once.
-            // Not sure they do - see ShipToken.Quantity - Dan 17 Apr 17
-
-            myStacks.Remove(destroy.StackKey);
-            battlePanel.Invalidate();
-        }
-        
 
         /// <Summary>
         /// Just display the currrent step number in the battle replay control panel.
@@ -360,11 +403,7 @@ namespace Nova.WinForms.Gui
                 thisStep.Type
                 );
 
-
             stepNumber.Text = title.ToString();
         }
-
-
-
     }
 }

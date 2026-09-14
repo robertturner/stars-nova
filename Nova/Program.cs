@@ -22,8 +22,10 @@
 namespace Nova
 {
     using System;
+    using System.Drawing;
     using System.IO;
     using System.Linq;
+    using System.Threading;
     using System.Windows.Forms;
 
     using Nova.Common;
@@ -36,6 +38,33 @@ namespace Nova
         [STAThread]
         public static void Main(string[] args)
         {
+            // On .NET Framework, a WinForms app with no manifest entry defaulted to DPI-Unaware:
+            // Windows bitmap-stretches the whole rendered window to match the monitor's scale
+            // factor, so every hand-drawn pixel rectangle (StarMap's stars, HullGrid's cells,
+            // BattleViewer, etc. - all of which compute Graphics.Draw*/FillRectangle coordinates
+            // directly in device pixels, not DPI-scaled units) still lined up with the
+            // auto-scaled standard controls around it, just blurrier on a scaled display. Modern
+            // .NET's WinForms defaults to System DPI Aware instead when nothing says otherwise -
+            // no compensating stretch happens, so those same hand-drawn pixel rectangles now
+            // render undersized/misaligned relative to everything else on any display that isn't
+            // at 100% scaling. Restore the original DPI-Unaware behavior explicitly; this must be
+            // the very first WinForms API call in the process, before any window/HWND exists.
+            Application.SetHighDpiMode(HighDpiMode.DpiUnaware);
+
+            // .NET Framework's ambient default WinForms font (used by every Form/control that
+            // doesn't explicitly set its own Font, including NovaGUI's main window itself - its
+            // Designer.cs never assigns Font or AutoScaleDimensions at all) was "Microsoft Sans
+            // Serif, 8.25pt". Modern .NET changed the built-in default to "Segoe UI, 9pt" as a
+            // deliberate visual refresh - measurably bigger, and every auto-sizing control
+            // (AutoSize=true labels, buttons, group boxes, etc. - used throughout this Designer-
+            // generated UI) grows to fit that bigger text, making the whole app look oversized
+            // even at 100% display scaling (a font-substitution effect, not a DPI/scaling one -
+            // confirmed distinct from the DPI-awareness fix above by testing on an unscaled
+            // display, where DPI mode can't be the cause but this still was). Restore the exact
+            // original ambient font via the API .NET 6+ added specifically for this migration
+            // scenario, before any Form is constructed.
+            Application.SetDefaultFont(new Font("Microsoft Sans Serif", 8.25f));
+
             string firstArgument = args.FirstOrDefault();
             string[] coreArgs = args.Skip(1).ToArray();
 
@@ -51,6 +80,8 @@ namespace Nova
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+
+            RegisterPlatformHooks();
 
             switch (firstArgument)
             {
@@ -84,6 +115,102 @@ namespace Nova
                     ShowErrorDialog(); 
                     break;
             }
+        }
+
+        /// <summary>
+        /// Wires Nova.Common/Nova.Server's PlatformHooks (Report's message boxes, and the various
+        /// "ask the user to locate/save a file" fallbacks in FileSearcher/Config/GameSettings/
+        /// ServerData) to real WinForms dialogs, reproducing exactly what those classes used to do
+        /// directly before they were decoupled from System.Windows.Forms for portability (see
+        /// PROJECT-STATUS.md's Android-portability section). Must run before any code in those
+        /// projects can possibly call into one of these hooks.
+        /// </summary>
+        private static void RegisterPlatformHooks()
+        {
+            PlatformHooks.ShowError = text => MessageBox.Show(
+                text,
+                "Nova - Error ",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error,
+                MessageBoxDefaultButton.Button1,
+                MessageBoxOptions.DefaultDesktopOnly);
+
+            PlatformHooks.ShowInformation = text => MessageBox.Show(
+                text,
+                "Nova - Information",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information,
+                MessageBoxDefaultButton.Button1,
+                MessageBoxOptions.DefaultDesktopOnly);
+
+            PlatformHooks.ShowFatalError = text => MessageBox.Show(
+                text,
+                "Nova - Fatal Error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Stop,
+                MessageBoxDefaultButton.Button1,
+                MessageBoxOptions.DefaultDesktopOnly);
+
+            PlatformHooks.ShowDebug = text => MessageBox.Show(
+                text,
+                "Nova - Debug",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information,
+                MessageBoxDefaultButton.Button1,
+                MessageBoxOptions.DefaultDesktopOnly);
+
+            PlatformHooks.AskUserForFile = fileName =>
+            {
+                OpenFileDialog fileDialog = new OpenFileDialog();
+                fileDialog.FileName = fileName;
+                fileDialog.Title = "Please locate the file \"" + fileName + "\".";
+                return fileDialog.ShowDialog() == DialogResult.Cancel ? null : fileDialog.FileName;
+            };
+
+            PlatformHooks.AskUserForSaveFile = title =>
+            {
+                SaveFileDialog fd = new SaveFileDialog();
+                fd.Title = title;
+                return fd.ShowDialog() == DialogResult.OK ? fd.FileName : null;
+            };
+
+            PlatformHooks.AskUserForFolder = description =>
+            {
+                FolderBrowserDialog folderBrowser = new FolderBrowserDialog();
+                folderBrowser.RootFolder = Environment.SpecialFolder.Desktop;
+                folderBrowser.SelectedPath = FileSearcher.GetNovaRoot();
+                folderBrowser.Description = description;
+                return folderBrowser.ShowDialog() == DialogResult.OK ? folderBrowser.SelectedPath : null;
+            };
+
+            PlatformHooks.LoadImage = path => new Bitmap(path);
+
+            PlatformHooks.AskUserToSelectRace = raceNames =>
+            {
+                var raceDialog = new Nova.Client.SelectRaceDialog();
+                foreach (string name in raceNames)
+                {
+                    raceDialog.RaceList.Items.Add(name);
+                }
+
+                raceDialog.RaceList.SelectedIndex = 0;
+
+                string selected = raceDialog.ShowDialog() == DialogResult.Cancel
+                    ? null
+                    : raceDialog.RaceList.SelectedItem as string;
+
+                raceDialog.Dispose();
+                return selected;
+            };
+
+            PlatformHooks.RunWithProgressDialog = loadAction =>
+            {
+                var progress = new Nova.ControlLibrary.ProgressDialog();
+                progress.Text = "Loading Components";
+                ThreadPool.QueueUserWorkItem(_ => loadAction(progress));
+                progress.ShowDialog();
+                return progress.Success;
+            };
         }
 
         /// <Summary>

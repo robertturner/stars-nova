@@ -345,6 +345,22 @@ namespace Nova.ControlLibrary
         /// ----------------------------------------------------------------------------
         private void Timer1_Tick(object sender, System.EventArgs e)
         {
+            ApplyStep();
+        }
+
+        /// <summary>
+        /// Applies one step of whatever action is currently held in <see cref="timerAction"/> -
+        /// the body every Timer1_Tick previously ran directly. Pulled out so a MouseDown handler
+        /// can also call it once immediately, rather than waiting on timer1's first tick (its
+        /// default 100ms Interval is never explicitly set, so a plain quick click - anything
+        /// released before that first tick - previously produced no visible change at all and
+        /// looked completely unresponsive; confirmed live, a press held under 100ms left the
+        /// range untouched while the same press held past ~300ms visibly narrowed/widened it).
+        /// Holding the button still repeats via the timer exactly as before; a quick click now
+        /// also does something, matching how every other button/spinner in this app responds.
+        /// </summary>
+        private void ApplyStep()
+        {
             int increment = this.boxMoveIncrement;
 
             this.boxOldRightPosition = this.boxRightPosition;
@@ -417,6 +433,7 @@ namespace Nova.ControlLibrary
         private void LeftScroll_MouseDown(object sender, MouseEventArgs e)
         {
             this.timerAction = TimerOptions.MoveLeft;
+            ApplyStep();
             timer1.Start();
         }
 
@@ -445,6 +462,7 @@ namespace Nova.ControlLibrary
         private void RightScroll_MouseDown(object sender, MouseEventArgs e)
         {
             this.timerAction = TimerOptions.MoveRight;
+            ApplyStep();
             timer1.Start();
         }
 
@@ -459,6 +477,7 @@ namespace Nova.ControlLibrary
         private void Contract_MouseDown(object sender, MouseEventArgs e)
         {
             this.timerAction = TimerOptions.Shrink;
+            ApplyStep();
             timer1.Start();
         }
 
@@ -473,6 +492,7 @@ namespace Nova.ControlLibrary
         private void Expand_MouseDown(object sender, MouseEventArgs e)
         {
             this.timerAction = TimerOptions.Expand;
+            ApplyStep();
             timer1.Start();
         }
         

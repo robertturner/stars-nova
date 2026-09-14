@@ -1,0 +1,20 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             x:Class="Nova.Avalonia.Views.Panels.MessagesView"
+             x:DataType="panels:MessagesViewModel">
+    <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding Messages}" Margin="8">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="panels:MessageItemViewModel">
+                    <Border BorderBrush="#333" BorderThickness="0,0,0,1" Padding="0,6">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Type}" FontSize="10" Opacity="0.5" />
+                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </ScrollViewer>
+</UserControl>

@@ -67,7 +67,7 @@ namespace Nova.Common
         /// <returns>An XmlElement representing the Minefield.</returns>
         public new XmlElement ToXml(XmlDocument xmldoc)
         {
-            XmlElement xmlelMinefield = xmldoc.CreateElement("Minefiled");
+            XmlElement xmlelMinefield = xmldoc.CreateElement("Minefield");
 
             xmlelMinefield.AppendChild(base.ToXml(xmldoc));
 
@@ -83,7 +83,7 @@ namespace Nova.Common
         /// </summary>
         /// <param name="node">A <see cref="Minefield"/> node Nova save file (xml document).</param>
         public Minefield(XmlNode node)
-            : base(node.SelectSingleNode("Item"))
+            : base(node)
         {
             XmlNode subnode = node.FirstChild;
             while (subnode != null)

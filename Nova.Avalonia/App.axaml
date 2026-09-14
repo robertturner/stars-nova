@@ -12,6 +12,7 @@
 
     <Application.Styles>
         <FluentTheme />
+        <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
         <dockFluent:DockFluentTheme />
     </Application.Styles>
 </Application>

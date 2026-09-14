@@ -46,8 +46,26 @@ namespace Nova.Server
         
         // Used to order turn steps.
         private const int FIRSTSTEP = 00;
+        // Runs before STARSTEP so a planet's own mines (only ever processed for owned, colonized
+        // stars) see this turn's already-depleted concentration if a remote-mining fleet also
+        // worked the same star - docs/behavior-specs-4/population-growth.md describes multiple
+        // mining sources at one star as strictly sequential, though doesn't mandate which comes
+        // first; this is a disclosed, reasonable ordering choice, not a spec requirement.
+        private const int REMOTEMININGSTEP = 11;
         private const int STARSTEP = 12;
+
+        // Stargate overgating "vanish chance" constants - docs/behavior-specs-4/
+        // fleet-movement-scanning-cargo.md §5 labels these a "community-fitted approximation,"
+        // lower-confidence than the (independently sourced) damage-percentage formulas they're
+        // used alongside. MASS_VANISH_FITTED_CONSTANT is the spec's own "fitted constant A ≈ 68".
+        // INTERSTELLAR_TRAVELER_VANISH_SCALE represents Interstellar Traveler's "reduced (but not
+        // quantified) chance of losing overgated ships" - 0.5 is a placeholder, not a sourced
+        // number, chosen only because the spec confirms the reduction exists without giving a
+        // figure.
+        private const double MASS_VANISH_FITTED_CONSTANT = 68;
+        private const double INTERSTELLAR_TRAVELER_VANISH_SCALE = 0.5;
         private const int BOMBINGSTEP = 19;
+        private const int WORMHOLEDRIFTSTEP = 20;
         private const int SCANSTEP = 99;
         
         // TODO: (priority 5) refactor all these into ITurnStep(s).
@@ -56,6 +74,7 @@ namespace Nova.Server
         private BattleEngine battleEngine;
         private Bombing bombing;
         private CheckForMinefields checkForMinefields;
+        private LayMines layMines;
         private Manufacture manufacture;
         private Scores scores;
         private VictoryCheck victoryCheck;
@@ -77,6 +96,7 @@ namespace Nova.Server
             battleEngine = new BattleEngine(this.serverState, new BattleReport());
             bombing = new Bombing(this.serverState);
             checkForMinefields = new CheckForMinefields(this.serverState);
+            layMines = new LayMines(this.serverState);
             manufacture = new Manufacture(this.serverState);
             scores = new Scores(this.serverState);
             intelWriter = new IntelWriter(this.serverState, this.scores);
@@ -85,6 +105,8 @@ namespace Nova.Server
             turnSteps.Add(SCANSTEP, new ScanStep());
             turnSteps.Add(BOMBINGSTEP, new BombingStep());
             turnSteps.Add(STARSTEP, new StarUpdateStep());
+            turnSteps.Add(REMOTEMININGSTEP, new RemoteMiningStep());
+            turnSteps.Add(WORMHOLEDRIFTSTEP, new WormholeDriftStep());
         }
         
         /// <summary>
@@ -119,20 +141,29 @@ namespace Nova.Server
             // ToDo: ScrapFleetStep / foreach ITurnStep for waypoint 0. Own TurnStep-List for Waypoint 0?
             new ScrapFleetStep().Process(serverState);
 
-            foreach (Fleet fleet in serverState.IterateAllFleets())
-            {
-                ProcessFleet(fleet); // ToDo: don't scrap fleets here at waypoint 1
-            }
-            serverState.CleanupFleets();
-
             // remove battle from old turns
             foreach (EmpireData empire in serverState.AllEmpires.Values)
             {
                 empire.BattleReports.Clear();
             }
-                                
+
+            // Combat resolves BEFORE fleet movement/waypoint-task execution this turn -
+            // docs/behavior-specs-4/turn-generation-engine.md's phase order puts combat detection
+            // /resolution at phase 9, well before the economic/waypoint-task pass (11) and fleet
+            // movement execution (13). Previously this ran AFTER the movement loop below, so a
+            // fleet that should have been destroyed in battle could still execute its orders (move,
+            // colonize, invade, etc.) that same turn. Combat groups fleets purely by fleet.Position
+            // (see BattleEngine.Run), a value that already carries over correctly from the end of
+            // the PREVIOUS turn's movement, so nothing here depends on this turn's movement having
+            // run first.
             battleEngine.Run();
 
+            serverState.CleanupFleets();
+
+            foreach (Fleet fleet in serverState.IterateAllFleets())
+            {
+                ProcessFleet(fleet); // ToDo: don't scrap fleets here at waypoint 1
+            }
             serverState.CleanupFleets();
 
             victoryCheck.Victor();
@@ -411,37 +442,53 @@ namespace Nova.Server
                 // Move
                 // -------------------
 
-                // Warp 10 can be ordered on any ship, but unless its engine is specifically
-                // rated safe at that speed (Engine.FastestSafeSpeed == 10), each individual ship
-                // faces a 10% chance per year of being destroyed, rolled independently per ship
-                // (not per fleet). See docs/behavior-specs/fleet-movement-scanning-cargo.md §1.
-                if (waypointZero.WarpFactor == 10 && CheckWarp10Destruction(fleet))
+                // Stargates let an eligible fleet skip warp travel (and this waypoint's minefield
+                // check - see below) entirely, arriving the same turn regardless of ordered warp
+                // speed or remaining fuel. See docs/behavior-specs-4/fleet-movement-scanning-cargo.md
+                // §5 "Stargates" and TryStargateJump's own comment.
+                if (TryStargateJump(fleet, waypointZero, race, out bool gateDestroyed))
                 {
-                    return true;
-                }
+                    if (gateDestroyed)
+                    {
+                        return true;
+                    }
 
-                // Check for Cheap Engines failing to start
-                if (waypointZero.WarpFactor > 6 && race.Traits.Contains("CE") && rand.Next(10) == 1)
-                {
-                    // Engines fail
-                    Message message = new Message();
-                    message.Audience = fleet.Owner;
-                    message.Text = "Fleet " + fleet.Name + "'s engines failed to start. Fleet has not moved this turn.";
-                    message.Type = "Cheap Engines";
-                    message.Event = this;
-                    serverState.AllMessages.Add(message);
-                    fleetMoveResult = Fleet.TravelStatus.InTransit;
+                    fleetMoveResult = Fleet.TravelStatus.Arrived;
                 }
                 else
                 {
-                     fleetMoveResult = fleet.Move(ref availableTime, race);
-                }
+                    // Warp 10 can be ordered on any ship, but unless its engine is specifically
+                    // rated safe at that speed (Engine.FastestSafeSpeed == 10), each individual ship
+                    // faces a 10% chance per year of being destroyed, rolled independently per ship
+                    // (not per fleet). See docs/behavior-specs/fleet-movement-scanning-cargo.md §1.
+                    if (waypointZero.WarpFactor == 10 && CheckWarp10Destruction(fleet))
+                    {
+                        return true;
+                    }
 
-                bool destroyed = checkForMinefields.Check(fleet);
+                    // Check for Cheap Engines failing to start
+                    if (waypointZero.WarpFactor > 6 && race.Traits.Contains("CE") && rand.Next(10) == 1)
+                    {
+                        // Engines fail
+                        Message message = new Message();
+                        message.Audience = fleet.Owner;
+                        message.Text = "Fleet " + fleet.Name + "'s engines failed to start. Fleet has not moved this turn.";
+                        message.Type = "Cheap Engines";
+                        message.Event = this;
+                        serverState.AllMessages.Add(message);
+                        fleetMoveResult = Fleet.TravelStatus.InTransit;
+                    }
+                    else
+                    {
+                         fleetMoveResult = fleet.Move(ref availableTime, race);
+                    }
 
-                if (destroyed == true)
-                {
-                    return true;
+                    bool destroyed = checkForMinefields.Check(fleet);
+
+                    if (destroyed == true)
+                    {
+                        return true;
+                    }
                 }
 
                 if (fleetMoveResult == Fleet.TravelStatus.InTransit)
@@ -452,13 +499,24 @@ namespace Nova.Server
                     currentPosition.WarpFactor = waypointZero.WarpFactor;
                     break;
                 }
-                else 
+                else
                 {
                     // Arrived
+
+                    // Wormholes are a free, uncapped-mass shortcut a fleet falls into simply by
+                    // arriving at either opening - "a fleet given a wormhole as a waypoint enters
+                    // and exits the same year it reaches the opening" (docs/behavior-specs-4/
+                    // fleet-movement-scanning-cargo.md's "Wormholes" section). Unlike Stargates,
+                    // there's no player-facing "target this wormhole" order in this port (no UI
+                    // for it exists), so this matches purely on the fleet's arrival POSITION -
+                    // which is how a plain waypoint set to an empty-space point (as opposed to a
+                    // named star) already works everywhere else in this codebase.
+                    TryWormholeTransit(fleet);
+
                     EmpireData sender = serverState.AllEmpires[fleet.Owner];
                     EmpireData reciever = null;
                     Star target = null;
-                    
+
                     serverState.AllStars.TryGetValue(waypointZero.Destination, out target);
 
                     if (target != null)
@@ -474,8 +532,16 @@ namespace Nova.Server
                     if (waypointZero.Task.IsValid(fleet, target, sender, reciever))
                     {
                         waypointZero.Task.Perform(fleet, target, sender, reciever); // ToDo: scrapping fleet may be performed as waypoint 1 task here which is not correct.
+
+                        // LayMinesTask.Perform() can't reach ServerData.AllMinefields itself (see
+                        // LayMines.cs's own comment) - this is the other half of that task,
+                        // dispatched here alongside every other waypoint task's real effect.
+                        if (waypointZero.Task is LayMinesTask)
+                        {
+                            layMines.Lay(fleet);
+                        }
                     }
-                    
+
                     serverState.AllMessages.AddRange(waypointZero.Task.Messages);
                     
                     // Task is done, clear it.
@@ -583,6 +649,231 @@ namespace Nova.Server
             }
 
             return fleet.Composition.Count == 0;
+        }
+
+        /// <summary>
+        /// Attempts a Stargate jump for this waypoint - skipping ordinary warp travel entirely
+        /// when the fleet is docked at a gate-equipped star, its next destination also has an
+        /// operational gate, and its cargo is eligible (fuel only, unless the race is
+        /// Interstellar Traveler). See docs/behavior-specs-4/fleet-movement-scanning-cargo.md §5
+        /// "Stargates".
+        ///
+        /// Distance is checked only against the SENDING gate's rated range; mass is checked
+        /// against BOTH gates (the spec: "mass checks additionally require the receiving gate's
+        /// rating too"). A gate can be pushed up to 5x over its rated range or mass and still
+        /// sometimes succeed - "overgating" - which always damages the ship, and beyond 100%
+        /// cumulative damage the ship does not survive. Beyond the 5x cap the gate simply refuses
+        /// the jump outright (this method returns false, and the fleet falls through to ordinary
+        /// warp movement for this waypoint instead, exactly as if no gate existed).
+        /// </summary>
+        /// <param name="destroyed">True if every ship in the fleet was lost attempting the jump.</param>
+        /// <returns>True if a Stargate jump was attempted this waypoint (whether it succeeded,
+        /// damaged the fleet, or destroyed it outright) - false if the fleet isn't eligible to
+        /// gate here at all.</returns>
+        /// <summary>
+        /// If the fleet has just arrived at (or near) a Wormhole opening, immediately relocates
+        /// it to the paired opening - see the call site's own comment for why this is
+        /// position-matched rather than an explicit order like a Stargate jump.
+        /// </summary>
+        /// <returns>True if a transit occurred.</returns>
+        private bool TryWormholeTransit(Fleet fleet)
+        {
+            foreach (Wormhole wormhole in serverState.AllWormholes.Values)
+            {
+                if (!PointUtilities.IsNear(fleet.Position, wormhole.Position))
+                {
+                    continue;
+                }
+
+                if (!serverState.AllWormholes.TryGetValue(wormhole.PairedKey, out Wormhole pairedEnd))
+                {
+                    return false; // an unpaired wormhole - shouldn't happen from generation, but don't act on it
+                }
+
+                fleet.Position = pairedEnd.Position;
+                fleet.InOrbit = null;
+
+                Message message = new Message();
+                message.Audience = fleet.Owner;
+                message.Text = "Fleet " + fleet.Name + " has transited a Wormhole.";
+                message.Type = "Wormhole";
+                message.Event = this;
+                serverState.AllMessages.Add(message);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryStargateJump(Fleet fleet, Waypoint waypointZero, Race race, out bool destroyed)
+        {
+            destroyed = false;
+
+            if (!(fleet.InOrbit is Star origin))
+            {
+                return false;
+            }
+
+            // Waypoint 0 is always the fleet's current position (see Fleet's own constructor
+            // comment) - for a fleet with no real travel order queued, that waypoint's
+            // Destination is just its own star's name. Without this check, any idle fleet
+            // sitting at a gate-equipped star would "gate" to itself every single turn it does
+            // nothing at all, taking real mass/range jump damage (and possibly being destroyed)
+            // for a jump it never ordered. This went unnoticed until a real, working Stargate
+            // first existed anywhere (see StarMapInitialiser.PrepareDesigns' IT/PP equip logic) -
+            // previously no idle fleet could ever reach this code path with a live gate to use.
+            if (waypointZero.Destination == origin.Name)
+            {
+                return false;
+            }
+
+            Gate sendGate = origin.GetStargate();
+            if (sendGate == null || sendGate.SafeRange <= 0 || sendGate.SafeHullMass <= 0)
+            {
+                return false;
+            }
+
+            if (!serverState.AllStars.TryGetValue(waypointZero.Destination, out Star destination))
+            {
+                return false;
+            }
+
+            Gate receiveGate = destination.GetStargate();
+            if (receiveGate == null || receiveGate.SafeHullMass <= 0)
+            {
+                return false;
+            }
+
+            // Cargo via Stargates: a gating fleet must be carrying only fuel, except Interstellar
+            // Traveler races, who may gate with mineral/colonist cargo aboard (Design.Mass never
+            // includes current cargo anyway, so no separate mass-check exclusion is needed here).
+            bool carryingMineralOrColonistCargo = fleet.Cargo.Ironium > 0 || fleet.Cargo.Boranium > 0
+                || fleet.Cargo.Germanium > 0 || fleet.Cargo.ColonistsInKilotons > 0;
+            bool isInterstellarTraveler = race.Traits.Contains("IT");
+            if (carryingMineralOrColonistCargo && !isInterstellarTraveler)
+            {
+                return false;
+            }
+
+            double distance = PointUtilities.Distance(origin.Position, destination.Position);
+            if (distance > sendGate.SafeRange * 5)
+            {
+                return false;
+            }
+
+            foreach (ShipToken sizeCheckToken in fleet.Composition.Values)
+            {
+                sizeCheckToken.Design.Update();
+                if (sizeCheckToken.Design.Mass > sendGate.SafeHullMass * 5
+                    || sizeCheckToken.Design.Mass > receiveGate.SafeHullMass * 5)
+                {
+                    // One ship is too big for this gate pair at any price - the whole fleet
+                    // doesn't gate this turn, rather than leaving some ships behind.
+                    return false;
+                }
+            }
+
+            // Past this point the fleet definitely gates - either safely, damaged, or destroyed.
+            List<long> destroyedTokenKeys = new List<long>();
+
+            foreach (KeyValuePair<long, ShipToken> entry in fleet.Composition)
+            {
+                ShipToken token = entry.Value;
+                double shipMass = token.Design.Mass;
+
+                double rangeDamagePercent = Math.Max(0, 100.0 * (distance - sendGate.SafeRange) / (4 * sendGate.SafeRange));
+                double massDamagePercent = Math.Max(0, 100.0 * (1 -
+                    ((5 * sendGate.SafeHullMass - shipMass) / (4 * sendGate.SafeHullMass)) *
+                    ((5 * receiveGate.SafeHullMass - shipMass) / (4 * receiveGate.SafeHullMass))));
+                double combinedDamagePercent = massDamagePercent + ((100 - massDamagePercent) * rangeDamagePercent / 100.0);
+
+                if (combinedDamagePercent >= 100)
+                {
+                    destroyedTokenKeys.Add(entry.Key);
+
+                    Message allLost = new Message();
+                    allLost.Audience = fleet.Owner;
+                    allLost.Text = "All of your " + token.Design.Name + " in fleet " + fleet.Name
+                        + " were lost attempting to overgate.";
+                    allLost.Type = "Stargate";
+                    allLost.Event = this;
+                    serverState.AllMessages.Add(allLost);
+                    continue;
+                }
+
+                if (combinedDamagePercent <= 0)
+                {
+                    continue;
+                }
+
+                double totalArmor = token.Design.Armor * token.Quantity;
+                token.Armor = Math.Max(0, token.Armor - (totalArmor * combinedDamagePercent / 100.0));
+
+                double massVanishChance = massDamagePercent > 0
+                    ? ((100 - MASS_VANISH_FITTED_CONSTANT) * Math.Pow((5 * sendGate.SafeHullMass) - shipMass, 2)
+                        / Math.Pow(4 * sendGate.SafeHullMass, 2)) + MASS_VANISH_FITTED_CONSTANT
+                    : 0;
+                double rangeVanishChance = rangeDamagePercent / 3.0;
+                if (isInterstellarTraveler)
+                {
+                    massVanishChance *= INTERSTELLAR_TRAVELER_VANISH_SCALE;
+                    rangeVanishChance *= INTERSTELLAR_TRAVELER_VANISH_SCALE;
+                }
+
+                // Rolled once per ship in the token, matching CheckWarp10Destruction's own
+                // per-ship (not per-fleet) pattern above.
+                int survivors = 0;
+                for (int i = 0; i < token.Quantity; i++)
+                {
+                    if (rand.NextDouble() * 100 >= massVanishChance && rand.NextDouble() * 100 >= rangeVanishChance)
+                    {
+                        survivors++;
+                    }
+                }
+
+                if (survivors < token.Quantity)
+                {
+                    Message message = new Message();
+                    message.Audience = fleet.Owner;
+                    message.Text = (token.Quantity - survivors) + " of your " + token.Design.Name
+                        + " in fleet " + fleet.Name + " were lost attempting to overgate.";
+                    message.Type = "Stargate";
+                    message.Event = this;
+                    serverState.AllMessages.Add(message);
+                }
+
+                if (survivors <= 0)
+                {
+                    destroyedTokenKeys.Add(entry.Key);
+                }
+                else
+                {
+                    token.Quantity = survivors;
+                }
+            }
+
+            foreach (long key in destroyedTokenKeys)
+            {
+                fleet.Composition.Remove(key);
+            }
+
+            if (fleet.Composition.Count == 0)
+            {
+                destroyed = true;
+                return true;
+            }
+
+            fleet.Position = destination.Position;
+            fleet.InOrbit = destination;
+
+            Message arrivalMessage = new Message();
+            arrivalMessage.Audience = fleet.Owner;
+            arrivalMessage.Text = "Fleet " + fleet.Name + " has arrived at " + destination.Name + " via Stargate.";
+            arrivalMessage.Type = "Stargate";
+            arrivalMessage.Event = this;
+            serverState.AllMessages.Add(arrivalMessage);
+
+            return true;
         }
 
         /// <summary>
