@@ -3,6 +3,17 @@
              xmlns:vm="using:Nova.Avalonia.ViewModels"
              x:Class="Nova.Avalonia.Views.NewGameView"
              x:DataType="vm:NewGameViewModel">
+    <UserControl.Styles>
+        <!-- A default FluentTheme TabItem's Padding is generous enough that three tabs - even
+             with these already-shortened labels - still wrap onto stacked rows at phone width
+             (confirmed live: the ORIGINAL "Game Options"/"Players"/"Victory Conditions" labels
+             wrapped to three rows on the Nova_Test emulator). Tightening Padding/FontSize here
+             is scoped to this view only, not a global TabItem style change. -->
+        <Style Selector="TabControl > TabItem">
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+    </UserControl.Styles>
     <!-- RaceDesignerHost overlays the whole screen (same Grid cell as everything else below)
          when a player row's "New Race..." button is clicked - see OpenGameView's own
          RaceDesignerHost for the same pattern used at the top-level startup screen. The main
@@ -10,17 +21,12 @@
          has no opaque background of its own, so without hiding what's behind it, both screens
          render on top of each other (confirmed live as a "graphics quirk"). -->
     <Grid>
-    <Grid Margin="16" RowDefinitions="Auto,Auto,*,Auto" IsVisible="{Binding !ShowRaceDesignerOverlay}">
+    <Grid Margin="16" RowDefinitions="Auto,*,Auto" IsVisible="{Binding !ShowRaceDesignerOverlay}">
         <TextBlock Grid.Row="0" Text="New Game" FontSize="18" FontWeight="Bold" Margin="0,0,0,8" />
 
-        <StackPanel Grid.Row="1" Spacing="2" Margin="0,0,0,8">
-            <TextBlock Text="Section" />
-            <ComboBox ItemsSource="{Binding PageLabels}" SelectedItem="{Binding SelectedPageLabel}"
-                      HorizontalAlignment="Stretch" />
-        </StackPanel>
-
-        <Grid Grid.Row="2">
-            <ScrollViewer IsVisible="{Binding ShowGameOptionsPage}">
+        <TabControl Grid.Row="1" SelectedIndex="{Binding SelectedTabIndex}">
+        <TabItem Header="Options">
+            <ScrollViewer>
                 <StackPanel Spacing="10">
                     <StackPanel Spacing="2">
                         <TextBlock Text="Game name" />
@@ -69,8 +75,10 @@
                     </Border>
                 </StackPanel>
             </ScrollViewer>
+        </TabItem>
 
-            <ScrollViewer IsVisible="{Binding ShowPlayersPage}">
+        <TabItem Header="Players">
+            <ScrollViewer>
                 <StackPanel Spacing="10">
                     <ItemsControl ItemsSource="{Binding Players}">
                         <ItemsControl.ItemTemplate>
@@ -112,8 +120,10 @@
                     <Button Content="Add Player" Command="{Binding AddPlayerCommand}" HorizontalAlignment="Stretch" />
                 </StackPanel>
             </ScrollViewer>
+        </TabItem>
 
-            <ScrollViewer IsVisible="{Binding ShowVictoryConditionsPage}">
+        <TabItem Header="Victory">
+            <ScrollViewer>
                 <StackPanel Spacing="8">
                     <TextBlock Text="A player wins once at least this many of the checked conditions are met:" TextWrapping="Wrap" />
                     <Grid ColumnDefinitions="*,Auto">
@@ -169,9 +179,10 @@
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>
-        </Grid>
+        </TabItem>
+        </TabControl>
 
-        <StackPanel Grid.Row="3" Spacing="6" Margin="0,8,0,0">
+        <StackPanel Grid.Row="2" Spacing="6" Margin="0,8,0,0">
             <TextBlock Text="{Binding StatusMessage}" Opacity="0.7" TextWrapping="Wrap" />
             <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                 <Button Grid.Column="0" Content="Cancel" Click="CancelButton_Click" HorizontalAlignment="Stretch" />

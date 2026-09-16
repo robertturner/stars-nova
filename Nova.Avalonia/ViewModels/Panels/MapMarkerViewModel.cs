@@ -44,6 +44,15 @@ public abstract class MapMarkerViewModel : ViewModelBase
         Y = y;
         Color = color;
         Selectable = selectable;
-        SelectCommand = new RelayCommand(() => selection.Selected = selectable);
+        // A tap while "add waypoint" mode is armed (see SelectionService.ArmWaypointTarget) is
+        // consumed as the waypoint's destination instead of changing the selection - keeps the
+        // fleet whose orders are being edited selected throughout the arm-then-tap gesture.
+        SelectCommand = new RelayCommand(() =>
+        {
+            if (!selection.TryConsumeWaypointTarget(selectable))
+            {
+                selection.Selected = selectable;
+            }
+        });
     }
 }

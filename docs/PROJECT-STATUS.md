@@ -3707,3 +3707,209 @@ clean of any `FATAL`/exception on every subsequent launch.
 
 Full solution still builds clean, `dotnet test` still 137/139 (same 2 pre-existing unrelated
 failures, both fixes are Android-only code paths).
+
+## Fixed: Interstellar Traveler/Packet Physics' second planet had the wrong starbase (2026-09-15)
+
+User (an experienced Stars! player) pointed out that in the original game, IT starts with two
+planets each with a starbase, but the two starbases are different: one is the full combat
+starbase, the other a small one carrying just a Stargate. Live-testing an IT save this session
+showed both planets with an identical fully-armed Space Station starbase.
+
+Root cause, in `ServerState/NewGame/StarMapInitialiser.cs`: `PrepareDesigns` builds exactly one
+`ShipDesign` named `"Starbase"` per empire, and for IT/PP bolts the Stargate/Mass Driver onto
+*that same Design's* spare "Orbital or Electrical" slot. `AllocateStarbase` (called for both the
+primary home star and IT/PP's second planet - see the 2026-09-05 entry above) always looks up and
+attaches this one Design by name. Since a `ShipToken` references the Design, not a copy, equipping
+it once made the Gate/Mass Driver show up on *every* starbase fleet built from it - both planets,
+identically - and gave the second planet a full combat starbase rather than a small dedicated one.
+The existing tests (`GeneratePlayerAssets_PacketPhysicsAndInterstellarTraveler_GetSecondPlanet`,
+`GeneratePlayerAssets_PacketPhysics_SecondPlanetHasMassDriverStarbase`) had actually encoded this
+bug as an assertion (`starbasesWithMassDriver == 2`), so they passed while the behavior was wrong.
+
+Fixed by building a **second** `ShipDesign` for IT/PP - named `"Stargate"`/`"Mass Driver Base"`,
+on the cheap `Orbital Fort` hull (one Weapon slot, two Shield-or-Armor, one Orbital-or-Electrical -
+already defined in `components.xml`, just never used in setup before) with only the one signature
+component in its Orbital-or-Electrical slot. The shared `"Starbase"` Design goes back to never
+getting a Gate/Mass Driver. `AllocateStarbase` gained a `designName` parameter (default
+`"Starbase"`, unchanged for every normal call site) so `InitializeHomeStar`'s IT/PP branch can
+attach the new small Design to the second planet specifically instead of reusing the primary
+home star's.
+
+Both integration tests updated to assert the corrected split (exactly one of the two starbases
+has the Gate/Mass Driver, and it's on the Design named `"Stargate"`/`"Mass Driver Base"`, not
+`"Starbase"`) rather than both having it. Full suite still 163/165 (same 2 pre-existing, unrelated
+failures).
+
+### Follow-up correction, same day: the split above overcorrected
+
+The user (still going from direct knowledge of the original game) clarified the fix above went too
+far in both directions: the home star's full `"Starbase"` should ALSO carry the Gate/Mass Driver
+(not lose it entirely - the original has it *in addition to* full weapons/shields, not instead of
+them), and the second planet's small base should ALSO carry "some guns and shields" (not none) -
+smaller than the home star's, but real. So both of IT's/PP's starbases carry the signature
+component; what actually differs between them is weapon/shield *quantity*, not presence.
+
+Fixed in the same `PrepareDesigns` method: the `"Starbase"` Design's IT/PP branch (removed in the
+first pass above) is back, now safe since `"Starbase"` is never attached to the second planet
+anymore. The `"Stargate"`/`"Mass Driver Base"` Design's Weapon and Shield-or-Armor slots - left
+empty in the first pass - now get a modest loadout (Laser x4, Mole-skin Shield x4; the home star's
+own weapon/shield slots stay at the original x8) alongside its one signature component.
+
+Both integration tests updated again: both stars now assert `ContainsKey("Gate")`/
+`ContainsKey("Mass Driver")` (rather than exactly one of them), plus a new check that every
+starbase Design - full and small alike - has `Weapons.Count > 0` and `Shield > 0`, which is
+specifically what would have caught the small base's "no weapons at all" state from the first pass.
+**Verified live** on a fresh Rabbitoid (IT) save: home star's starbase shows the full 6-slot combat
+loadout (unchanged from before this whole fix) plus the Gate; second planet's starbase shows the
+small Orbital Fort hull with a modest weapon+shield loadout plus its own Gate. Full suite still
+163/165 (same 2 pre-existing, unrelated failures).
+
+## Mobile Map page: resizable Map/Inspector split, and a real edge-clipping bug fix (2026-09-15)
+
+A phone screenshot from the user surfaced two Mobile-only UI issues on the "Map" page (star map +
+Inspector, see the Inspector-tabs work above): a "dead space" gap above the map that clipped the
+gold selection ring around the selected planet, and the Map/Inspector split being fixed at roughly
+2:1 with no way to give the Inspector more room.
+
+**Resizable split**: `MobileMainView.axaml`'s Map-page Grid changed from a fixed `2*,*` row split
+to a plain `GridSplitter`-driven `*, 14, *` split (50/50 by default, `MinHeight="120"` on both
+outer rows so a drag can never collapse either side to nothing). The switcher row ("Viewing" combo
+for hopping to a star's own fleets) had to be nested into its own inner `Grid` occupying the whole
+top `*` row, so the splitter's `PreviousAndNext` resize behavior trades space between "the whole
+map group" and Inspector, rather than incorrectly targeting the switcher's own fixed `Auto` row.
+Also hit a real `AVLN2000` compiler error nesting a `Rectangle` grab-handle indicator inside the
+`GridSplitter` tags - `GridSplitter` isn't a `ContentControl` - fixed by making the `Rectangle` a
+sibling at the same `Grid.Row` with `IsHitTestVisible="False"` instead.
+
+**Edge-clipping bug** (the actual cause of the "dead space"/clipped-ring report - not a layout
+margin bug, ruled out by direct inspection of the Mobile/Star-Map XAML): `StarMapGenerator.cs`'s
+`PlaceStars`/`PlaceHomeworlds` drew raw coordinates via `random.Next(mapWidth)`/`random.Next(mapHeight)`
+with no margin from the map's own edges. A star landing near `X=0`/`Y=0`/`MapWidth`/`MapHeight` then
+has its marker's own decorations - the gold selection ring and starbase/stargate/mass-driver dots,
+drawn at small negative `Canvas.Left/Top` offsets from the star's logical position - land in Panel
+coordinates the map's `ScrollViewer` can never scroll to (no negative scroll range exists), so part
+of the marker is permanently unreachable regardless of platform. Fixed by adding a `NextCoordinate`
+helper (`EdgeMargin = 20`, clamped down for maps too small to fit a 20-unit margin on both sides
+rather than throwing) and using it for both star and homeworld placement instead of the raw
+`random.Next` calls.
+
+**Verified**: a temporary test generating 200 independent galaxies (`StarMapinitializer` with 200
+different seeds, default 400x400 map) confirmed every star lands at least 20 units from every edge
+- the same margin the marker's own decorations need. Live-verified the GridSplitter on the
+`Nova_Test` emulator (at a temporarily enlarged `wm size` for a bigger touch target, reset
+afterward): default split is close to 50/50, dragging the handle up/down actually resizes both
+regions, and `MinHeight="120"` correctly clamps either side from collapsing to nothing. Full suite
+still 163/165 (same 2 pre-existing, unrelated failures).
+
+### Follow-up, same day: the generation-side fix alone didn't cover existing saves or scan circles
+
+A phone screenshot from the user's own long-running game showed the exact bug still happening on a
+star ("Resistor") near the map's left edge - its scan-range wash and name label both visibly cut
+off - even after the fix above, and even when zoomed out. Two things the first pass missed:
+
+1. `StarMapGenerator`'s new margin only affects **newly generated** galaxies - it can't move a
+   star in a save that already exists, and the user's game (population 25,000, established mines/
+   factories) predates the fix.
+2. A star's marker decorations reach only a few pixels past its center, but a scan-range wash can
+   reach hundreds of map units (late-game scanner tech), and a star's name label can be much wider
+   than the small fixed margin the first pass used - "zooming out doesn't help" was the tell that
+   this is a Panel coordinate-space problem, not a viewport-size one (confirmed: zooming out
+   enlarges the visible area, not the underlying Panel's own bounds, so it was never going to
+   matter).
+
+Fixed with a second, independent, purely-rendering fix in `StarMapDocumentViewModel.cs`: it now
+computes a margin **per map**, as the largest of a small fixed minimum, every owned star/fleet's
+own scan and pen-scan range, every visible minefield's radius, and an estimated half-width for the
+longest star name (character count * an approximate glyph width - the ViewModel has no access to
+the View's actual measured text width) - then pads the rendered `MapWidth`/`MapHeight` by twice
+that margin and shifts every star/fleet/minefield/scan-circle/route-leg position into it. This
+fixes it regardless of where a star sits (old saves included) and regardless of how large a scan
+range or name gets, since the margin is sized to what's actually being drawn on that specific map,
+not a guess. `BuildRouteLegs` had to become an instance method (was `static`) since it now needs
+the per-instance margin.
+
+**Verified live** on the `Nova_Test` emulator with the existing `AndroidVerify` save (whose home
+star "Nova" sits close to a map corner, same as the user's "Resistor"): at 43% zoom, Nova's
+scan-range wash now renders as a complete circle with room to spare on every side, and its name
+label is fully visible - both were the exact symptom reported. Full suite still 163/165 (same 2
+pre-existing, unrelated failures).
+
+## New Game screen: tabs instead of a Section dropdown (2026-09-15)
+
+Same request as the earlier Inspector-tabs work, applied to New Game's own "Section" ComboBox
+(Game Options/Players/Victory Conditions). Converted `NewGameViewModel`'s `SelectedPageLabel`
+string + `ShowXPage` bool properties into a plain `SelectedTabIndex` int (same shape as
+`InspectorViewModel.SelectedTabIndex`) and moved each page's content bodily into its own
+`TabItem` in `NewGameView.axaml`, since all three tabs are always visible here (no per-tab
+`IsVisible` gating needed, unlike Inspector's).
+
+**Hit, and fixed, exactly the wrapping problem `RaceDesignerViewModel.Page`'s own comment warned
+about**: a default FluentTheme `TabItem`'s `Padding` is generous enough that even these three,
+already-short-ish labels ("Game Options"/"Players"/"Victory Conditions") wrapped the tab strip
+onto three stacked rows at phone width on the `Nova_Test` emulator - crushing the page content
+beneath it, the same failure mode Race Designer's ComboBox exists to avoid, just not as severely
+as that screen's six tabs. Fixed by shortening the labels ("Options"/"Players"/"Victory") and
+tightening `TabItem`'s `Padding`/`FontSize` via a view-scoped style. **Verified live**: all three
+tabs now sit on one line, switching between them works, and each page's content (map settings,
+player rows, victory conditions) renders and scrolls correctly.
+
+## Fleet waypoints: fuel-upon-arrival, and distinguishing IT/PP's two starbase types on the map (2026-09-15)
+
+Two more user requests, both against the Star Map/Inspector.
+
+**Fuel upon arrival**: `FleetDetail.DisplayLegDetails` in the WinForms original shows, for
+whichever waypoint is currently selected, that leg's own fuel use and the whole remaining route's
+total fuel requirement (colored red if it exceeds available fuel) - not an inline per-row figure,
+which is what was actually asked for here. Added a `FuelUponArrival` (mg, can go negative) and
+`HasFuelShortfall` bool to `FleetWaypointRowViewModel`, computed by `InspectorViewModel.ShowFleet`
+as a running cumulative total across `fleet.Waypoints` starting from the fleet's real current fuel
+- same per-leg formula as the original (`FuelConsumption(warp, race) * time`, `time = distance /
+warp²`), deliberately not clamped at zero so a real shortfall is visible rather than hidden.
+Rendered next to each waypoint row in `InspectorView.axaml`, styled in orange when negative.
+
+**Starbase dot color**: `docs/behavior-specs-3/client-interface.md`'s "Starbase capability
+indicators" section documents that the original client draws its starbase-presence dot in a
+second, distinguished color for "some specific starbase design", but the exact criterion couldn't
+be recovered from the analyzed client - this port had been drawing every starbase's presence dot
+identically (plain yellow) ever since. That became visibly wrong once IT/PP's starting empire
+actually has two DIFFERENT starbases (see the fix above): both now carry the same Gate/Mass Driver
+component, so their Cyan/Magenta dots always matched too, making genuinely different starbases
+look identical on the map. Fixed by keying the presence dot's color off the starbase design's own
+`Hull.DockCapacity` (>0 means a real ship-building Starbase-class hull, e.g. "Space Station"; 0
+means a defense-only orbital platform, e.g. "Orbital Fort") - a real Stars! hull-line distinction
+rather than a hardcoded hull-name check, so it generalizes to any future player-designed starbase.
+Added `StarMapStarViewModel.IsFullStarbase`, `StarMapDocumentView.axaml`'s "starbaseFull"/
+"starbaseSmall" style classes (yellow/gray), and a small `StarbaseTooltipConverter` so hovering
+the dot explains the color.
+
+**A third bug found and fixed along the way**: verifying fuel-upon-arrival on the emulator hit the
+exact same TabControl-wrapping problem just described for New Game - `InspectorView.axaml`'s own
+TabControl (up to 4 simultaneously-visible tabs for a fleet: Overview/Orders/Cargo/Split-Merge)
+had never actually been exercised with more than one tab visible at once before, and wrapped its
+strip onto two rows once it was, which visually overlapped and hid the waypoint list entirely.
+Fixed with the same tightened `Padding`/`FontSize` style, scoped to that view.
+
+**Verified live** on the `Nova_Test` emulator with a fresh Rabbitoid (IT) save: Nova's starbase dot
+renders yellow, Diddley's renders gray, both still show the shared Cyan Stargate dot; adding
+waypoints to a Scout showed "43mg"/"11mg" after two in-range legs and a red "-229mg" after a
+deliberately-too-far, too-fast third leg. Full suite still 163/165 (same 2 pre-existing, unrelated
+failures).
+
+## Fleet orders: editing an already-queued waypoint's warp (2026-09-15)
+
+Before this, a waypoint's warp factor could only be set once, at creation time
+(`NewWaypointWarp`) - speeding up or slowing down an already-queued leg meant deleting it and
+re-adding it from scratch. `InspectorViewModel` already had exactly this pattern for Task
+(`SelectedWaypointTaskOption`/`ApplySelectedWaypointTask`, immediate-apply on change, mirroring
+`FleetDetail.WaypointTaskChanged` in the WinForms original), so added the same shape for Warp:
+`SelectedWaypointWarp`/`ApplySelectedWaypointWarp`, seeded from the selected row's own
+`WarpFactor` in `ApplyWaypointSelectionState` and pushed as a `WaypointCommand.Edit` via the same
+`CloneWaypointFully`/`PushWaypointEdit` helpers `MoveWaypoint` already used. `InspectorView.axaml`
+gained a "Selected waypoint's warp" `NumericUpDown` next to the existing task picker, visible only
+while a row is selected.
+
+**Verified live** on the `Nova_Test` emulator: selecting an already-queued "Diddley" waypoint
+(warp 6, 43mg fuel-on-arrival) and lowering its warp to 4 immediately updated both the row's own
+"warp 4" label and its fuel-on-arrival figure (43mg → 46mg, correctly recalculated since a lower
+warp costs less fuel) - no separate Apply step, matching the existing Task field's own behavior.
+Full suite still 163/165 (same 2 pre-existing, unrelated failures).

@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             x:Class="Nova.Avalonia.Views.Panels.HullViewerView"
+             x:DataType="panels:HullViewerViewModel">
+    <UserControl.Styles>
+        <!-- Same ContentPresenter-Setter trick ShipDesignView.axaml uses to place each hull
+             slot at its real grid position (Column/Row, from HullModule.CellNumber). -->
+        <Style Selector="ItemsControl.hullViewerSlots ContentPresenter" x:DataType="panels:HullViewerSlotViewModel">
+            <Setter Property="Grid.Column" Value="{Binding Column}" />
+            <Setter Property="Grid.Row" Value="{Binding Row}" />
+        </Style>
+    </UserControl.Styles>
+
+    <!-- A Popup, not a plain inline Border - this view gets embedded inside panels (Inspector
+         especially) that can end up with very little of their own screen space (e.g. squeezed
+         next to the Production panel on the mobile Map page), and a plain Border is clipped to
+         whatever tiny area its logical parent got. Popup content renders in the TopLevel's own
+         overlay layer instead, escaping that clipping entirely regardless of how little room the
+         embedding panel itself has - confirmed live: without this, the popup was cut down to a
+         two-line sliver. IsLightDismissEnabled is off since IsVisible's setter is private (a
+         two-way IsOpen binding has nothing to write back to) - Close is always explicit instead. -->
+    <Popup IsOpen="{Binding IsVisible, Mode=OneWay}" Placement="Center" IsLightDismissEnabled="False" WindowManagerAddShadowHint="False">
+        <Border Background="#14141c" BorderBrush="DodgerBlue" BorderThickness="1" CornerRadius="8"
+                Padding="12" MaxWidth="440">
+            <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Text="{Binding DesignName}" FontWeight="Bold" FontSize="15" />
+                        <TextBlock Text="{Binding Summary}" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="✕" Command="{Binding CloseCommand}" Padding="8,2" VerticalAlignment="Top" />
+                </Grid>
+
+                <ItemsControl Classes="hullViewerSlots" ItemsSource="{Binding Slots}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <Grid ColumnDefinitions="74,74,74,74,74" RowDefinitions="74,74,74,74,74" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="panels:HullViewerSlotViewModel">
+                            <Border Background="#22ffffff" BorderBrush="Gray" BorderThickness="1"
+                                    Width="70" Height="70" Margin="2">
+                                <StackPanel Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Image Source="{Binding Icon}" IsVisible="{Binding Icon, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                                           Width="28" Height="28" Stretch="Uniform" HorizontalAlignment="Center" />
+                                    <TextBlock Text="{Binding Name}" FontSize="9" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="64" />
+                                    <TextBlock Text="{Binding Quantity}" FontSize="9" Opacity="0.7" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+    </Popup>
+</UserControl>

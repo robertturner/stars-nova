@@ -94,6 +94,14 @@ namespace Nova.Common
             return star.ResourcesOnHand.Energy <= 0;
         }
 
+        // No persistent "current count" concept - Mineral Alchemy is a continuous resource-to-
+        // mineral conversion, not a countable installation, so an auto-build order for it keeps
+        // its original consume-to-zero-then-remove behavior (see ProductionOrder.Process).
+        public int? CurrentCount(Star star)
+        {
+            return null;
+        }
+
         /// <summary>
         /// Convert resources into 1 kT of each mineral. Like the other production units,
         /// a turn that can't fully afford one unit banks partial progress toward it.

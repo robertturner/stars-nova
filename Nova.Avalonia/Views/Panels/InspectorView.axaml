@@ -1,213 +1,360 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             xmlns:views="using:Nova.Avalonia.Views.Panels"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             xmlns:input="using:Avalonia.Input"
              x:Class="Nova.Avalonia.Views.Panels.InspectorView"
              x:DataType="panels:InspectorViewModel">
-    <ScrollViewer>
-    <StackPanel Margin="8" Spacing="4">
-        <TextBlock Text="{Binding Kind}" FontSize="11" Opacity="0.6" />
-        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
-        <ItemsControl ItemsSource="{Binding Rows}">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="panels:InspectorRow">
-                    <Grid ColumnDefinitions="Auto,*" Margin="0,2">
-                        <TextBlock Grid.Column="0" Text="{Binding Label}" Opacity="0.7" Margin="0,0,8,0" />
-                        <TextBlock Grid.Column="1" Text="{Binding Value}" HorizontalAlignment="Right" />
-                    </Grid>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+    <UserControl.Styles>
+        <!-- A default FluentTheme TabItem's Padding is generous enough that this TabControl's
+             tabs wrap onto stacked rows once several are visible at once at phone width (up to 4
+             simultaneously for a fleet: Overview/Orders/Cargo/Split-Merge - confirmed live: the
+             wrapped second row visually overlapped this tab's own content instead of pushing it
+             down, hiding the waypoint list entirely). Same fix as NewGameView.axaml's own
+             TabControl style, for the same reason - scoped to this view only. -->
+        <Style Selector="TabControl > TabItem">
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style Selector="Button.waypointRow">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.waypointRow.selected">
+            <Setter Property="Background" Value="#442299ff" />
+        </Style>
+        <Style Selector="TextBlock.waypointFuel">
+            <Setter Property="Opacity" Value="0.7" />
+        </Style>
+        <!-- Not enough fuel to reach this waypoint at its planned warp - see
+             FleetWaypointRowViewModel.HasFuelShortfall. Opacity 1 (rather than the
+             waypointFuel's own 0.7) so the warning color itself isn't dimmed. -->
+        <Style Selector="TextBlock.waypointFuel.shortfall">
+            <Setter Property="Foreground" Value="OrangeRed" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+    </UserControl.Styles>
 
-        <Button Content="View Starbase" Command="{Binding ViewStarbaseCommand}" IsVisible="{Binding HasStarbase}"
-                HorizontalAlignment="Left" Margin="0,4,0,0" />
-
-        <!-- Fleets sitting at this planet - click one to jump straight to it (waypoints, cargo,
-             etc.) without going by way of the Navigator's Fleets tab. Only ever populated for an
-             owned Star - see InspectorViewModel.ShowStar. -->
-        <StackPanel IsVisible="{Binding HasOrbitingFleets}" Margin="0,4,0,0" Spacing="2">
-            <TextBlock Text="Fleets here" FontWeight="Bold" Opacity="0.8" FontSize="11" />
-            <ItemsControl ItemsSource="{Binding OrbitingFleets}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="panels:OrbitingFleetRowViewModel">
-                        <Button Content="{Binding Name}" Command="{Binding SelectCommand}"
-                                HorizontalAlignment="Left" HorizontalContentAlignment="Left"
-                                Padding="4,2" Margin="0,1" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </StackPanel>
-
-        <!-- Colored range bars replacing plain numbers for Gravity/Temperature/Radiation (a green
-             band shows this empire's own tolerance range; the marker is the planet's actual value,
-             red if it falls outside that band) and mineral concentration/surface stock (a simple
-             mineral-colored fill, no separate band) - see RangeBarViewModel's own comment. -->
-        <ItemsControl ItemsSource="{Binding EnvironmentBars}" Margin="0,8,0,0">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="panels:RangeBarViewModel">
-                    <StackPanel Margin="0,4">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Grid.Column="0" Text="{Binding Label}" Opacity="0.7" />
-                            <TextBlock Grid.Column="1" Text="{Binding FormattedValue}" HorizontalAlignment="Right" />
-                        </Grid>
-                        <Canvas Width="160" Height="14" Margin="0,2,0,0">
-                            <Rectangle Width="160" Height="14" Fill="#333333" RadiusX="3" RadiusY="3" />
-                            <Rectangle Canvas.Left="{Binding BandLeft}" Width="{Binding BandWidth}" Height="14" Fill="{Binding BandColor}" Opacity="0.6" />
-                            <Rectangle IsVisible="{Binding ShowMarker}" Canvas.Left="{Binding MarkerLeft}" Width="3" Height="14" Fill="{Binding MarkerColor}" />
-                        </Canvas>
-                    </StackPanel>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
-
-        <ItemsControl ItemsSource="{Binding MineralBars}">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="panels:RangeBarViewModel">
-                    <StackPanel Margin="0,4">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Grid.Column="0" Text="{Binding Label}" Opacity="0.7" />
-                            <TextBlock Grid.Column="1" Text="{Binding FormattedValue}" HorizontalAlignment="Right" />
-                        </Grid>
-                        <Canvas Width="160" Height="10" Margin="0,2,0,0">
-                            <Rectangle Width="160" Height="10" Fill="#333333" RadiusX="2" RadiusY="2" />
-                            <Rectangle Canvas.Left="{Binding BandLeft}" Width="{Binding BandWidth}" Height="10" Fill="{Binding BandColor}" />
-                        </Canvas>
-                    </StackPanel>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
-
-        <StackPanel IsVisible="{Binding IsFleetSelected}" Spacing="6" Margin="0,16,0,0">
-            <TextBlock Text="Orders" FontWeight="Bold" Opacity="0.8" />
-
-            <ItemsControl ItemsSource="{Binding WaypointRows}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="panels:FleetWaypointRowViewModel">
-                        <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" Margin="0,2">
-                            <TextBlock Grid.Column="0" Text="{Binding Destination}" />
-                            <TextBlock Grid.Column="1" Text="{Binding Warp, StringFormat='warp {0}'}" Opacity="0.7" Margin="8,0" />
-                            <TextBlock Grid.Column="2" Text="{Binding Task}" Opacity="0.7" Margin="0,0,8,0" />
-                            <Button Grid.Column="3" Content="▲" Padding="4,0" Command="{Binding MoveUpCommand}" />
-                            <Button Grid.Column="4" Content="▼" Padding="4,0" Command="{Binding MoveDownCommand}" Margin="2,0,0,0" />
-                            <Button Grid.Column="5" Content="✕" Padding="4,0" Command="{Binding DeleteCommand}" Margin="4,0,0,0" />
-                        </Grid>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <TextBlock Text="Add waypoint" FontSize="11" Opacity="0.6" Margin="0,4,0,0" />
-            <ComboBox ItemsSource="{Binding DestinationOptions}" SelectedItem="{Binding NewWaypointDestination}" HorizontalAlignment="Stretch" />
-            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
-                <TextBlock Grid.Column="0" Text="Warp" VerticalAlignment="Center" Margin="0,0,8,0" />
-                <NumericUpDown Grid.Column="1" Value="{Binding NewWaypointWarp}" Minimum="0" Maximum="10" FormatString="0"
-                               HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="4,0" />
-            </Grid>
-            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
-                <TextBlock Grid.Column="0" Text="Task" VerticalAlignment="Center" Margin="0,0,8,0" />
-                <ComboBox Grid.Column="1" ItemsSource="{Binding TaskOptions}" SelectedItem="{Binding NewWaypointTask}" HorizontalAlignment="Stretch" />
-            </Grid>
-            <Button Content="Add Waypoint" Command="{Binding AddWaypointCommand}" HorizontalAlignment="Left" />
-
-            <TextBlock Text="Rename fleet" FontSize="11" Opacity="0.6" Margin="0,12,0,0" />
-            <Grid ColumnDefinitions="*,Auto">
-                <TextBox Grid.Column="0" Text="{Binding NewFleetName}" />
-                <Button Grid.Column="1" Content="Rename" Command="{Binding SubmitRenameCommand}" Margin="4,0,0,0" />
-            </Grid>
-        </StackPanel>
-
-        <StackPanel IsVisible="{Binding CanTransferCargo}" Spacing="6" Margin="0,16,0,0">
-            <TextBlock Text="Cargo Transfer" FontWeight="Bold" Opacity="0.8" />
-            <TextBlock Text="{Binding CargoCapacity, StringFormat='Fleet capacity: {0}kT'}" FontSize="11" Opacity="0.6" />
-
-            <ItemsControl ItemsSource="{Binding CargoRows}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="panels:CargoResourceRowViewModel">
-                        <StackPanel Margin="0,4">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="{Binding Label}" />
-                                <TextBlock Grid.Column="1" Text="{Binding PlanetAmount, StringFormat='Planet: {0}kT'}" Opacity="0.6" FontSize="11" />
-                            </Grid>
-                            <Slider Minimum="0" Maximum="{Binding Total}" Value="{Binding FleetAmount}" />
-                            <TextBlock Text="{Binding FleetAmount, StringFormat='Fleet: {0}kT'}" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <Button Content="Apply Transfer" Command="{Binding ApplyCargoCommand}" HorizontalAlignment="Left" Margin="0,4,0,0" />
-            <TextBlock Text="{Binding CargoStatusMessage}" Opacity="0.7" IsVisible="{Binding HasCargoStatusMessage}" />
-        </StackPanel>
-
-        <StackPanel IsVisible="{Binding CanTransferCargoToFleet}" Spacing="6" Margin="0,16,0,0">
-            <TextBlock Text="Cargo Transfer (to another fleet)" FontWeight="Bold" Opacity="0.8" />
-
-            <TextBlock Text="Other fleet" FontSize="11" Opacity="0.6" />
-            <ComboBox ItemsSource="{Binding FleetCargoTransferTargets}" SelectedItem="{Binding SelectedFleetCargoTransferTarget}" HorizontalAlignment="Stretch">
-                <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="panels:SplitMergeTargetOption">
-                        <TextBlock Text="{Binding DisplayName}" />
-                    </DataTemplate>
-                </ComboBox.ItemTemplate>
-            </ComboBox>
-
-            <ItemsControl ItemsSource="{Binding FleetTransferRows}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="panels:CargoResourceRowViewModel">
-                        <StackPanel Margin="0,4">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="{Binding Label}" />
-                                <TextBlock Grid.Column="1" Text="{Binding PlanetAmount, StringFormat='Other fleet: {0}kT'}" Opacity="0.6" FontSize="11" />
-                            </Grid>
-                            <Slider Minimum="0" Maximum="{Binding Total}" Value="{Binding FleetAmount}" />
-                            <TextBlock Text="{Binding FleetAmount, StringFormat='This fleet: {0}kT'}" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <StackPanel IsVisible="{Binding FleetTransferFuelRow, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="0,4">
-                <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Grid.Column="0" Text="Fuel" />
-                    <TextBlock Grid.Column="1" Text="{Binding FleetTransferFuelRow.PlanetAmount, StringFormat='Other fleet: {0}mg'}" Opacity="0.6" FontSize="11" />
-                </Grid>
-                <Slider Minimum="0" Maximum="{Binding FleetTransferFuelRow.Total}" Value="{Binding FleetTransferFuelRow.FleetAmount}" />
-                <TextBlock Text="{Binding FleetTransferFuelRow.FleetAmount, StringFormat='This fleet: {0}mg'}" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
+    <!-- Tabs, not one long scrolling column - a colonized planet's Production queue used to sit
+         in a sibling Grid row (Mobile) that grew with the queue and squeezed this whole panel
+         down to a sliver; a fleet's Orders/Cargo/Split-Merge sections used to just pile up
+         one after another too. Each kind of selection (star/report/fleet/minefield) gets its own
+         subset of tabs - see each TabItem's own IsVisible - "Overview" is the only one always
+         present, and SelectedTabIndex (reset to 0 on a genuinely new selection, left alone across
+         a same-object refresh - see InspectorViewModel.Refresh) keeps a stale tab index from ever
+         pointing at a hidden one. -->
+    <Grid>
+        <Grid RowDefinitions="Auto,*">
+            <StackPanel Grid.Row="0" Margin="8,8,8,4">
+                <TextBlock Text="{Binding Kind}" FontSize="11" Opacity="0.6" />
+                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" />
             </StackPanel>
 
-            <Button Content="Apply Transfer" Command="{Binding ApplyFleetCargoTransferCommand}" HorizontalAlignment="Left" Margin="0,4,0,0" />
-            <TextBlock Text="{Binding FleetTransferStatusMessage}" Opacity="0.7" IsVisible="{Binding HasFleetTransferStatusMessage}" />
-        </StackPanel>
+            <TabControl Grid.Row="1" SelectedIndex="{Binding SelectedTabIndex}">
+                <TabItem Header="Overview">
+                    <ScrollViewer>
+                        <StackPanel Margin="8" Spacing="4">
+                            <ItemsControl ItemsSource="{Binding Rows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="panels:InspectorRow">
+                                        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                                            <TextBlock Grid.Column="0" Text="{Binding Label}" Opacity="0.7" Margin="0,0,8,0" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Value}" HorizontalAlignment="Right" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
 
-        <StackPanel IsVisible="{Binding CanSplitMerge}" Spacing="6" Margin="0,16,0,0">
-            <TextBlock Text="Split / Merge" FontWeight="Bold" Opacity="0.8" />
-            <TextBlock Text="How many of each design stay in this fleet - the rest go to the other side." FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
+                            <!-- Ships making up the selected fleet - a fleet can be (and often
+                                 is) several different hulls/quantities at once, not just one
+                                 design; the same SplitMergeRows list already built for the
+                                 slider editor on the Split/Merge tab backs this plain summary
+                                 too, just rendered without the sliders. Press-and-hold a row's
+                                 icon to see that design's full component layout via the shared
+                                 HullViewer - the same "quick graphic + hold for detail" gesture
+                                 the Navigator and Star Map fleet markers use. -->
+                            <StackPanel IsVisible="{Binding IsFleetSelected}" Margin="0,8,0,0" Spacing="2">
+                                <TextBlock Text="Ships" FontWeight="Bold" Opacity="0.8" FontSize="11" />
+                                <ItemsControl ItemsSource="{Binding SplitMergeRows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="panels:SplitMergeRowViewModel">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+                                                <Border Grid.Column="0" Width="24" Height="24" Margin="0,0,8,0"
+                                                        input:InputElement.IsHoldingEnabled="True" Holding="OnCompositionRowHolding">
+                                                    <Image Source="{Binding Icon}" IsVisible="{Binding Icon, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                                                           Stretch="Uniform" />
+                                                </Border>
+                                                <TextBlock Grid.Column="1" Text="{Binding Label}" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="2" Text="{Binding OriginalQuantity, StringFormat='x{0}'}" Opacity="0.7" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
 
-            <ItemsControl ItemsSource="{Binding SplitMergeRows}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="panels:SplitMergeRowViewModel">
-                        <StackPanel Margin="0,4">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="{Binding Label}" />
-                                <TextBlock Grid.Column="1" Text="{Binding OtherQuantity, StringFormat='Other: {0}'}" Opacity="0.6" FontSize="11" />
-                            </Grid>
-                            <Slider Minimum="0" Maximum="{Binding OriginalQuantity}" Value="{Binding KeepInSource}" />
-                            <TextBlock Text="{Binding KeepInSource, StringFormat='Keep: {0}'}" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
+                            <Button Content="View Starbase" Command="{Binding ViewStarbaseCommand}" IsVisible="{Binding HasStarbase}"
+                                    HorizontalAlignment="Left" Margin="0,4,0,0" />
+                            <Button Content="View Starbase Components" Command="{Binding ViewStarbaseComponentsCommand}" IsVisible="{Binding HasStarbase}"
+                                    HorizontalAlignment="Left" Margin="0,4,0,0" />
+
+                            <!-- Fleets sitting at this planet - click one to jump straight to it
+                                 (waypoints, cargo, etc.) without going by way of the Navigator's
+                                 Fleets tab. Only ever populated for an owned Star - see
+                                 InspectorViewModel.ShowStar. -->
+                            <StackPanel IsVisible="{Binding HasOrbitingFleets}" Margin="0,4,0,0" Spacing="2">
+                                <TextBlock Text="Fleets here" FontWeight="Bold" Opacity="0.8" FontSize="11" />
+                                <ItemsControl ItemsSource="{Binding OrbitingFleets}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="panels:OrbitingFleetRowViewModel">
+                                            <Button Content="{Binding Name}" Command="{Binding SelectCommand}"
+                                                    HorizontalAlignment="Left" HorizontalContentAlignment="Left"
+                                                    Padding="4,2" Margin="0,1" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <!-- Colored range bars replacing plain numbers for Gravity/
+                                 Temperature/Radiation (a green band shows this empire's own
+                                 tolerance range; the marker is the planet's actual value, red if
+                                 it falls outside that band) and mineral concentration/surface
+                                 stock (a simple mineral-colored fill, no separate band) - see
+                                 RangeBarViewModel's own comment. -->
+                            <ItemsControl ItemsSource="{Binding EnvironmentBars}" Margin="0,8,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="panels:RangeBarViewModel">
+                                        <StackPanel Margin="0,4">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Grid.Column="0" Text="{Binding Label}" Opacity="0.7" />
+                                                <TextBlock Grid.Column="1" Text="{Binding FormattedValue}" HorizontalAlignment="Right" />
+                                            </Grid>
+                                            <Canvas Width="160" Height="14" Margin="0,2,0,0">
+                                                <Rectangle Width="160" Height="14" Fill="#333333" RadiusX="3" RadiusY="3" />
+                                                <Rectangle Canvas.Left="{Binding BandLeft}" Width="{Binding BandWidth}" Height="14" Fill="{Binding BandColor}" Opacity="0.6" />
+                                                <Rectangle IsVisible="{Binding ShowMarker}" Canvas.Left="{Binding MarkerLeft}" Width="3" Height="14" Fill="{Binding MarkerColor}" />
+                                            </Canvas>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <ItemsControl ItemsSource="{Binding MineralBars}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="panels:RangeBarViewModel">
+                                        <StackPanel Margin="0,4">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Grid.Column="0" Text="{Binding Label}" Opacity="0.7" />
+                                                <TextBlock Grid.Column="1" Text="{Binding FormattedValue}" HorizontalAlignment="Right" />
+                                            </Grid>
+                                            <Canvas Width="160" Height="10" Margin="0,2,0,0">
+                                                <Rectangle Width="160" Height="10" Fill="#333333" RadiusX="2" RadiusY="2" />
+                                                <Rectangle Canvas.Left="{Binding BandLeft}" Width="{Binding BandWidth}" Height="10" Fill="{Binding BandColor}" />
+                                            </Canvas>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                    </ScrollViewer>
+                </TabItem>
 
-            <TextBlock Text="Other side" FontSize="11" Opacity="0.6" Margin="0,4,0,0" />
-            <ComboBox ItemsSource="{Binding SplitMergeTargets}" SelectedItem="{Binding SelectedSplitMergeTarget}" HorizontalAlignment="Stretch">
-                <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="panels:SplitMergeTargetOption">
-                        <TextBlock Text="{Binding DisplayName}" />
-                    </DataTemplate>
-                </ComboBox.ItemTemplate>
-            </ComboBox>
+                <!-- Embeds the same ProductionView a desktop dock panel would otherwise show -
+                     see InspectorViewModel.Production's own comment on why this is null (and
+                     this tab therefore hidden) on Desktop, which keeps Production as its own
+                     separate dock tab instead. ProductionView wraps its own content in its own
+                     ScrollViewer already, so it's dropped in directly here with no extra
+                     ScrollViewer of this view's own to double-nest with it. -->
+                <TabItem Header="Production" IsVisible="{Binding Production.HasColonizedPlanet}">
+                    <views:ProductionView DataContext="{Binding Production}" />
+                </TabItem>
 
-            <Button Content="Apply" Command="{Binding ApplySplitMergeCommand}" HorizontalAlignment="Left" Margin="0,4,0,0" />
-            <TextBlock Text="{Binding SplitMergeStatusMessage}" Opacity="0.7" IsVisible="{Binding HasSplitMergeStatusMessage}" />
-        </StackPanel>
-    </StackPanel>
-    </ScrollViewer>
+                <TabItem Header="Orders" IsVisible="{Binding IsFleetSelected}">
+                    <ScrollViewer>
+                        <StackPanel Margin="8" Spacing="6">
+                            <ItemsControl ItemsSource="{Binding WaypointRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="panels:FleetWaypointRowViewModel">
+                                        <Button Classes="waypointRow" Classes.selected="{Binding IsSelected}" Command="{Binding SelectCommand}">
+                                            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto" Margin="2">
+                                                <TextBlock Grid.Column="0" Text="{Binding Destination}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Warp, StringFormat='warp {0}'}" Opacity="0.7" Margin="8,0" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Task}" Opacity="0.7" Margin="0,0,8,0" />
+                                                <TextBlock Grid.Column="3" Classes="waypointFuel" Classes.shortfall="{Binding HasFuelShortfall}"
+                                                           Text="{Binding FuelUponArrival, StringFormat='{}{0:0}mg'}" Margin="0,0,8,0"
+                                                           ToolTip.Tip="Estimated fuel remaining on arrival" />
+                                                <Button Grid.Column="4" Content="▲" Padding="4,0" Command="{Binding MoveUpCommand}" />
+                                                <Button Grid.Column="5" Content="▼" Padding="4,0" Command="{Binding MoveDownCommand}" Margin="2,0,0,0" />
+                                                <Button Grid.Column="6" Content="✕" Padding="4,0" Command="{Binding DeleteCommand}" Margin="4,0,0,0" />
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Shown only while a waypoint row above is selected - lets an
+                                 ALREADY-added waypoint's warp and task be changed after the fact
+                                 (picking them at creation time, via the "Add waypoint" section
+                                 below, was the only way before - so slowing down or speeding up a
+                                 queued leg meant deleting and re-adding it). Both apply
+                                 immediately on change, matching FleetDetail.WaypointTaskChanged's
+                                 own behavior in the original for Task; Warp follows the same
+                                 pattern for consistency. -->
+                            <Grid ColumnDefinitions="Auto,*" Margin="0,2" IsVisible="{Binding HasSelectedWaypoint}">
+                                <TextBlock Grid.Column="0" Text="Selected waypoint's warp" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding SelectedWaypointWarp}" Minimum="0" Maximum="10" FormatString="0"
+                                               HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="4,0" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*" Margin="0,2" IsVisible="{Binding HasSelectedWaypoint}">
+                                <TextBlock Grid.Column="0" Text="Selected waypoint's task" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding TaskOptions}" SelectedItem="{Binding SelectedWaypointTaskOption}" HorizontalAlignment="Stretch" />
+                            </Grid>
+
+                            <TextBlock Text="Add waypoint (inserted in front of the selected one above)"
+                                       FontSize="11" Opacity="0.6" Margin="0,4,0,0" IsVisible="{Binding HasSelectedWaypoint}" />
+                            <TextBlock Text="Add waypoint" FontSize="11" Opacity="0.6" Margin="0,4,0,0" IsVisible="{Binding !HasSelectedWaypoint}" />
+                            <ComboBox ItemsSource="{Binding DestinationOptions}" SelectedItem="{Binding NewWaypointDestination}" HorizontalAlignment="Stretch" />
+                            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                                <TextBlock Grid.Column="0" Text="Warp" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <NumericUpDown Grid.Column="1" Value="{Binding NewWaypointWarp}" Minimum="0" Maximum="10" FormatString="0"
+                                               HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="4,0" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                                <TextBlock Grid.Column="0" Text="Task" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding TaskOptions}" SelectedItem="{Binding NewWaypointTask}" HorizontalAlignment="Stretch" />
+                            </Grid>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Button Content="Add Waypoint" Command="{Binding AddWaypointCommand}" HorizontalAlignment="Left" />
+                                <!-- Arms "tap a planet on the map" targeting instead of picking a
+                                     destination from the dropdown above - see
+                                     SelectionService.ArmWaypointTarget. The banner/Cancel
+                                     affordance also shows on the Star Map itself (that's what the
+                                     next tap actually hits); this button just toggles arm state
+                                     and its own label. -->
+                                <Button Command="{Binding CancelMapWaypointCommand}" IsVisible="{Binding IsAddingWaypoint}" Content="Cancel Map Tap" />
+                                <Button Command="{Binding ArmMapWaypointCommand}" IsVisible="{Binding !IsAddingWaypoint}" Content="Add via Map Tap" />
+                            </StackPanel>
+
+                            <TextBlock Text="Rename fleet" FontSize="11" Opacity="0.6" Margin="0,12,0,0" />
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox Grid.Column="0" Text="{Binding NewFleetName}" />
+                                <Button Grid.Column="1" Content="Rename" Command="{Binding SubmitRenameCommand}" Margin="4,0,0,0" />
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- Visible whenever EITHER transfer mode below applies, not just when both do -
+                     see HasCargoOptions' own comment. -->
+                <TabItem Header="Cargo" IsVisible="{Binding HasCargoOptions}">
+                    <ScrollViewer>
+                        <StackPanel Margin="8" Spacing="6">
+                            <StackPanel IsVisible="{Binding CanTransferCargo}" Spacing="6">
+                                <TextBlock Text="Cargo Transfer" FontWeight="Bold" Opacity="0.8" />
+                                <TextBlock Text="{Binding CargoCapacity, StringFormat='Fleet capacity: {0}kT'}" FontSize="11" Opacity="0.6" />
+
+                                <ItemsControl ItemsSource="{Binding CargoRows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="panels:CargoResourceRowViewModel">
+                                            <StackPanel Margin="0,4">
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Label}" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding PlanetAmount, StringFormat='Planet: {0}kT'}" Opacity="0.6" FontSize="11" />
+                                                </Grid>
+                                                <Slider Minimum="0" Maximum="{Binding Total}" Value="{Binding FleetAmount}" />
+                                                <TextBlock Text="{Binding FleetAmount, StringFormat='Fleet: {0}kT'}" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Button Content="Apply Transfer" Command="{Binding ApplyCargoCommand}" HorizontalAlignment="Left" Margin="0,4,0,0" />
+                                <TextBlock Text="{Binding CargoStatusMessage}" Opacity="0.7" IsVisible="{Binding HasCargoStatusMessage}" />
+                            </StackPanel>
+
+                            <StackPanel IsVisible="{Binding CanTransferCargoToFleet}" Spacing="6" Margin="0,16,0,0">
+                                <TextBlock Text="Cargo Transfer (to another fleet)" FontWeight="Bold" Opacity="0.8" />
+
+                                <TextBlock Text="Other fleet" FontSize="11" Opacity="0.6" />
+                                <ComboBox ItemsSource="{Binding FleetCargoTransferTargets}" SelectedItem="{Binding SelectedFleetCargoTransferTarget}" HorizontalAlignment="Stretch">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="panels:SplitMergeTargetOption">
+                                            <TextBlock Text="{Binding DisplayName}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <ItemsControl ItemsSource="{Binding FleetTransferRows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="panels:CargoResourceRowViewModel">
+                                            <StackPanel Margin="0,4">
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Label}" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding PlanetAmount, StringFormat='Other fleet: {0}kT'}" Opacity="0.6" FontSize="11" />
+                                                </Grid>
+                                                <Slider Minimum="0" Maximum="{Binding Total}" Value="{Binding FleetAmount}" />
+                                                <TextBlock Text="{Binding FleetAmount, StringFormat='This fleet: {0}kT'}" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <StackPanel IsVisible="{Binding FleetTransferFuelRow, Converter={x:Static conv:ObjectConverters.IsNotNull}}" Margin="0,4">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="Fuel" />
+                                        <TextBlock Grid.Column="1" Text="{Binding FleetTransferFuelRow.PlanetAmount, StringFormat='Other fleet: {0}mg'}" Opacity="0.6" FontSize="11" />
+                                    </Grid>
+                                    <Slider Minimum="0" Maximum="{Binding FleetTransferFuelRow.Total}" Value="{Binding FleetTransferFuelRow.FleetAmount}" />
+                                    <TextBlock Text="{Binding FleetTransferFuelRow.FleetAmount, StringFormat='This fleet: {0}mg'}" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
+                                </StackPanel>
+
+                                <Button Content="Apply Transfer" Command="{Binding ApplyFleetCargoTransferCommand}" HorizontalAlignment="Left" Margin="0,4,0,0" />
+                                <TextBlock Text="{Binding FleetTransferStatusMessage}" Opacity="0.7" IsVisible="{Binding HasFleetTransferStatusMessage}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="Split/Merge" IsVisible="{Binding CanSplitMerge}">
+                    <ScrollViewer>
+                        <StackPanel Margin="8" Spacing="6">
+                            <TextBlock Text="How many of each design stay in this fleet - the rest go to the other side." FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
+
+                            <ItemsControl ItemsSource="{Binding SplitMergeRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="panels:SplitMergeRowViewModel">
+                                        <StackPanel Margin="0,4">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Grid.Column="0" Text="{Binding Label}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding OtherQuantity, StringFormat='Other: {0}'}" Opacity="0.6" FontSize="11" />
+                                            </Grid>
+                                            <Slider Minimum="0" Maximum="{Binding OriginalQuantity}" Value="{Binding KeepInSource}" />
+                                            <TextBlock Text="{Binding KeepInSource, StringFormat='Keep: {0}'}" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Text="Other side" FontSize="11" Opacity="0.6" Margin="0,4,0,0" />
+                            <ComboBox ItemsSource="{Binding SplitMergeTargets}" SelectedItem="{Binding SelectedSplitMergeTarget}" HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="panels:SplitMergeTargetOption">
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+
+                            <Button Content="Apply" Command="{Binding ApplySplitMergeCommand}" HorizontalAlignment="Left" Margin="0,4,0,0" />
+                            <TextBlock Text="{Binding SplitMergeStatusMessage}" Opacity="0.7" IsVisible="{Binding HasSplitMergeStatusMessage}" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
+
+        <views:HullViewerView DataContext="{Binding HullViewer}" />
+    </Grid>
 </UserControl>

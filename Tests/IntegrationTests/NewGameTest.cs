@@ -337,20 +337,40 @@ namespace Nova.Tests.IntegrationTests
 
             int itOwnedStars = 0;
             int normalOwnedStars = 0;
+            int fullStarbases = 0;
+            int smallStarbases = 0;
             foreach (Star star in serverState.AllStars.Values)
             {
                 if (star.Owner == itEmpire.Id)
                 {
                     itOwnedStars++;
 
-                    // Both of IT's planets should have a Stargate-equipped starbase (docs/
-                    // behavior-specs/race-traits.md §2: "IT: Starts with two Stargate-equipped
-                    // planets") - previously only the primary home star got a starbase at all,
-                    // and even that one had no Gate component.
+                    // IT's two planets both get a Stargate-equipped starbase (docs/
+                    // behavior-specs/race-traits.md §2), but not IDENTICAL ones: the home star
+                    // gets its full combat "Starbase" (weapons/shields at full strength) plus the
+                    // Gate, the second planet a small, dedicated "Stargate" base (modest
+                    // weapons/shields) plus the same Gate - matching the original game's "one big
+                    // base, one small one, both gated" split, not two copies of either extreme.
                     Assert.IsNotNull(star.Starbase, $"{star.Name} should have a starbase");
                     ShipDesign design = star.Starbase.Composition.Values.First().Design;
                     design.Update();
                     Assert.IsTrue(design.Summary.Properties.ContainsKey("Gate"), $"{star.Name}'s starbase should have a Stargate");
+
+                    // Both designs should have real weapons/shields, not just the Gate - the
+                    // small base's own "some guns and shields, not none" requirement is the part
+                    // this test used to get wrong (it had zero of both after the first fix).
+                    Assert.IsTrue(design.Weapons.Count > 0, $"{design.Name} should have some weapons");
+                    Assert.Greater(design.Shield, 0, $"{design.Name} should have some shield");
+
+                    if (design.Name == "Starbase")
+                    {
+                        fullStarbases++;
+                    }
+                    else
+                    {
+                        smallStarbases++;
+                        Assert.AreEqual("Stargate", design.Name);
+                    }
                 }
                 if (star.Owner == normalEmpire.Id)
                 {
@@ -360,13 +380,17 @@ namespace Nova.Tests.IntegrationTests
 
             Assert.AreEqual(2, itOwnedStars, "Interstellar Traveler should start with two planets");
             Assert.AreEqual(1, normalOwnedStars, "A race without PP/IT should start with only one planet");
+            Assert.AreEqual(1, fullStarbases, "IT's home star should have the full combat starbase");
+            Assert.AreEqual(1, smallStarbases, "IT's second planet should have the small Stargate base");
         }
 
         /// <Summary>
-        /// Packet Physics' second planet should get a Mass-Driver-equipped starbase too - without
-        /// one, PP's whole signature mechanic (flinging mineral packets between its two home
-        /// worlds) has nothing to fling from. Mirrors GeneratePlayerAssets_
-        /// PacketPhysicsAndInterstellarTraveler_GetSecondPlanet above but checks PP specifically.
+        /// Packet Physics' two planets both get a Mass-Driver-equipped starbase, matching IT's
+        /// "one full, one small, both gated" split above - the home star's full combat "Starbase"
+        /// Design plus a Mass Driver, the second planet a small, dedicated "Mass Driver Base"
+        /// Design (modest weapons/shields, not none) plus its own Mass Driver. Mirrors
+        /// GeneratePlayerAssets_PacketPhysicsAndInterstellarTraveler_GetSecondPlanet above but
+        /// checks PP specifically.
         /// </Summary>
         [Test]
         public void GeneratePlayerAssets_PacketPhysics_SecondPlanetHasMassDriverStarbase()
@@ -408,14 +432,22 @@ namespace Nova.Tests.IntegrationTests
                 Assert.IsNotNull(star.Starbase, $"{star.Name} should have a starbase");
                 ShipDesign design = star.Starbase.Composition.Values.First().Design;
                 design.Update();
-                if (design.Summary.Properties.ContainsKey("Mass Driver"))
+                Assert.IsTrue(design.Summary.Properties.ContainsKey("Mass Driver"), $"{star.Name}'s starbase should have a Mass Driver");
+                Assert.IsTrue(design.Weapons.Count > 0, $"{design.Name} should have some weapons");
+                Assert.Greater(design.Shield, 0, $"{design.Name} should have some shield");
+
+                if (design.Name == "Mass Driver Base")
                 {
                     starbasesWithMassDriver++;
+                }
+                else
+                {
+                    Assert.AreEqual("Starbase", design.Name, "The other planet should have the normal full starbase");
                 }
             }
 
             Assert.AreEqual(2, ppOwnedStars, "Packet Physics should start with two planets");
-            Assert.AreEqual(2, starbasesWithMassDriver, "Both of Packet Physics' starbases should have a Mass Driver");
+            Assert.AreEqual(1, starbasesWithMassDriver, "Exactly one of Packet Physics' two starbases should be the small dedicated Mass Driver base");
         }
     }
 }

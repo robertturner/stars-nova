@@ -45,6 +45,7 @@
                 <TextBlock Grid.Column="0" Text="Attack" VerticalAlignment="Center" Margin="0,0,8,0" />
                 <ComboBox Grid.Column="1" ItemsSource="{Binding AttackOptions}" SelectedItem="{Binding Attack}" HorizontalAlignment="Stretch" />
             </Grid>
+            <CheckBox Content="Dump Cargo" IsChecked="{Binding DumpCargo}" Margin="0,4,0,0" />
         </StackPanel>
         </StackPanel>
     </StackPanel>

@@ -47,6 +47,8 @@ public class NavigatorViewModel : Tool
         }
     }
 
+    public HullViewerViewModel HullViewer { get; } = new HullViewerViewModel();
+
     private NavigatorFleetItemViewModel? selectedFleet;
 
     public NavigatorFleetItemViewModel? SelectedFleet

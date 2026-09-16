@@ -1,90 +1,262 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             xmlns:input="using:Avalonia.Input"
+             xmlns:conv="using:Avalonia.Data.Converters"
              x:Class="Nova.Avalonia.Views.Panels.ShipDesignView"
              x:DataType="panels:ShipDesignViewModel">
-    <ScrollViewer>
-    <StackPanel Margin="8" Spacing="4">
-        <TextBlock Text="My Designs" FontWeight="Bold" Opacity="0.8" />
-        <ItemsControl ItemsSource="{Binding OwnedDesigns}">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="panels:OwnedDesignRowViewModel">
-                    <Border BorderBrush="Gray" BorderThickness="0,0,0,1" Padding="0,4" Margin="0,2">
-                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Name}" FontWeight="Bold" VerticalAlignment="Center" />
-                            <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Content="Delete" Command="{Binding DeleteCommand}" VerticalAlignment="Center" />
-                            <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Spacing="12">
-                                <TextBlock Text="{Binding CostSummary}" Opacity="0.7" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding QuantityInUse, StringFormat='{}{0} in use'}" Opacity="0.7" />
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+    <UserControl.Styles>
+        <!-- Same "look like a plain cell, not a button" trick StarMapDocumentView.axaml already
+             uses for its own tappable markers. -->
+        <Style Selector="Button.hullSlot">
+            <Setter Property="Background" Value="#22ffffff" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.hullSlot:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#33ffffff" />
+        </Style>
+        <Style Selector="Button.hullSlot.compatible">
+            <Setter Property="BorderBrush" Value="LimeGreen" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <Style Selector="Button.hullSlot.filled">
+            <Setter Property="Background" Value="#332299ff" />
+        </Style>
+        <Style Selector="Button.componentItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="BorderBrush" Value="#22ffffff" />
+            <Setter Property="Padding" Value="4,3" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="CornerRadius" Value="0" />
+        </Style>
+        <Style Selector="Button.componentItem.armed">
+            <Setter Property="Background" Value="#442299ff" />
+            <Setter Property="BorderBrush" Value="DodgerBlue" />
+        </Style>
+        <!-- Places each hull-slot cell at its real grid position (Column/Row, from
+             HullModule.CellNumber - see HullSlotRowViewModel's own comment) - the same
+             ContentPresenter-Setter trick StarMapDocumentView.axaml uses for Canvas.Left/Top. -->
+        <Style Selector="ItemsControl.hullSlots ContentPresenter" x:DataType="panels:HullSlotRowViewModel">
+            <Setter Property="Grid.Column" Value="{Binding Column}" />
+            <Setter Property="Grid.Row" Value="{Binding Row}" />
+        </Style>
+    </UserControl.Styles>
 
-        <TextBlock Text="Create Design" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
+    <!-- The hull viewport is pinned at the top (Row 0/1, outside any other ScrollViewer's
+         ancestor chain) rather than living inside the same scroll as everything else below it -
+         confirmed live that nesting it inside a page-level ScrollViewer meant a touch-drag
+         starting inside the hull border got captured by the OUTER page scroll instead of the
+         hull's own ScrollGestureRecognizer (both wanted the same vertical/horizontal axes, and
+         the ancestor won), so panning the hull never actually worked despite being wired up
+         exactly like the Star Map's own. Being a sibling instead of a nested descendant removes
+         the ambiguity entirely - a touch starting inside the hull border's bounds only ever hits
+         that ScrollViewer, never the page's. -->
+    <Grid RowDefinitions="Auto,Auto,*" Margin="8" RowSpacing="8">
+        <Border Grid.Row="0" Background="#442299ff" BorderBrush="DodgerBlue" BorderThickness="1" CornerRadius="4"
+                Padding="8,4" IsVisible="{Binding HasArmedComponent}">
+            <TextBlock Text="{Binding ArmedComponentName, StringFormat='Holding: {0} - tap a highlighted slot to fit it'}" />
+        </Border>
 
-        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
-            <TextBlock Grid.Column="0" Text="Hull" VerticalAlignment="Center" Margin="0,0,8,0" />
-            <ComboBox Grid.Column="1" ItemsSource="{Binding HullOptions}" SelectedItem="{Binding SelectedHull}"
-                      HorizontalAlignment="Stretch">
-                <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="panels:HullOptionViewModel">
-                        <TextBlock Text="{Binding Name}" />
+        <!-- The hull's own slot grid (real 5-wide layout, see HullSlotRowViewModel) - mirrors
+             HullGrid's on-screen panel, minus its literal pixel drag-and-drop (see
+             ShipDesignViewModel's own comment on why: tap-to-arm-then-tap everywhere, real OS
+             drag-and-drop additionally on desktop - ShipDesignView.axaml.cs). Pan/zoom follows
+             the exact same pattern StarMapDocumentView uses for the Star Map itself. -->
+        <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Height="320">
+            <Grid>
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                              PointerWheelChanged="OnHullPointerWheelChanged">
+                    <ScrollViewer.GestureRecognizers>
+                        <ScrollGestureRecognizer CanHorizontallyScroll="True" CanVerticallyScroll="True" />
+                    </ScrollViewer.GestureRecognizers>
+                    <LayoutTransformControl>
+                        <LayoutTransformControl.LayoutTransform>
+                            <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
+                        </LayoutTransformControl.LayoutTransform>
+                        <!-- Explicit fixed-pixel row/column sizes (matching the 90x90 cell + 2px
+                             margin below exactly), not "*" shares - a star-sized Grid inside a
+                             ScrollViewer's effectively-unbounded axis degenerates to sizing off
+                             its own content instead of being reliably square, confirmed live to
+                             render each cell wider than tall. Fixed sizes guarantee every cell is
+                             a true square regardless of how many rows/columns a given hull
+                             actually populates. -->
+                        <ItemsControl Classes="hullSlots" ItemsSource="{Binding SlotRows}" Margin="24">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Grid ColumnDefinitions="94,94,94,94,94" RowDefinitions="94,94,94,94,94" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="panels:HullSlotRowViewModel">
+                                    <Button Classes="hullSlot" Classes.compatible="{Binding IsCompatibleWithArmed}" Classes.filled="{Binding IsFilled}"
+                                            Command="{Binding $parent[ItemsControl].((panels:ShipDesignViewModel)DataContext).SlotTappedCommand}"
+                                            CommandParameter="{Binding}"
+                                            DragDrop.AllowDrop="True" DragDrop.DragOver="OnHullSlotDragOver" DragDrop.Drop="OnHullSlotDrop"
+                                            Width="90" Height="90" Margin="2">
+                                        <Grid RowDefinitions="*,Auto">
+                                            <TextBlock Grid.Row="0" Text="{Binding Label}" FontSize="10" Opacity="0.6"
+                                                       TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center"
+                                                       IsVisible="{Binding !IsFilled}" />
+                                            <StackPanel Grid.Row="0" Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                        IsVisible="{Binding IsFilled}">
+                                                <Image Source="{Binding Icon}" IsVisible="{Binding Icon, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                                                       Width="36" Height="36" Stretch="Uniform" HorizontalAlignment="Center" />
+                                                <TextBlock Text="{Binding SelectedOption.Name}" FontSize="10" FontWeight="Bold"
+                                                           TextWrapping="Wrap" TextAlignment="Center" MaxWidth="82" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center"
+                                                        IsVisible="{Binding IsFilled}">
+                                                <Button Content="−" Padding="4,0" Command="{Binding DecrementCommand}" />
+                                                <TextBlock Text="{Binding Quantity}" VerticalAlignment="Center" FontSize="11" />
+                                                <Button Content="+" Padding="4,0" Command="{Binding IncrementCommand}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </LayoutTransformControl>
+                </ScrollViewer>
+
+                <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6"
+                        Background="#aa000000" CornerRadius="4" Padding="6,3">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="{Binding Zoom, StringFormat='{}{0:P0}'}" Foreground="White" FontSize="11" VerticalAlignment="Center" />
+                        <Button Content="-" Command="{Binding ZoomOutCommand}" Padding="8,2" FontWeight="Bold" />
+                        <Button Content="+" Command="{Binding ZoomInCommand}" Padding="8,2" FontWeight="Bold" />
+                        <Button Content="Reset" Command="{Binding ResetZoomCommand}" Padding="6,2" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Everything else, in its own independent scroll - not nested inside/around the hull
+             viewport's own ScrollViewer above (see this Grid's own comment on why that matters). -->
+        <ScrollViewer Grid.Row="2">
+        <StackPanel Spacing="4">
+            <TextBlock Text="My Designs" FontWeight="Bold" Opacity="0.8" />
+            <ItemsControl ItemsSource="{Binding OwnedDesigns}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="panels:OwnedDesignRowViewModel">
+                        <Border BorderBrush="Gray" BorderThickness="0,0,0,1" Padding="0,4" Margin="0,2">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Name}" FontWeight="Bold" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Content="Delete" Command="{Binding DeleteCommand}" VerticalAlignment="Center" />
+                                <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Spacing="12">
+                                    <TextBlock Text="{Binding CostSummary}" Opacity="0.7" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding QuantityInUse, StringFormat='{}{0} in use'}" Opacity="0.7" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
                     </DataTemplate>
-                </ComboBox.ItemTemplate>
-            </ComboBox>
-        </Grid>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
-        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
-            <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" Margin="0,0,8,0" />
-            <TextBox Grid.Column="1" Text="{Binding DesignName}" />
-        </Grid>
+            <TextBlock Text="Create Design" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
 
-        <ItemsControl ItemsSource="{Binding SlotRows}" Margin="0,8,0,0">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="panels:HullSlotRowViewModel">
-                    <Border BorderBrush="Gray" BorderThickness="0,0,0,1" Padding="0,4" Margin="0,2">
-                        <StackPanel Spacing="2">
-                            <TextBlock Text="{Binding Label}" Opacity="0.7" />
-                            <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption}"
-                                      HorizontalAlignment="Stretch">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate x:DataType="panels:ComponentOptionViewModel">
-                                        <TextBlock Text="{Binding Name}" />
+            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                <TextBlock Grid.Column="0" Text="Hull" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox Grid.Column="1" ItemsSource="{Binding HullOptions}" SelectedItem="{Binding SelectedHull}"
+                          HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="panels:HullOptionViewModel">
+                            <TextBlock Text="{Binding Name}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </Grid>
+
+            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBox Grid.Column="1" Text="{Binding DesignName}" />
+            </Grid>
+
+            <TextBlock Text="Components" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
+            <TextBlock Text="Tap a component, then tap a highlighted slot to fit it there. Tap an empty-handed filled slot to clear it. Press and hold a component to see its details."
+                       FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
+
+            <ItemsControl ItemsSource="{Binding Categories}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="panels:ComponentCategoryViewModel">
+                        <StackPanel Margin="0,6,0,0" Spacing="1">
+                            <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="11" Opacity="0.7" />
+                            <ItemsControl ItemsSource="{Binding Items}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="panels:ComponentListItemViewModel">
+                                        <Button Classes="componentItem" Classes.armed="{Binding IsArmed}"
+                                                Command="{Binding SelectCommand}" HorizontalAlignment="Stretch"
+                                                PointerPressed="OnComponentItemPointerPressed"
+                                                input:InputElement.IsHoldingEnabled="True" Holding="OnComponentItemHolding">
+                                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                                <Image Grid.Column="0" Source="{Binding Icon}" IsVisible="{Binding Icon, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                                                       Width="24" Height="24" Margin="0,0,8,0" Stretch="Uniform" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Name}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="2" Text="{Binding CostSummary}" FontSize="10" Opacity="0.6" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Button>
                                     </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
-                            <NumericUpDown Value="{Binding Quantity}" Minimum="0" Maximum="{Binding Maximum}"
-                                           FormatString="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="4,0" />
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
-                    </Border>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
-        <TextBlock Text="Stats" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
-        <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,2">
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="Cost" Margin="0,0,8,2" />
-            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CostSummary}" Margin="0,0,12,2" />
-            <TextBlock Grid.Row="0" Grid.Column="2" Text="Mass" Margin="0,0,8,2" />
-            <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding MassValue}" Margin="0,0,0,2" />
+            <TextBlock Text="Stats" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
+            <Grid ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,2">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Cost" Margin="0,0,8,2" />
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CostSummary}" Margin="0,0,12,2" />
+                <TextBlock Grid.Row="0" Grid.Column="2" Text="Mass" Margin="0,0,8,2" />
+                <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding MassValue}" Margin="0,0,0,2" />
 
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="Armor" Margin="0,0,8,2" />
-            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ArmorValue}" Margin="0,0,12,2" />
-            <TextBlock Grid.Row="1" Grid.Column="2" Text="Shield" Margin="0,0,8,2" />
-            <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding ShieldValue}" Margin="0,0,0,2" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Armor" Margin="0,0,8,2" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ArmorValue}" Margin="0,0,12,2" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="Shield" Margin="0,0,8,2" />
+                <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding ShieldValue}" Margin="0,0,0,2" />
 
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="Cargo" Margin="0,0,8,2" />
-            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding CargoValue}" Margin="0,0,12,2" />
-            <TextBlock Grid.Row="2" Grid.Column="2" Text="Fuel" Margin="0,0,8,2" />
-            <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding FuelValue}" Margin="0,0,0,2" />
-        </Grid>
-        <TextBlock Text="No engine fitted" Foreground="OrangeRed" IsVisible="{Binding !HasEngine}" Margin="0,2" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Cargo" Margin="0,0,8,2" />
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding CargoValue}" Margin="0,0,12,2" />
+                <TextBlock Grid.Row="2" Grid.Column="2" Text="Fuel" Margin="0,0,8,2" />
+                <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding FuelValue}" Margin="0,0,0,2" />
+            </Grid>
+            <TextBlock Text="No engine fitted" Foreground="OrangeRed" IsVisible="{Binding !HasEngine}" Margin="0,2" />
 
-        <Button Content="Save Design" Command="{Binding SaveCommand}" HorizontalAlignment="Left" Margin="0,8,0,0" />
-        <TextBlock Text="{Binding SaveStatusMessage}" Opacity="0.7" IsVisible="{Binding HasSaveStatusMessage}" />
-    </StackPanel>
-    </ScrollViewer>
+            <Button Content="Save Design" Command="{Binding SaveCommand}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+            <TextBlock Text="{Binding SaveStatusMessage}" Opacity="0.7" IsVisible="{Binding HasSaveStatusMessage}" />
+        </StackPanel>
+        </ScrollViewer>
+
+        <!-- Component-info popup - shown on press-and-hold (see OnComponentItemPointerPressed's
+             own comment), dismissed on release/pointer-exit. Sits above everything else in this
+             Grid (declared last = topmost in z-order) so it isn't clipped by either scrollable
+             region. -->
+        <Border Grid.Row="0" Grid.RowSpan="3" IsVisible="{Binding InfoPopup.IsVisible}" IsHitTestVisible="False">
+            <Border Background="#ee101018" BorderBrush="DodgerBlue" BorderThickness="1" CornerRadius="6"
+                    Padding="12" Margin="16" VerticalAlignment="Center" MaxWidth="360"
+                    DataContext="{Binding InfoPopup}" x:DataType="panels:ComponentInfoPopupViewModel">
+                <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Image Source="{Binding Icon}" IsVisible="{Binding Icon, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                               Width="40" Height="40" Stretch="Uniform" VerticalAlignment="Center" />
+                        <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="15" />
+                            <TextBlock Text="{Binding TypeAndCost}" FontSize="11" Opacity="0.7" />
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Description}" TextWrapping="Wrap" IsVisible="{Binding HasDescription}" Margin="0,4,0,0" />
+                    <ItemsControl ItemsSource="{Binding DetailLines}" Margin="0,4,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}" FontSize="12" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
 </UserControl>

@@ -2,37 +2,119 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Nova.Avalonia.ViewModels"
              xmlns:panels="using:Nova.Avalonia.Views.Panels"
+             xmlns:panelvm="using:Nova.Avalonia.ViewModels.Panels"
              x:Class="Nova.Avalonia.Views.MobileMainView"
              x:DataType="vm:MobileMainViewModel">
+    <UserControl.Styles>
+        <Style Selector="Button.menuEntry">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="10,8" />
+        </Style>
+        <Style Selector="Button.menuEntry:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#22ffffff" />
+        </Style>
+        <Style Selector="Button.menuEntry.selected">
+            <Setter Property="Background" Value="#442299ff" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+    </UserControl.Styles>
     <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="8">
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-            <TextBlock Grid.Column="0" Text="Stars! Nova" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" />
-            <Button Grid.Column="1" Content="About" Command="{Binding ShowAboutCommand}" />
+        <!-- Compact header: a burger button, whichever section is currently showing, and End
+             Turn - rather than a static "Stars! Nova" title/always-visible About button/Section
+             combo (moved into the collapsible menu row below) and a separate footer bar solely
+             for one button (moved up here instead), freeing up vertical space a phone screen has
+             much less of than the desktop dock layout ever needed to worry about. -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
+            <Button Grid.Column="0" Content="☰" FontSize="18" Padding="10,4" Command="{Binding ToggleMenuCommand}" />
+            <TextBlock Grid.Column="1" Text="{Binding SelectedPageLabel}" FontSize="16" FontWeight="Bold"
+                       VerticalAlignment="Center" Margin="8,0,0,0" />
+            <Button Grid.Column="2" Content="End Turn" Command="{Binding SubmitTurnCommand}" />
         </Grid>
 
-        <!-- Section selector, not a TabControl or a row of buttons - both have their own
-             confirmed-live touch bugs on this app (see RaceDesignerViewModel.Page's own
-             comment); a ComboBox is already proven reliable via touch elsewhere. "Map" groups
-             everything about the Star Map and whatever's currently selected on it (see
-             MobileMainViewModel's own comment); everything else gets its own page here. -->
-        <StackPanel Grid.Row="1" Spacing="2" Margin="0,0,0,8">
-            <TextBlock Text="Section" />
-            <ComboBox ItemsSource="{Binding PageLabels}" SelectedItem="{Binding SelectedPageLabel}"
-                      HorizontalAlignment="Stretch" />
-        </StackPanel>
+        <!-- The menu itself - every section as its own directly-tappable row, not a dropdown
+             (see this class's own top comment for why), plus About at the end after a thin
+             divider. "Map" groups everything about the Star Map and whatever's currently
+             selected on it (see MobileMainViewModel's own comment); everything else gets its own
+             page here. Picking a section closes this automatically (SelectedPageLabel's own
+             setter, which also rebuilds MenuEntries so the highlighted row stays in sync); About
+             closes it via ShowAboutFromMenuCommand instead, since it opens a separate window
+             rather than switching pages. -->
+        <Border Grid.Row="1" IsVisible="{Binding IsMenuOpen}" BorderBrush="Gray" BorderThickness="1"
+                CornerRadius="4" Padding="4" Margin="0,0,0,8">
+            <StackPanel Spacing="0">
+                <ItemsControl ItemsSource="{Binding MenuEntries}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:MobileMenuEntryViewModel">
+                            <Button Classes="menuEntry" Classes.selected="{Binding IsSelected}"
+                                    Content="{Binding Label}" Command="{Binding SelectCommand}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Border BorderBrush="Gray" BorderThickness="0,1,0,0" Margin="6,4" />
+                <Button Classes="menuEntry" Content="About" Command="{Binding ShowAboutFromMenuCommand}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+            </StackPanel>
+        </Border>
 
         <Grid Grid.Row="2">
-            <!-- The map itself, then Inspector (planet/fleet detail plus fleet order editing)
-                 and Production (the selected planet's build queue) stacked directly beneath it -
-                 all three already react to the same shared SelectionService, so tapping
-                 something on the map immediately updates both without any extra plumbing here. -->
-            <Grid IsVisible="{Binding ShowMapPage}" RowDefinitions="2*,1*,1*" RowSpacing="4">
-                <panels:StarMapDocumentView Grid.Row="0" DataContext="{Binding StarMap}" />
-                <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
-                    <panels:InspectorView DataContext="{Binding Inspector}" />
-                </Border>
+            <!-- The map itself (plus its selection switcher), a draggable splitter, then
+                 Inspector (planet/fleet detail, fleet order editing, AND the selected planet's
+                 build queue - Production is embedded as one of Inspector's own tabs now, not a
+                 sibling row here; see InspectorViewModel.Production's own comment on why) - all
+                 reacting to the same shared SelectionService, so tapping something on the map
+                 immediately updates all of them without any extra plumbing here. Map and
+                 Inspector are both plain "*" rows (equal, i.e. 50/50 by default) with a
+                 GridSplitter between them the player can drag to rebalance - the map/inspector
+                 split is exactly the kind of thing that varies by what someone's doing turn to
+                 turn (skimming the map vs. managing a long production queue), unlike the
+                 switcher's own row, which stays a fixed "Auto" height nested inside the map's own
+                 "*" share (so it still collapses to zero space when hidden, and dragging the
+                 splitter only ever trades space between the map and Inspector, never disturbing
+                 the switcher itself). MinHeight on both outer rows keeps a drag from ever
+                 collapsing either side to nothing. -->
+            <Grid IsVisible="{Binding ShowMapPage}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" MinHeight="120" />
+                    <RowDefinition Height="14" />
+                    <RowDefinition Height="*" MinHeight="120" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" RowDefinitions="*,Auto" RowSpacing="4">
+                    <panels:StarMapDocumentView Grid.Row="0" DataContext="{Binding StarMap}" />
+
+                    <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="6"
+                            IsVisible="{Binding MapSelectionSwitcher.HasOptions}">
+                        <StackPanel Spacing="2" DataContext="{Binding MapSelectionSwitcher}"
+                                    x:DataType="panelvm:MapSelectionSwitcherViewModel">
+                            <TextBlock Text="Viewing" FontSize="11" Opacity="0.7" />
+                            <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="panelvm:MapSelectionSwitcherOptionViewModel">
+                                        <TextBlock Text="{Binding Name}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <GridSplitter Grid.Row="1" Height="14" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                              Background="#33ffffff" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                              Cursor="SizeNorthSouth" />
+                <!-- A plain GridSplitter's default FluentTheme visual is subtle - built for a
+                     mouse cursor hinting "draggable" rather than a touchscreen, where nothing
+                     hints that at all. This bar (a sibling drawn on top, not the GridSplitter's
+                     own content - it isn't a ContentControl) is the touch-discoverable affordance;
+                     IsHitTestVisible="False" so drags still reach the GridSplitter underneath it. -->
+                <Rectangle Grid.Row="1" Width="36" Height="4" Fill="Gray" RadiusX="2" RadiusY="2"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" />
+
                 <Border Grid.Row="2" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
-                    <panels:ProductionView DataContext="{Binding Production}" />
+                    <panels:InspectorView DataContext="{Binding Inspector}" />
                 </Border>
             </Grid>
 
@@ -80,12 +162,11 @@
             </Border>
         </Grid>
 
-        <Border Grid.Row="3" Padding="8,4" Margin="0,8,0,0" Background="#1a1a1a" CornerRadius="4">
-            <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" Foreground="White" FontSize="12"
-                           VerticalAlignment="Center" IsVisible="{Binding HasStatusMessage}" />
-                <Button Grid.Column="1" Content="End Turn" Command="{Binding SubmitTurnCommand}" />
-            </Grid>
+        <!-- End Turn itself lives in the header now (see above) - this footer is just for
+             StatusMessage, and disappears entirely (not just an empty bar) when there isn't one. -->
+        <Border Grid.Row="3" Padding="8,4" Margin="0,8,0,0" Background="#1a1a1a" CornerRadius="4"
+                IsVisible="{Binding HasStatusMessage}">
+            <TextBlock Text="{Binding StatusMessage}" Foreground="White" FontSize="12" VerticalAlignment="Center" />
         </Border>
     </Grid>
 </UserControl>

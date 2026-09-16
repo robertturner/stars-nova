@@ -55,13 +55,26 @@ namespace Nova.Common
         
         /// <summary>
         /// Method which checks whether another one unit can be constructed.
-        /// The unit cannot be constructed either because of lack 
+        /// The unit cannot be constructed either because of lack
         /// of minerals/resources or because of other game restrictions
         /// (for example another factory cannot be constructed if maximum
         /// factory number limit is reached).
         /// </summary>
         /// <returns>Returns true in case unit can be constructed, false otherwise.</returns>
         bool IsSkipped(Star star);
+
+        /// <summary>
+        /// How many of this unit the star already has, for the types where that's a stable,
+        /// countable planetary stat (Factories/Mines/Defenses) - null for anything else (Ships,
+        /// Alchemy, Terraform), which have no such persistent count to check against.
+        /// Auto-build orders for a unit that returns non-null here are never removed from the
+        /// queue once satisfied and self-replenish if the count later drops (e.g. bombing) -
+        /// see ProductionOrder.Process's own comment. This mirrors the manual's documented
+        /// "Factories (Auto Build) Up to 10" template phrasing (docs/behavior-specs-4/
+        /// production-queue.md §9): an auto-build order names a standing target to maintain,
+        /// not a one-off batch to build and forget.
+        /// </summary>
+        int? CurrentCount(Star star);
 
         /// <summary>
         /// Method which performs actual construction.

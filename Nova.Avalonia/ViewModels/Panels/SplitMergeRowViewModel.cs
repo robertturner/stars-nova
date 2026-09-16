@@ -19,6 +19,12 @@ public class SplitMergeRowViewModel : ViewModelBase
 
     public string Label => Design.Name;
 
+    /// <summary>See ComponentListItemViewModel.Icon's own comment - same Bitmap-via-object
+    /// pattern, this time the design's own player-chosen ShipIcon rather than a raw component's
+    /// image. Also used by the plain (non-slider) "Ships" composition list this same row list
+    /// backs - see InspectorView.axaml.</summary>
+    public object? Icon => Design.Icon?.Image;
+
     public int OriginalQuantity { get; }
 
     private int keepInSource;

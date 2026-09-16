@@ -31,26 +31,25 @@ namespace Nova.Avalonia.ViewModels;
 /// </summary>
 public class NewGameViewModel : ViewModelBase
 {
+    private int selectedTabIndex;
+
     /// <summary>
-    /// The screen's sections, switched via a ComboBox rather than a TabControl - see
-    /// RaceDesignerViewModel.Page's own comment for why (TabControl's tab strip wraps onto
-    /// several lines on a narrow phone screen, crushing the actual page content beneath it).
+    /// Which of the three tabs ("Options"/"Players"/"Victory") is showing. Race Designer's own
+    /// ComboBox (see RaceDesignerViewModel.Page's own comment) exists because a default
+    /// FluentTheme TabControl's strip wraps onto multiple stacked rows once its header text no
+    /// longer fits one line, crushing the page content beneath it - confirmed there live with six
+    /// sections. This screen only has three, but even three of the ORIGINAL, longer labels ("Game
+    /// Options"/"Players"/"Victory Conditions") still wrapped to three stacked rows at phone width
+    /// on the Nova_Test emulator - a default TabItem's fixed padding adds up fast at this width
+    /// regardless of tab count. Fixed here by shortening the labels (see NewGameView.axaml) and
+    /// giving TabItem a tighter Padding/FontSize in that view's own Styles - confirmed live
+    /// afterward to hold to one line.
     /// </summary>
-    public enum Page
+    public int SelectedTabIndex
     {
-        GameOptions,
-        Players,
-        VictoryConditions,
+        get => selectedTabIndex;
+        set => SetProperty(ref selectedTabIndex, value);
     }
-
-    private static readonly (string Label, Page Value)[] PageDefinitions =
-    {
-        ("Game Options", Page.GameOptions),
-        ("Players", Page.Players),
-        ("Victory Conditions", Page.VictoryConditions),
-    };
-
-    private Page selectedPage = Page.GameOptions;
 
     private readonly Dictionary<string, Race> knownRaces = new();
 
@@ -118,31 +117,6 @@ public class NewGameViewModel : ViewModelBase
         // a control for it at all - not merely unwired, genuinely absent from the dialog.
         SecondPlaceScore = new VictoryConditionRowViewModel("Exceeds second place's score by a factor of", GameSettings.Data.SecondPlaceScore, 0, 100);
     }
-
-    public IReadOnlyList<string> PageLabels { get; } = PageDefinitions.Select(p => p.Label).ToList();
-
-    public string SelectedPageLabel
-    {
-        get => PageDefinitions.First(p => p.Value == selectedPage).Label;
-        set
-        {
-            (string Label, Page Value) match = PageDefinitions.FirstOrDefault(p => p.Label == value);
-            if (match.Label != null && selectedPage != match.Value)
-            {
-                selectedPage = match.Value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(ShowGameOptionsPage));
-                OnPropertyChanged(nameof(ShowPlayersPage));
-                OnPropertyChanged(nameof(ShowVictoryConditionsPage));
-            }
-        }
-    }
-
-    public bool ShowGameOptionsPage => selectedPage == Page.GameOptions;
-
-    public bool ShowPlayersPage => selectedPage == Page.Players;
-
-    public bool ShowVictoryConditionsPage => selectedPage == Page.VictoryConditions;
 
     public static string ComputeDefaultFolder(string gameName)
     {

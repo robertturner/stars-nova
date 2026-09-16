@@ -104,6 +104,11 @@ namespace Nova.Common
             return false;
         }
 
+        public int? CurrentCount(Star star)
+        {
+            return star.Factories;
+        }
+
         /// <summary>
         /// Construct one factory.
         /// </summary>

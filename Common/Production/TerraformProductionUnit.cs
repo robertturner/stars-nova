@@ -154,6 +154,15 @@ namespace Nova.Common
             return SelectAxisToImprove(star, star.ThisRace) == null;
         }
 
+        // No single stable count to compare a target against - each 1% nudges whichever of
+        // three separate environment axes needs it most (SelectAxisToImprove), unlike a single
+        // running total the way Factories/Mines/Defenses have. An auto-build order for this
+        // keeps its original consume-to-zero-then-remove behavior (ProductionOrder.Process).
+        public int? CurrentCount(Star star)
+        {
+            return null;
+        }
+
         /// <summary>
         /// Construct a 1% terraform on whichever axis needs it most.
         /// </summary>

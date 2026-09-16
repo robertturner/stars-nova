@@ -94,6 +94,19 @@ public class BattlePlanRowViewModel : ViewModelBase
         }
     }
 
+    public bool DumpCargo
+    {
+        get => plan.DumpCargo;
+        set
+        {
+            if (value != plan.DumpCargo)
+            {
+                plan.DumpCargo = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public BattlePlanRowViewModel(BattlePlan plan, Action<string, string> onRename)
     {
         this.plan = plan;

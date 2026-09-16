@@ -71,6 +71,10 @@ namespace Nova.Server
                     CreateShips(serverState.AllEmpires[owner].Designs[designKey], star, done);
                 }
                     
+                // An auto-build order for a persistent-count unit (Factories/Mines/Defenses)
+                // never reaches this - ProductionOrder.Process treats its Quantity as a standing
+                // target and never decrements it, so it stays queued (idle once satisfied) ready
+                // to resume if the count later drops - see that method's own comment.
                 if (productionOrder.Quantity == 0)
                 {
                     completed.Add(productionOrder);

@@ -104,24 +104,61 @@ namespace Nova.Common
         /// </summary>
         /// <param name="star">The star where this unit is processed</param>
         /// <returns>The number of units completed</returns>
+        /// <remarks>
+        /// For an auto-build order whose Unit has a persistent, countable planetary stat
+        /// (Factories/Mines/Defenses - see IProductionUnit.CurrentCount), Quantity is treated
+        /// as a standing target to maintain rather than a one-off batch to consume: this year's
+        /// shortfall is computed fresh from the star's live count each time, and Quantity itself
+        /// is never decremented - so the order is never exhausted/removed (Manufacture.Items
+        /// only removes an order once Quantity reaches 0) and automatically resumes building if
+        /// the count later drops (e.g. bombing destroys some factories). This matches the
+        /// manual's "Factories (Auto Build) Up to 10" template phrasing (docs/behavior-specs-4/
+        /// production-queue.md §9) - before this fix, ANY order (auto-build or not) simply
+        /// decremented Quantity to 0 and was deleted from the queue once its batch completed,
+        /// silently discarding the "maintain this many" intent auto-build is meant to express.
+        /// Every other order (a manual order of any kind, or an auto-build order for a Ship/
+        /// Alchemy/Terraform unit, none of which have such a count to check against) keeps the
+        /// original, unchanged consume-Quantity-to-zero behavior.
+        /// </remarks>
         public int Process(Star star)
         {
             int done = 0;
-            
+
+            int? currentCount = IsAutoBuild ? Unit.CurrentCount(star) : null;
+            if (currentCount.HasValue)
+            {
+                int remaining = Math.Max(0, Quantity - currentCount.Value);
+                while (remaining > 0)
+                {
+                    if (Unit.IsSkipped(star))
+                    {
+                        break;
+                    }
+
+                    if (Unit.Construct(star))
+                    {
+                        remaining--;
+                        done++;
+                    }
+                }
+
+                return done;
+            }
+
             while (Quantity > 0)
             {
                 if (Unit.IsSkipped(star))
                 {
                     break;
                 }
-   
+
                 if (Unit.Construct(star))
                 {
                     Quantity--;
                     done++;
-                }                
+                }
             }
-            
+
             return done;
         }
         

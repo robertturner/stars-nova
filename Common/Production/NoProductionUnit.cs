@@ -58,6 +58,11 @@ namespace Nova.Common
             return true;
         }
 
+        public int? CurrentCount(Star star)
+        {
+            return null;
+        }
+
         public bool Construct(Star star)
         {
             return false;

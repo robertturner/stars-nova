@@ -109,6 +109,11 @@ namespace Nova.Common
             return false;
         }
 
+        public int? CurrentCount(Star star)
+        {
+            return star.Mines;
+        }
+
         /// <summary>
         /// Produce the mine.
         /// </summary>

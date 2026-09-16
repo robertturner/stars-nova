@@ -130,6 +130,16 @@ namespace Nova.Common
             return false;
         }
 
+        // A ship leaves the star the moment it's built (into a new Fleet, not a stat kept on
+        // the star itself) - there's no "how many of this design are here" count to maintain an
+        // auto-build target against, unlike Factories/Mines/Defenses. An auto-build order for a
+        // ship design keeps its original consume-to-zero-then-remove behavior
+        // (ProductionOrder.Process).
+        public int? CurrentCount(Star star)
+        {
+            return null;
+        }
+
         
         /// <summary>
         /// Construct the ship.

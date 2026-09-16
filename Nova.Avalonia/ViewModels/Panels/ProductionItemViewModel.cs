@@ -25,6 +25,12 @@ public class ProductionItemViewModel
 
     public bool IsAutoBuild { get; }
 
+    /// <summary>Label for the per-row Auto Build toggle button - see docs/behavior-specs-4/
+    /// production-queue.md §9's "Factories (Auto Build) Up to N" phrasing, which this mirrors
+    /// (an auto-build order never blocks the queue and is simply skipped in a year it can't be
+    /// afforded - see ProductionOrder.IsBlocking - unlike an ordinary manual order).</summary>
+    public string AutoBuildLabel => IsAutoBuild ? "Auto" : "Manual";
+
     public string CostSummary { get; }
 
     public IRelayCommand IncrementCommand { get; }
@@ -37,6 +43,8 @@ public class ProductionItemViewModel
 
     public IRelayCommand MoveDownCommand { get; }
 
+    public IRelayCommand ToggleAutoBuildCommand { get; }
+
     public ProductionItemViewModel(
         int index,
         ProductionOrder order,
@@ -44,7 +52,8 @@ public class ProductionItemViewModel
         System.Action onDecrement,
         System.Action onDelete,
         System.Action? onMoveUp,
-        System.Action? onMoveDown)
+        System.Action? onMoveDown,
+        System.Action onToggleAutoBuild)
     {
         Index = index;
         Name = order.Name;
@@ -56,5 +65,6 @@ public class ProductionItemViewModel
         DeleteCommand = new RelayCommand(onDelete);
         MoveUpCommand = new RelayCommand(onMoveUp ?? (() => { }), () => onMoveUp != null);
         MoveDownCommand = new RelayCommand(onMoveDown ?? (() => { }), () => onMoveDown != null);
+        ToggleAutoBuildCommand = new RelayCommand(onToggleAutoBuild);
     }
 }

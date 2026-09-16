@@ -17,9 +17,11 @@ namespace Nova.Avalonia.ViewModels.Panels;
 /// The Production panel: the build queue for whichever planet the Navigator/Inspector
 /// currently has selected (via the shared <see cref="SelectionService"/>), editable the same
 /// way ProductionDialog.cs is - push a ProductionCommand onto ClientData.Commands and apply
-/// it locally for immediate feedback. Auto-build isn't exposed here either, matching the
-/// WinForms dialog (it never surfaces IsAutoBuild in its own UI despite the engine supporting
-/// it); quantity is a NumericUpDown instead of the original's Shift/Ctrl-click x10/x100.
+/// it locally for immediate feedback. Quantity is a NumericUpDown instead of the original's
+/// Shift/Ctrl-click x10/x100 (the per-row +/- buttons' press-and-hold covers rapid bulk edits
+/// instead). Auto-build (docs/behavior-specs-4/production-queue.md §9) IS exposed here - see
+/// AutoBuildOnAdd/ToggleAutoBuild - even though neither the WinForms client nor this port
+/// originally surfaced it despite the engine (ProductionOrder.IsAutoBuild) always supporting it.
 /// </summary>
 public class ProductionViewModel : Tool
 {
@@ -41,6 +43,21 @@ public class ProductionViewModel : Tool
     {
         get => hasPlanet;
         private set => SetProperty(ref hasPlanet, value);
+    }
+
+    private bool hasColonizedPlanet;
+
+    /// <summary>
+    /// Like HasPlanet, but false for an owned star with no population (Colonists == 0) - the
+    /// same "colonized" test NavigatorPlanetItemViewModel's own Status already uses. Lets a host
+    /// screen (see MobileMainView, where Map stacks Inspector/Production together with no
+    /// Navigator alongside them) hide the whole Production panel rather than show it with
+    /// nothing meaningful in it for a planet that has no production queue to speak of.
+    /// </summary>
+    public bool HasColonizedPlanet
+    {
+        get => hasColonizedPlanet;
+        private set => SetProperty(ref hasColonizedPlanet, value);
     }
 
     private string message = "Select a planet to see its production queue.";
@@ -89,6 +106,22 @@ public class ProductionViewModel : Tool
     {
         get => addQuantity;
         set => SetProperty(ref addQuantity, value);
+    }
+
+    private bool autoBuildOnAdd;
+
+    /// <summary>
+    /// docs/behavior-specs-4/production-queue.md §9: an auto-build item is added the same way
+    /// as an ordinary one, just flagged so it never blocks the queue when it can't be afforded
+    /// that year (ProductionOrder.IsBlocking) - "Factories (Auto Build) Up to 10" reads exactly
+    /// like a normal "Factory x10" order with this box checked. Neither the WinForms client nor
+    /// this port originally exposed a way to set this at all (see this class's own top-of-file
+    /// comment, predating this fix) - AddQuantity here plays the same "Up to N" role.
+    /// </summary>
+    public bool AutoBuildOnAdd
+    {
+        get => autoBuildOnAdd;
+        set => SetProperty(ref autoBuildOnAdd, value);
     }
 
     public IRelayCommand AddToQueueCommand { get; }
@@ -192,9 +225,11 @@ public class ProductionViewModel : Tool
             selectedStar = star;
             PlanetName = star.Name;
             HasPlanet = true;
+            HasColonizedPlanet = star.Colonists > 0;
             AvailableItems = BuildCatalog(star);
             SelectedAvailableItem = AvailableItems.FirstOrDefault();
             AddQuantity = 1;
+            AutoBuildOnAdd = false;
             RebuildQueueRows(star);
         }
         else
@@ -202,6 +237,7 @@ public class ProductionViewModel : Tool
             selectedStar = null;
             PlanetName = "";
             HasPlanet = false;
+            HasColonizedPlanet = false;
             AvailableItems = Array.Empty<ProductionCatalogItemViewModel>();
             Queue = Array.Empty<ProductionItemViewModel>();
             Message = selected switch
@@ -275,7 +311,8 @@ public class ProductionViewModel : Tool
                 onDecrement: () => AdjustQuantity(index, -1),
                 onDelete: () => DeleteItem(index),
                 onMoveUp: canMoveUp ? () => SwapQueueItems(index, index - 1) : null,
-                onMoveDown: canMoveDown ? () => SwapQueueItems(index, index + 1) : null));
+                onMoveDown: canMoveDown ? () => SwapQueueItems(index, index + 1) : null,
+                onToggleAutoBuild: () => ToggleAutoBuild(index)));
         }
 
         Queue = rows;
@@ -290,9 +327,27 @@ public class ProductionViewModel : Tool
             return;
         }
 
-        var order = new ProductionOrder(AddQuantity, SelectedAvailableItem.Unit, false);
+        var order = new ProductionOrder(AddQuantity, SelectedAvailableItem.Unit, AutoBuildOnAdd);
         var command = new ProductionCommand(CommandMode.Add, order, selectedStar.Name, selectedStar.ManufacturingQueue.Queue.Count);
         ApplyCommand(command);
+    }
+
+    /// <summary>
+    /// Flips an already-queued order between manual and auto-build in place - same Unit and
+    /// Quantity, just the flag - pushed as an Edit like AdjustQuantity's own edits. Safe under
+    /// ProductionCommand.Edit's own anti-cheat validity check (it only compares Unit.Cost/
+    /// RemainingCost, both unchanged here since Unit itself isn't replaced).
+    /// </summary>
+    private void ToggleAutoBuild(int index)
+    {
+        if (selectedStar == null)
+        {
+            return;
+        }
+
+        ProductionOrder existing = selectedStar.ManufacturingQueue.Queue[index];
+        var edited = new ProductionOrder(existing.Quantity, existing.Unit, !existing.IsAutoBuild);
+        ApplyCommand(new ProductionCommand(CommandMode.Edit, edited, selectedStar.Name, index));
     }
 
     private void AdjustQuantity(int index, int delta)

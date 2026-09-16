@@ -245,34 +245,128 @@ namespace Nova.Common.Waypoints
         }
 
 
+        /// <summary>Shared by every SplitMergeTask instance - matches this codebase's own
+        /// convention for unseeded gameplay randomness (see e.g. PointUtilities.Random,
+        /// TechTrading.Rand): not test-seedable, so tests covering this exercise only the
+        /// deterministic full-fuel path and the shape/bounds of the probabilistic one, not an
+        /// exact roll.</summary>
+        private static readonly Random random = new Random();
+
         /// <summary>
         /// Used to merge fleets. Much cruder than ReassignShips, but requires
         /// less information.
         /// </summary>
         /// <remarks>
-        /// This is a simple merge where all the ships end up in one fleet.
-        /// All ships end up in the left fleet.
+        /// All ships end up in the left fleet - except when <paramref name="right"/> is below
+        /// full fuel, per docs/behavior-specs-5/client-ui-dialog-catalog.md: "a design already at
+        /// full fuel merges without penalty; a design below full fuel undergoes a probabilistic
+        /// check that can leave some ships behind rather than merging them, with the result
+        /// reported through one of five graduated messages." The original tracks fuel per
+        /// ship-design slot and couldn't be recovered formula-and-all; this port's own
+        /// Fleet.FuelAvailable is one fleet-wide pool, not per design, so this is a fleet-level
+        /// approximation of the same shape rather than a verbatim reproduction: the lower
+        /// <paramref name="right"/>'s fuel fraction, the higher the chance and size of a
+        /// stranding, with a graduated message (via <see cref="Messages"/>) reporting how severe
+        /// it was. At exactly full fuel, behavior is unchanged from before this fix (deterministic,
+        /// no stranding, no message) - only pushing this same instance's Messages list mid-battle
+        /// wasn't a concern already covered by other tasks (ColoniseTask/ScrapTask/etc. all follow
+        /// the identical "new Message(); Messages.Add(...)" pattern).
         /// </remarks>
         /// <param name="left">The composition of ships on the left side of the SplitFleetsDialog dialog.</param>
         /// <param name="right">The composition of ships on the right side of the SplitFleetsDialog dialog.</param>
         private void MergeFleets(Fleet left, Fleet right)
         {
-            foreach (ShipToken token in right.Composition.Values)
+            int totalShips = right.Composition.Values.Sum(token => token.Quantity);
+            double rightFuelFraction = totalShips == 0 || right.TotalFuelCapacity <= 0
+                ? 1.0
+                : Math.Clamp(right.FuelAvailable / right.TotalFuelCapacity, 0.0, 1.0);
+
+            int strandedShips = 0;
+            if (rightFuelFraction < 1.0)
             {
+                double shortfall = 1.0 - rightFuelFraction;
+                double strandedFraction = Math.Clamp(shortfall * random.NextDouble() * 1.5, 0.0, 1.0);
+                strandedShips = (int)Math.Round(totalShips * strandedFraction);
+            }
+
+            if (strandedShips > 0)
+            {
+                Message message = new Message();
+                Messages.Add(message);
+                message.Audience = left.Owner;
+                message.Type = "Fleet Merge";
+                message.Text = GraduatedStrandingText(left.Name, strandedShips, totalShips);
+            }
+
+            if (strandedShips >= totalShips)
+            {
+                // Total loss - matches the spec's "designs with genuinely incompatible fuel or
+                // cargo capacities abort the merge entirely rather than partially combining":
+                // nothing moves, both fleets are left exactly as they were.
+                return;
+            }
+
+            // Strand `strandedShips` proportionally across every design in `right`, moving the
+            // rest into `left` exactly as an unconditional merge would have.
+            int remainingToStrand = strandedShips;
+            var tokens = right.Composition.Values.ToList();
+            for (int i = 0; i < tokens.Count; i++)
+            {
+                ShipToken token = tokens[i];
+                bool isLastToken = i == tokens.Count - 1;
+                int strandFromThisToken = isLastToken
+                    ? Math.Min(remainingToStrand, token.Quantity)
+                    : Math.Min(token.Quantity, (int)Math.Round(token.Quantity * ((double)strandedShips / totalShips)));
+                remainingToStrand -= strandFromThisToken;
+
+                int movingQuantity = token.Quantity - strandFromThisToken;
+                if (movingQuantity <= 0)
+                {
+                    continue;
+                }
+
                 if (!left.Composition.ContainsKey(token.Key))
                 {
-                    left.Composition.Add(token.Key, token);
+                    left.Composition.Add(token.Key, new ShipToken(token.Design, movingQuantity, token.Armor));
                 }
                 else
                 {
-                    left.Composition[token.Key].Quantity += token.Quantity;
+                    left.Composition[token.Key].Quantity += movingQuantity;
                     left.Composition[token.Key].Armor += token.Armor;
+                }
+
+                if (strandFromThisToken > 0)
+                {
+                    token.Quantity = strandFromThisToken;
+                }
+                else
+                {
+                    right.Composition.Remove(token.Key);
                 }
             }
 
-            left.FuelAvailable += right.FuelAvailable;
-            left.Cargo.Add(right.Cargo);
-            right.Composition.Clear();
+            if (strandedShips == 0)
+            {
+                left.FuelAvailable += right.FuelAvailable;
+                left.Cargo.Add(right.Cargo);
+            }
+        }
+
+        /// <summary>One of five graduated messages by how much of `right`'s ship count got left
+        /// behind - see MergeFleets' own comment for why the exact original wording couldn't be
+        /// recovered.</summary>
+        private static string GraduatedStrandingText(string fleetName, int strandedShips, int totalShips)
+        {
+            double strandedFraction = (double)strandedShips / totalShips;
+            string severity = strandedFraction switch
+            {
+                >= 1.0 => "None of the fleet's ships had enough fuel to keep up - the merge failed entirely.",
+                >= 0.5 => "Most of the fleet's ships were left behind - critically low on fuel.",
+                >= 0.25 => "Several ships were left behind due to low fuel.",
+                _ => "A few ships lagged behind due to low fuel.",
+            };
+
+            return $"{fleetName}: {severity} ({strandedShips} of {totalShips} ship(s) stranded.)";
         }
 
 

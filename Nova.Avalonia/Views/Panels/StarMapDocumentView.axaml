@@ -2,6 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
              xmlns:conv="using:Nova.Avalonia.Converters"
+             xmlns:input="using:Avalonia.Input"
+             xmlns:views="using:Nova.Avalonia.Views.Panels"
              x:Class="Nova.Avalonia.Views.Panels.StarMapDocumentView"
              x:DataType="panels:StarMapDocumentViewModel">
     <UserControl.Styles>
@@ -31,6 +33,28 @@
         <Style Selector="ItemsControl.mineLayer ContentPresenter" x:DataType="panels:StarMapMineFieldViewModel">
             <Setter Property="Canvas.Left" Value="{Binding X}" />
             <Setter Property="Canvas.Top" Value="{Binding Y}" />
+        </Style>
+        <!-- Starbase presence dot color - see StarMapStarViewModel.IsFullStarbase's own comment
+             on why dock capacity (rather than a hardcoded hull name) is what distinguishes a full
+             combat starbase from a small defense-only orbital platform. -->
+        <Style Selector="Rectangle.starbaseFull">
+            <Setter Property="Fill" Value="Yellow" />
+        </Style>
+        <Style Selector="Rectangle.starbaseSmall">
+            <Setter Property="Fill" Value="Gray" />
+        </Style>
+        <!-- Fleet-in-orbit ring color - see StarMapStarViewModel.HasForeignFleetInOrbit's own
+             comment: white for the viewer's own fleet only, red for a foreign fleet only, and a
+             third, distinct color when both classes apply at once (a friendly and a foreign fleet
+             sharing the same orbit). -->
+        <Style Selector="Ellipse.orbitOwn:not(.orbitForeign)">
+            <Setter Property="Stroke" Value="White" />
+        </Style>
+        <Style Selector="Ellipse.orbitForeign:not(.orbitOwn)">
+            <Setter Property="Stroke" Value="Red" />
+        </Style>
+        <Style Selector="Ellipse.orbitOwn.orbitForeign">
+            <Setter Property="Stroke" Value="Magenta" />
         </Style>
     </UserControl.Styles>
     <Grid>
@@ -150,13 +174,17 @@
                             </Button>
                             <!-- Orbiting-fleets ring - StarMap.cs's DrawOrbitingFleets ("orbiting
                                  fleets (smaller circle)") for the WinForms original: an unfilled
-                                 white ring centered on the star icon itself (not an offset dot
-                                 like the three below), shown whenever a non-starbase fleet is
-                                 sitting here - see StarMapDocumentViewModel's own comment on why
-                                 this is computed fresh rather than from the game's own
-                                 never-updated HasFleetsInOrbit field. -->
+                                 ring centered on the star icon itself (not an offset dot like the
+                                 three below), shown whenever a non-starbase fleet is sitting here
+                                 - see StarMapDocumentViewModel's own comment on why this is
+                                 computed fresh rather than from the game's own never-updated
+                                 HasFleetsInOrbit field. Colored per docs/behavior-specs-5/
+                                 client-interface.md's "Fleet-in-orbit ring" note: white for the
+                                 viewer's own fleet, red for a foreign one, magenta when both are
+                                 present at once - not one fixed color regardless of ownership. -->
                             <Ellipse Width="12" Height="12" Canvas.Left="-6" Canvas.Top="-6"
-                                     Stroke="White" StrokeThickness="1.5" IsHitTestVisible="False"
+                                     StrokeThickness="1.5" IsHitTestVisible="False"
+                                     Classes.orbitOwn="{Binding HasOwnFleetInOrbit}" Classes.orbitForeign="{Binding HasForeignFleetInOrbit}"
                                      IsVisible="{Binding HasFleetsInOrbit}"
                                      ToolTip.Tip="Fleet(s) in orbit" />
                             <!-- Starbase capability dots - docs/behavior-specs-3/client-interface.md's
@@ -165,9 +193,10 @@
                                  from the star icon. IsHitTestVisible="False" so they never steal the
                                  marker Button's click. Colors are this port's own choice - the
                                  original client's actual colors couldn't be recovered by analysis. -->
-                            <Rectangle Width="4" Height="4" Fill="Yellow" IsHitTestVisible="False"
+                            <Rectangle Width="4" Height="4" IsHitTestVisible="False"
+                                       Classes.starbaseFull="{Binding IsFullStarbase}" Classes.starbaseSmall="{Binding !IsFullStarbase}"
                                        Canvas.Left="5" Canvas.Top="-8" IsVisible="{Binding HasStarbase}"
-                                       ToolTip.Tip="Starbase" />
+                                       ToolTip.Tip="{Binding IsFullStarbase, Converter={x:Static conv:StarbaseTooltipConverter.Instance}}" />
                             <Rectangle Width="4" Height="4" Fill="Cyan" IsHitTestVisible="False"
                                        Canvas.Left="-9" Canvas.Top="-8" IsVisible="{Binding HasStargate}"
                                        ToolTip.Tip="Stargate" />
@@ -212,7 +241,8 @@
                              properties only apply to a Canvas's direct children. -->
                         <Canvas>
                             <Button Classes="starMapMarker" Command="{Binding SelectCommand}"
-                                    Canvas.Left="-7" Canvas.Top="-7" Width="14" Height="14">
+                                    Canvas.Left="-7" Canvas.Top="-7" Width="14" Height="14"
+                                    input:InputElement.IsHoldingEnabled="True" Holding="OnFleetMarkerHolding">
                                 <Panel>
                                     <Ellipse Width="14" Height="14"
                                              Stroke="Gold" StrokeThickness="2"
@@ -235,6 +265,18 @@
                                     </Polygon>
                                 </Panel>
                             </Button>
+                            <!-- Ship-count badge - docs/behavior-specs-5/client-interface.md
+                                 documents a small numeric badge next to a fleet's map icon
+                                 showing total ship count in the stack (clamped to 999), colored by
+                                 owner - missing from this port until now. Reuses the same Color
+                                 brush as the heading triangle above (green own, orange-red
+                                 foreign) rather than a separate color scheme. Offset to the
+                                 icon's lower-right, clear of both the triangle and the star-style
+                                 offset dots this fleet doesn't have. -->
+                            <TextBlock Text="{Binding ShipCountDisplay}" Foreground="{Binding Color}"
+                                       FontSize="9" FontWeight="Bold" IsHitTestVisible="False"
+                                       Canvas.Left="6" Canvas.Top="2"
+                                       ToolTip.Tip="Ships in this fleet" />
                         </Canvas>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
@@ -253,5 +295,19 @@
                 <Button Content="Reset" Command="{Binding ResetZoomCommand}" Padding="6,2" />
             </StackPanel>
         </Border>
+
+        <!-- "Add Waypoint" arming is triggered from the Inspector panel (see its own Orders
+             section) but shown here, since it's this map that the next tap actually targets -
+             both panels just react to the same shared SelectionService.IsAddingWaypoint. -->
+        <Border IsVisible="{Binding IsAddingWaypoint}" Background="#442299ff" BorderBrush="DodgerBlue"
+                BorderThickness="1" CornerRadius="4" Padding="8,4" HorizontalAlignment="Center"
+                VerticalAlignment="Top" Margin="8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Tap a planet to add a waypoint" VerticalAlignment="Center" />
+                <Button Content="Cancel" Command="{Binding CancelAddWaypointCommand}" Padding="8,2" />
+            </StackPanel>
+        </Border>
+
+        <views:HullViewerView DataContext="{Binding HullViewer}" />
     </Grid>
 </UserControl>

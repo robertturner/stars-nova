@@ -22,6 +22,35 @@ namespace Nova.Avalonia.ViewModels.Panels;
 /// </summary>
 public class StarMapDocumentViewModel : Document
 {
+    // A star map generated before StarMapGenerator's own edge margin (see that class's own
+    // comment) can still have stars sitting right at X=0/Y=0/MapWidth/MapHeight - existing saves
+    // don't get their star positions retroactively moved just because the generator changed. So
+    // this is a second, independent fix that helps regardless of where a star actually sits: the
+    // rendered Panel is padded by a margin on every side, and every marker's drawn position is
+    // shifted into that padding, so nothing anchored to an edge-hugging star can land in Panel
+    // coordinates the map's ScrollViewer could never scroll to (it has no negative scroll range,
+    // and - confirmed by a user report - zooming out doesn't help either, since this is a Panel
+    // coordinate-space problem, not a viewport-size one).
+    //
+    // A single small constant isn't enough: a star's own marker decorations (the gold selection
+    // ring, starbase/stargate/mass-driver dots) only reach a few pixels past its center, but its
+    // scan-range wash and long name label can reach much further - a late-game scanner's range
+    // can be hundreds of map units, and this margin has to cover the single worst-case reach of
+    // anything actually drawn on this particular map, not just the small fixed case. So the
+    // margin is computed per-map in the constructor (see MinimumMargin/EstimateNameHalfWidth
+    // below), covering the largest of: the fixed marker-decoration minimum, every owned
+    // star/fleet's own scan and pen-scan range (the wash's radius), every visible minefield's
+    // radius, and the widest star name label likely to be drawn (estimated from character count -
+    // the ViewModel has no access to the View's actual measured text width).
+    private const double MinimumMargin = 20;
+
+    // Rough average glyph advance width for the star-name TextBlock's FontSize="10" in
+    // StarMapDocumentView.axaml - used only to estimate how far a long name's label can reach
+    // past its star (see edgeMargin's own comment), not for any actual layout.
+    private const double ApproxCharWidthAtFontSize10 = 6.5;
+
+    private readonly double edgeMargin;
+
     private readonly SelectionService selection;
     private readonly List<MapMarkerViewModel> markers = new();
 
@@ -64,6 +93,15 @@ public class StarMapDocumentViewModel : Document
 
     public IRelayCommand ZoomOutCommand { get; }
 
+    public HullViewerViewModel HullViewer { get; } = new HullViewerViewModel();
+
+    /// <summary>Mirrors SelectionService.IsAddingWaypoint - see OnSelectionChanged. Drives the
+    /// "tap a planet to add a waypoint" banner regardless of which panel armed it (the button
+    /// that arms it lives in the Inspector, not here).</summary>
+    public bool IsAddingWaypoint => selection.IsAddingWaypoint;
+
+    public IRelayCommand CancelAddWaypointCommand { get; }
+
     public StarMapDocumentViewModel(string id, string title, ClientData clientState, SelectionService selection)
     {
         Id = id;
@@ -78,6 +116,7 @@ public class StarMapDocumentViewModel : Document
         const double zoomStep = 1.15;
         ZoomInCommand = new RelayCommand(() => Zoom *= zoomStep);
         ZoomOutCommand = new RelayCommand(() => Zoom /= zoomStep);
+        CancelAddWaypointCommand = new RelayCommand(() => selection.CancelWaypointTarget());
 
         // GameSettings.Restore() replaces the whole static GameSettings.Data instance
         // (Data = (GameSettings)s.Deserialize(state)) - re-deriving SettingsPathName here from
@@ -91,8 +130,68 @@ public class StarMapDocumentViewModel : Document
         // worth keeping, is confirmed NOT to be its cause.
         GameSettings.Data.SettingsPathName = System.IO.Path.Combine(clientState.GameFolder, GameSettings.Data.GameName + ".settings");
         GameSettings.Restore();
-        MapWidth = GameSettings.Data.MapWidth;
-        MapHeight = GameSettings.Data.MapHeight;
+
+        // Minefields visible to this empire - matches StarMap.cs's DetermineVisibleMinefields:
+        // visible if owned, or within the scan range of an owned fleet or star (CirclesOverlap,
+        // same test used for the scan-range washes below). Computed up front, before the margin
+        // below, since a visible minefield's own radius is one of the things that margin has to
+        // cover - the CirclesOverlap checks themselves use the game's real, un-padded positions,
+        // so computing this early changes nothing about which minefields end up visible.
+        var visibleMinefields = new List<(Minefield Minefield, bool IsOwn)>();
+        foreach (Minefield minefield in clientState.InputTurn.AllMinefields.Values)
+        {
+            bool visible = minefield.Owner == clientState.EmpireState.Id;
+
+            if (!visible)
+            {
+                foreach (Fleet ownFleet in clientState.EmpireState.OwnedFleets.Values)
+                {
+                    if (PointUtilities.CirclesOverlap(ownFleet.Position, minefield.Position, ownFleet.ScanRange, minefield.Radius))
+                    {
+                        visible = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!visible)
+            {
+                foreach (Star ownStar in clientState.EmpireState.OwnedStars.Values)
+                {
+                    if (PointUtilities.CirclesOverlap(ownStar.Position, minefield.Position, ownStar.ScanRange, minefield.Radius))
+                    {
+                        visible = true;
+                        break;
+                    }
+                }
+            }
+
+            if (visible)
+            {
+                visibleMinefields.Add((minefield, minefield.Owner == clientState.EmpireState.Id));
+            }
+        }
+
+        // Widest reach of anything actually drawn on THIS map, so the margin below is only as
+        // big as it needs to be (see edgeMargin's own comment) - a fixed guess couldn't cover the
+        // full range of possible scanner tech without either clipping high-tech games or wasting
+        // a huge, mostly-empty border on every low-tech one.
+        double maxScanRadius = clientState.EmpireState.OwnedStars.Values.Select(star => (double)star.ScanRange)
+            .Concat(clientState.EmpireState.OwnedFleets.Values.Select(fleet => (double)fleet.ScanRange))
+            .Concat(clientState.EmpireState.OwnedFleets.Values.Select(fleet => (double)fleet.PenScanRange))
+            .DefaultIfEmpty(0)
+            .Max();
+        double maxMinefieldRadius = visibleMinefields.Select(entry => (double)entry.Minefield.Radius)
+            .DefaultIfEmpty(0)
+            .Max();
+        double maxNameHalfWidth = clientState.EmpireState.StarReports.Values
+            .Select(report => EstimateNameHalfWidth(report.Name))
+            .DefaultIfEmpty(0)
+            .Max();
+        edgeMargin = new[] { MinimumMargin, maxScanRadius, maxMinefieldRadius, maxNameHalfWidth }.Max();
+
+        MapWidth = GameSettings.Data.MapWidth + (edgeMargin * 2);
+        MapHeight = GameSettings.Data.MapHeight + (edgeMargin * 2);
 
         var stars = new List<StarMapStarViewModel>();
         foreach (StarIntel report in clientState.EmpireState.StarReports.Values)
@@ -122,17 +221,28 @@ public class StarMapDocumentViewModel : Document
             }
 
             // Starbase capability dots - see docs/behavior-specs-3/client-interface.md's
-            // "Starbase capability indicators" section. That spec also documents a second,
+            // "Starbase capability indicators" section. That spec documents a second,
             // distinguished color for the presence dot itself (some specific starbase design
-            // draws differently from an ordinary one), but the exact design that represents
-            // couldn't be identified from the analyzed client - only plain presence is shown
-            // here until that's pinned down.
+            // draws differently from an ordinary one), but the exact original criterion couldn't
+            // be identified from the analyzed client. Adopted here instead: whether the design's
+            // own hull has any DockCapacity at all - a real Stars! game concept (only a proper
+            // Starbase-class hull, e.g. "Space Station", can build ships; a defense-only orbital
+            // platform like "Orbital Fort" never can) rather than a hardcoded hull-name check, so
+            // it generalizes to any future player-designed starbase too. This is exactly what an
+            // Interstellar Traveler/Packet Physics start needs distinguished on the map: its home
+            // star's full combat "Starbase" and its second planet's small "Stargate"/"Mass Driver
+            // Base" (see StarMapInitialiser.PrepareDesigns) both carry the same Gate/Mass Driver
+            // component now (see PROJECT-STATUS.md's starbase-split fix), so without this the two
+            // planets' dots were reported as looking visually identical despite being genuinely
+            // different starbases.
             bool hasStargate = false;
             bool hasMassDriver = false;
+            bool isFullStarbase = false;
             if (report.Starbase?.Composition.Values.FirstOrDefault()?.Design is ShipDesign starbaseDesign)
             {
                 hasStargate = starbaseDesign.Summary.Properties.ContainsKey("Gate");
                 hasMassDriver = starbaseDesign.Summary.Properties.ContainsKey("Mass Driver");
+                isFullStarbase = starbaseDesign.Hull.DockCapacity > 0;
             }
 
             // Orbiting-fleets ring - see StarMap.cs's DrawOrbitingFleets ("orbiting fleets
@@ -140,17 +250,26 @@ public class StarMapDocumentViewModel : Document
             // Star/StarIntel.HasFleetsInOrbit field, but nothing in this codebase (WinForms or
             // this port) ever actually WRITES that field from real fleet data - only the XML
             // load path sets it, so it's always false in a live game. Computed fresh here
-            // instead: for an owned star, directly from this empire's own Fleet.InOrbit
-            // references (excluding the starbase itself, which already has its own dot); for
-            // any other star, from whichever FleetIntel reports we have that are both marked
-            // in orbit and positioned exactly at this star (a report has no direct star
-            // reference to check against, unlike an owned Fleet).
-            bool hasFleetsInOrbit = selectable is Star realStar
-                ? clientState.EmpireState.OwnedFleets.Values.Any(fleet => fleet.InOrbit == realStar && fleet != realStar.Starbase)
-                : clientState.EmpireState.FleetReports.Values.Any(fleetReport => fleetReport.InOrbit && fleetReport.Position == report.Position);
+            // instead, and in two halves rather than one bool - docs/behavior-specs-5/
+            // client-interface.md's "Fleet-in-orbit ring" note (confirmed via a fixed emulator
+            // build after an earlier pass wrongly concluded no such ring existed at all) says
+            // this ring is white for the viewer's own fleet, red for a foreign one, and a third
+            // color when both are present at once - not one fixed color regardless of ownership.
+            //
+            // "Own" comes directly from this empire's own Fleet.InOrbit references (matched by
+            // name, which works whether or not we own the star itself - a foreign/unowned star's
+            // Starbase, if any, is never in OUR OwnedFleets, so excluding "our own star's
+            // starbase" specifically is the only starbase exclusion actually needed here).
+            // "Foreign" comes from whichever FleetIntel reports we have that are marked in orbit
+            // at this exact position and belong to someone else - a report has no direct star
+            // reference to check against, unlike an owned Fleet.
+            bool hasOwnFleetInOrbit = clientState.EmpireState.OwnedFleets.Values.Any(fleet =>
+                fleet.InOrbit != null && fleet.InOrbit.Name == report.Name && fleet != (selectable as Star)?.Starbase);
+            bool hasForeignFleetInOrbit = clientState.EmpireState.FleetReports.Values.Any(fleetReport =>
+                fleetReport.InOrbit && fleetReport.Position == report.Position && fleetReport.Owner != clientState.EmpireState.Id);
 
-            stars.Add(new StarMapStarViewModel(report.Name, report.Position.X, report.Position.Y, diameter, color,
-                selectable, selection, report.Starbase != null, hasStargate, hasMassDriver, hasFleetsInOrbit));
+            stars.Add(new StarMapStarViewModel(report.Name, report.Position.X + edgeMargin, report.Position.Y + edgeMargin, diameter, color,
+                selectable, selection, report.Starbase != null, isFullStarbase, hasStargate, hasMassDriver, hasOwnFleetInOrbit, hasForeignFleetInOrbit));
         }
 
         // Orbiting fleets aren't drawn separately - same as the WinForms StarMap.DrawFleet,
@@ -173,7 +292,7 @@ public class StarMapDocumentViewModel : Document
                 selectable = ownFleet;
             }
 
-            fleets.Add(new StarMapFleetViewModel(report.Name, report.Position.X, report.Position.Y, report.Bearing, color, selectable, selection));
+            fleets.Add(new StarMapFleetViewModel(report.Name, report.Position.X + edgeMargin, report.Position.Y + edgeMargin, report.Bearing, color, selectable, selection, report.Count));
         }
 
         // Scan-range washes - long-range (dark red, stars and fleets) and penetrating
@@ -187,7 +306,7 @@ public class StarMapDocumentViewModel : Document
         {
             if (ownStar.ScanRange > 0)
             {
-                scanCircles.Add(new StarMapScanCircleViewModel(ownStar.Position.X, ownStar.Position.Y, ownStar.ScanRange, longRangeScan));
+                scanCircles.Add(new StarMapScanCircleViewModel(ownStar.Position.X + edgeMargin, ownStar.Position.Y + edgeMargin, ownStar.ScanRange, longRangeScan));
             }
         }
 
@@ -195,57 +314,23 @@ public class StarMapDocumentViewModel : Document
         {
             if (ownFleet.ScanRange > 0)
             {
-                scanCircles.Add(new StarMapScanCircleViewModel(ownFleet.Position.X, ownFleet.Position.Y, ownFleet.ScanRange, longRangeScan));
+                scanCircles.Add(new StarMapScanCircleViewModel(ownFleet.Position.X + edgeMargin, ownFleet.Position.Y + edgeMargin, ownFleet.ScanRange, longRangeScan));
             }
 
             if (ownFleet.PenScanRange > 0)
             {
-                scanCircles.Add(new StarMapScanCircleViewModel(ownFleet.Position.X, ownFleet.Position.Y, ownFleet.PenScanRange, penScan));
+                scanCircles.Add(new StarMapScanCircleViewModel(ownFleet.Position.X + edgeMargin, ownFleet.Position.Y + edgeMargin, ownFleet.PenScanRange, penScan));
             }
         }
 
-        // Minefields - matches StarMap.cs's DetermineVisibleMinefields: visible if owned, or
-        // within the scan range of an owned fleet or star (CirclesOverlap, same test used for
-        // the scan-range washes above).
+        // Minefields - visibility already computed above (see visibleMinefields' own comment).
         var minefields = new List<StarMapMineFieldViewModel>();
         IBrush ownMineColor = new SolidColorBrush(Color.FromArgb(128, 0, 128, 0));
         IBrush enemyMineColor = new SolidColorBrush(Color.FromArgb(128, 128, 0, 128));
 
-        foreach (Minefield minefield in clientState.InputTurn.AllMinefields.Values)
+        foreach ((Minefield minefield, bool isOwn) in visibleMinefields)
         {
-            bool visible = minefield.Owner == clientState.EmpireState.Id;
-
-            if (!visible)
-            {
-                foreach (Fleet ownFleet in clientState.EmpireState.OwnedFleets.Values)
-                {
-                    if (PointUtilities.CirclesOverlap(ownFleet.Position, minefield.Position, ownFleet.ScanRange, minefield.Radius))
-                    {
-                        visible = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!visible)
-            {
-                foreach (Star ownStar in clientState.EmpireState.OwnedStars.Values)
-                {
-                    if (PointUtilities.CirclesOverlap(ownStar.Position, minefield.Position, ownStar.ScanRange, minefield.Radius))
-                    {
-                        visible = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!visible)
-            {
-                continue;
-            }
-
-            bool isOwn = minefield.Owner == clientState.EmpireState.Id;
-            minefields.Add(new StarMapMineFieldViewModel(minefield.Name, minefield.Position.X, minefield.Position.Y, minefield.Radius, isOwn ? ownMineColor : enemyMineColor, minefield, selection));
+            minefields.Add(new StarMapMineFieldViewModel(minefield.Name, minefield.Position.X + edgeMargin, minefield.Position.Y + edgeMargin, minefield.Radius, isOwn ? ownMineColor : enemyMineColor, minefield, selection));
         }
 
         Stars = stars;
@@ -266,6 +351,10 @@ public class StarMapDocumentViewModel : Document
         {
             SyncSelection();
         }
+        else if (e.PropertyName == nameof(SelectionService.IsAddingWaypoint))
+        {
+            OnPropertyChanged(nameof(IsAddingWaypoint));
+        }
     }
 
     private void SyncSelection()
@@ -278,7 +367,7 @@ public class StarMapDocumentViewModel : Document
         RouteLegs = BuildRouteLegs(selection.Selected as Fleet);
     }
 
-    private static IReadOnlyList<StarMapRouteLegViewModel> BuildRouteLegs(Fleet selectedFleet)
+    private IReadOnlyList<StarMapRouteLegViewModel> BuildRouteLegs(Fleet selectedFleet)
     {
         if (selectedFleet == null || selectedFleet.Waypoints.Count < 2)
         {
@@ -294,10 +383,21 @@ public class StarMapDocumentViewModel : Document
             bool isFirstLeg = i == 1;
             bool isFinalLeg = i == selectedFleet.Waypoints.Count - 1;
 
-            legs.Add(new StarMapRouteLegViewModel(from.X, from.Y, to.X, to.Y, isFirstLeg, isFinalLeg));
+            legs.Add(new StarMapRouteLegViewModel(from.X + edgeMargin, from.Y + edgeMargin, to.X + edgeMargin, to.Y + edgeMargin, isFirstLeg, isFinalLeg));
             from = to;
         }
 
         return legs;
+    }
+
+    /// <summary>How far a star's name label can reach past its own center - half of the label's
+    /// estimated total width, since StarMapDocumentView.axaml centers it on that point (a
+    /// TranslateTransform bound to the TextBlock's own measured Bounds.Width). Character count
+    /// times an approximate glyph width, not a real text measurement - see
+    /// ApproxCharWidthAtFontSize10's own comment for why the ViewModel can't do better than
+    /// estimate this.</summary>
+    private static double EstimateNameHalfWidth(string name)
+    {
+        return string.IsNullOrEmpty(name) ? 0 : name.Length * ApproxCharWidthAtFontSize10 / 2.0;
     }
 }

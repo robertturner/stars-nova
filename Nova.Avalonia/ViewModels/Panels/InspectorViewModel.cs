@@ -26,6 +26,32 @@ public class InspectorViewModel : Tool
     private readonly ClientData clientState;
     private readonly SelectionService selection;
 
+    /// <summary>
+    /// The Production panel, embedded here as a tab (see InspectorView.axaml) rather than
+    /// living in its own always-visible region - on Mobile, Production used to sit in a sibling
+    /// Grid row that grew with the queue and squeezed this panel down to a sliver; as a tab it
+    /// gets its own independent scroll region instead. Null on Desktop, which keeps Production as
+    /// its own separate, independently-resizable dock tab (see NovaDockFactory) - nothing there
+    /// suffers from Mobile's fixed-row squeeze, so there's no reason to duplicate it as a tab
+    /// there too. The "Production" TabItem itself is only visible when this is non-null AND the
+    /// selected planet is actually colonized (see IsVisible bindings in the view).
+    /// </summary>
+    public ProductionViewModel? Production { get; }
+
+    private int selectedTabIndex;
+
+    /// <summary>
+    /// Which of the (kind-dependent) tabs is showing - reset to 0 ("Overview") whenever the
+    /// selection changes to a genuinely different object (see Refresh), but left alone across a
+    /// same-object refresh (e.g. after pushing a waypoint/cargo command) so working through a
+    /// multi-step edit on the Orders/Cargo tab doesn't keep bouncing back to Overview.
+    /// </summary>
+    public int SelectedTabIndex
+    {
+        get => selectedTabIndex;
+        set => SetProperty(ref selectedTabIndex, value);
+    }
+
     private string kind = "";
 
     public string Kind
@@ -114,6 +140,14 @@ public class InspectorViewModel : Tool
 
     public IRelayCommand ViewStarbaseCommand { get; }
 
+    /// <summary>Opens the shared read-only hull viewer on the starbase's own design - genuinely
+    /// new relative to both the original client and this port (research turned up no dialog in
+    /// either that ever showed a starbase's actual component layout, only summary stats), unlike
+    /// ViewStarbaseCommand above which just re-selects it as a Fleet.</summary>
+    public IRelayCommand ViewStarbaseComponentsCommand { get; }
+
+    public HullViewerViewModel HullViewer { get; } = new HullViewerViewModel();
+
     private void ViewStarbase()
     {
         if (selectedStarbase != null)
@@ -135,6 +169,7 @@ public class InspectorViewModel : Tool
         selectedStarbase = starbase;
         HasStarbase = starbase != null;
         ViewStarbaseCommand.NotifyCanExecuteChanged();
+        ViewStarbaseComponentsCommand.NotifyCanExecuteChanged();
 
         if (starbase == null)
         {
@@ -219,6 +254,75 @@ public class InspectorViewModel : Tool
 
     public IRelayCommand AddWaypointCommand { get; }
 
+    // -1 = nothing selected. Tracks the real Fleet.Waypoints index (see FleetWaypointRowViewModel.
+    // Index) so a change of Task can be pushed for exactly that waypoint, and so "Add Waypoint"
+    // knows to insert in front of it rather than append - both per the user's own spec. Paired
+    // with selectedWaypointFleetKey so a genuine switch to a DIFFERENT fleet clears the selection
+    // (a waypoint index from one fleet means nothing for another) while a same-fleet refresh
+    // (e.g. after pushing a command) preserves it - see ShowFleet's own use of both.
+    private int selectedWaypointIndex = -1;
+
+    private long? selectedWaypointFleetKey;
+
+    private bool hasSelectedWaypoint;
+
+    public bool HasSelectedWaypoint
+    {
+        get => hasSelectedWaypoint;
+        private set => SetProperty(ref hasSelectedWaypoint, value);
+    }
+
+    private bool suppressWaypointTaskChange;
+
+    private string selectedWaypointTaskOption = "None";
+
+    /// <summary>The Task of whichever waypoint row is currently selected - a separate property
+    /// from NewWaypointTask (which is for the waypoint about to be added) so changing an
+    /// ALREADY-added waypoint's task doesn't disturb whatever's queued up to add next. Setting
+    /// this immediately pushes a WaypointCommand.Edit, mirroring FleetDetail.WaypointTaskChanged's
+    /// own immediate-apply behavior.</summary>
+    public string SelectedWaypointTaskOption
+    {
+        get => selectedWaypointTaskOption;
+        set
+        {
+            if (SetProperty(ref selectedWaypointTaskOption, value) && !suppressWaypointTaskChange)
+            {
+                ApplySelectedWaypointTask();
+            }
+        }
+    }
+
+    private bool suppressWaypointWarpChange;
+
+    private int selectedWaypointWarp;
+
+    /// <summary>The WarpFactor of whichever waypoint row is currently selected - same shape and
+    /// immediate-apply behavior as <see cref="SelectedWaypointTaskOption"/>, for the same reason:
+    /// before this, an already-queued waypoint's speed could only be set once, at creation time
+    /// (NewWaypointWarp), with no way to speed up or slow down a leg after the fact short of
+    /// deleting and re-adding it.</summary>
+    public int SelectedWaypointWarp
+    {
+        get => selectedWaypointWarp;
+        set
+        {
+            if (SetProperty(ref selectedWaypointWarp, value) && !suppressWaypointWarpChange)
+            {
+                ApplySelectedWaypointWarp();
+            }
+        }
+    }
+
+    public IRelayCommand ArmMapWaypointCommand { get; }
+
+    public IRelayCommand CancelMapWaypointCommand { get; }
+
+    /// <summary>Mirrors SelectionService.IsAddingWaypoint - see OnSelectionChanged. The Star Map
+    /// shows a "tap a planet" banner while this is true; the button here that arms it flips to a
+    /// "Cancel" label the same way.</summary>
+    public bool IsAddingWaypoint => selection.IsAddingWaypoint;
+
     private string newFleetName = "";
 
     public string NewFleetName
@@ -241,8 +345,20 @@ public class InspectorViewModel : Tool
     public bool CanTransferCargo
     {
         get => canTransferCargo;
-        private set => SetProperty(ref canTransferCargo, value);
+        private set
+        {
+            if (SetProperty(ref canTransferCargo, value))
+            {
+                OnPropertyChanged(nameof(HasCargoOptions));
+            }
+        }
     }
+
+    /// <summary>Whether the "Cargo" tab has anything to show at all - either transfer mode has
+    /// its own more specific gate (see CanTransferCargo/CanTransferCargoToFleet's own comments),
+    /// but the tab itself should disappear entirely rather than show an empty pane when neither
+    /// applies (a fleet that's not in orbit and has no other fleet sharing its position).</summary>
+    public bool HasCargoOptions => CanTransferCargo || CanTransferCargoToFleet;
 
     private IReadOnlyList<CargoResourceRowViewModel> cargoRows = Array.Empty<CargoResourceRowViewModel>();
 
@@ -298,7 +414,13 @@ public class InspectorViewModel : Tool
     public bool CanTransferCargoToFleet
     {
         get => canTransferCargoToFleet;
-        private set => SetProperty(ref canTransferCargoToFleet, value);
+        private set
+        {
+            if (SetProperty(ref canTransferCargoToFleet, value))
+            {
+                OnPropertyChanged(nameof(HasCargoOptions));
+            }
+        }
     }
 
     /// <summary>Every other owned, non-starbase fleet at this fleet's position - same
@@ -435,12 +557,13 @@ public class InspectorViewModel : Tool
 
     #endregion
 
-    public InspectorViewModel(string id, string title, ClientData clientState, SelectionService selection)
+    public InspectorViewModel(string id, string title, ClientData clientState, SelectionService selection, ProductionViewModel? production = null)
     {
         Id = id;
         Title = title;
         this.clientState = clientState;
         this.selection = selection;
+        Production = production;
 
         DestinationOptions = clientState.EmpireState.StarReports.Keys.OrderBy(n => n).ToList();
         AddWaypointCommand = new RelayCommand(AddWaypoint);
@@ -449,6 +572,11 @@ public class InspectorViewModel : Tool
         ApplyFleetCargoTransferCommand = new RelayCommand(ApplyFleetCargoTransfer);
         ApplySplitMergeCommand = new RelayCommand(ApplySplitMerge);
         ViewStarbaseCommand = new RelayCommand(ViewStarbase, () => selectedStarbase != null && selectedStarbase.Composition.Count > 0);
+        ViewStarbaseComponentsCommand = new RelayCommand(
+            () => HullViewer.Show(selectedStarbase?.Composition.Values.FirstOrDefault()?.Design),
+            () => selectedStarbase != null && selectedStarbase.Composition.Count > 0);
+        ArmMapWaypointCommand = new RelayCommand(ArmMapWaypoint, () => selectedFleet != null);
+        CancelMapWaypointCommand = new RelayCommand(() => selection.CancelWaypointTarget());
 
         selection.PropertyChanged += OnSelectionChanged;
         Refresh(selection.Selected);
@@ -460,14 +588,53 @@ public class InspectorViewModel : Tool
         {
             Refresh((sender as SelectionService)?.Selected);
         }
+        else if (e.PropertyName == nameof(SelectionService.IsAddingWaypoint))
+        {
+            OnPropertyChanged(nameof(IsAddingWaypoint));
+        }
     }
+
+    /// <summary>
+    /// Arms map-tap targeting for the currently selected fleet - the picked star just becomes
+    /// NewWaypointDestination and funnels into the exact same AddWaypoint() the dropdown-based
+    /// "Add Waypoint" button already uses (Warp/Task/insert-position all still apply), so the
+    /// two entry points share every bit of validation and insertion logic.
+    /// </summary>
+    private void ArmMapWaypoint()
+    {
+        if (selectedFleet == null)
+        {
+            return;
+        }
+
+        selection.ArmWaypointTarget(starName =>
+        {
+            NewWaypointDestination = starName;
+            AddWaypoint();
+        });
+    }
+
+    private object? lastSelectionForTabReset;
 
     private void Refresh(object? selected)
     {
+        // A genuinely different selected object (a different fleet, a different planet, or
+        // switching kind entirely) resets to the "Overview" tab - a same-object re-Refresh (e.g.
+        // after pushing a waypoint/cargo command, which calls ShowFleet directly and then
+        // NotifyMutated's echo brings us back through here with the identical reference) leaves
+        // whichever tab was open alone, so an in-progress multi-step edit doesn't keep getting
+        // bounced back to Overview.
+        if (!ReferenceEquals(selected, lastSelectionForTabReset))
+        {
+            SelectedTabIndex = 0;
+            lastSelectionForTabReset = selected;
+        }
+
         if (selected is not Fleet)
         {
             selectedFleet = null;
             IsFleetSelected = false;
+            ArmMapWaypointCommand.NotifyCanExecuteChanged();
         }
 
         // ShowStar/ShowStarReport (below) populate these themselves - reset here so a Fleet/
@@ -480,6 +647,7 @@ public class InspectorViewModel : Tool
             selectedStarbase = null;
             HasStarbase = false;
             ViewStarbaseCommand.NotifyCanExecuteChanged();
+            ViewStarbaseComponentsCommand.NotifyCanExecuteChanged();
         }
 
         // Only ShowStar (below) populates this - reset for every other kind of selection,
@@ -529,6 +697,7 @@ public class InspectorViewModel : Tool
             selectedStarbase = null;
             HasStarbase = false;
             ViewStarbaseCommand.NotifyCanExecuteChanged();
+            ViewStarbaseComponentsCommand.NotifyCanExecuteChanged();
             return;
         }
 
@@ -642,6 +811,18 @@ public class InspectorViewModel : Tool
         Name = fleet.Name;
         selectedFleet = fleet;
         IsFleetSelected = true;
+        ArmMapWaypointCommand.NotifyCanExecuteChanged();
+
+        // A genuine switch to a different fleet clears the waypoint selection (an index into
+        // THIS fleet's Waypoints means nothing for another); a same-fleet refresh (every other
+        // call site re-invokes ShowFleet after pushing a command) preserves it, so editing a
+        // waypoint's Task or watching Move Up/Down keeps that row highlighted instead of
+        // silently dropping the selection on every edit.
+        if (selectedWaypointFleetKey != fleet.Key)
+        {
+            selectedWaypointIndex = -1;
+            selectedWaypointFleetKey = fleet.Key;
+        }
 
         var rowList = new List<InspectorRow>
         {
@@ -677,21 +858,40 @@ public class InspectorViewModel : Tool
         Rows = rowList;
 
         // Waypoints beyond index 0 (the current position) are the ones an order can change.
+        // Fuel-upon-arrival is tracked cumulatively leg by leg, starting from the fleet's actual
+        // current fuel and position (Waypoints[0]) - same per-leg formula as FleetDetail's own
+        // "leg fuel" panel in the WinForms original (see FleetWaypointRowViewModel.FuelUponArrival).
         var editableRows = new List<FleetWaypointRowViewModel>();
+        double runningFuel = fleet.FuelAvailable;
+        NovaPoint previousPosition = fleet.Waypoints[0].Position;
+        Race race = clientState.EmpireState.Race;
         for (int i = 1; i < fleet.Waypoints.Count; i++)
         {
             int index = i; // capture for the closures below
             bool canMoveUp = index >= 2; // index 1 moving up would swap into the immovable index 0
             bool canMoveDown = index < fleet.Waypoints.Count - 1;
 
+            Waypoint waypoint = fleet.Waypoints[i];
+            if (waypoint.WarpFactor > 0)
+            {
+                double distance = PointUtilities.Distance(previousPosition, waypoint.Position);
+                double time = distance / (waypoint.WarpFactor * waypoint.WarpFactor);
+                runningFuel -= fleet.FuelConsumption(waypoint.WarpFactor, race) * time;
+            }
+            previousPosition = waypoint.Position;
+
             editableRows.Add(new FleetWaypointRowViewModel(
-                fleet.Waypoints[i],
+                index,
+                waypoint,
+                runningFuel,
                 onDelete: () => DeleteWaypoint(index),
                 onMoveUp: canMoveUp ? () => MoveWaypoint(index, index - 1) : null,
-                onMoveDown: canMoveDown ? () => MoveWaypoint(index, index + 1) : null));
+                onMoveDown: canMoveDown ? () => MoveWaypoint(index, index + 1) : null,
+                onSelect: () => SelectWaypoint(index)));
         }
 
         WaypointRows = editableRows;
+        ApplyWaypointSelectionState();
         NewFleetName = fleet.Name;
         NewWaypointDestination = DestinationOptions.FirstOrDefault();
         NewWaypointWarp = 6;
@@ -863,7 +1063,109 @@ public class InspectorViewModel : Tool
             Task = BuildTask(NewWaypointTask),
         };
 
-        ApplyCommand(new WaypointCommand(CommandMode.Add, waypoint, selectedFleet.Key));
+        // "In front of" the selected waypoint, per the user's own spec: the new one takes that
+        // row's list position and everything from there on shifts one later - CommandMode.Insert
+        // does exactly this (unlike Add, which always appends - see WaypointCommand's own doc
+        // comment on the difference). With nothing selected, append as before.
+        if (HasSelectedWaypoint)
+        {
+            int insertAt = selectedWaypointIndex;
+            selectedWaypointIndex = -1; // the insert shifts every row after it - nothing stays "the" selected one
+            ApplyCommand(new WaypointCommand(CommandMode.Insert, waypoint, selectedFleet.Key, insertAt));
+        }
+        else
+        {
+            ApplyCommand(new WaypointCommand(CommandMode.Add, waypoint, selectedFleet.Key));
+        }
+    }
+
+    /// <summary>
+    /// Tapping a waypoint row selects it (tapping the same row again deselects) - selecting
+    /// shows a Task picker for just this waypoint (see SelectedWaypointTaskOption) and changes
+    /// where the next "Add Waypoint" inserts (see AddWaypoint's own comment).
+    /// </summary>
+    private void SelectWaypoint(int index)
+    {
+        selectedWaypointIndex = selectedWaypointIndex == index ? -1 : index;
+        ApplyWaypointSelectionState();
+    }
+
+    /// <summary>
+    /// Re-applies selectedWaypointIndex to the current WaypointRows/SelectedWaypointTaskOption
+    /// without toggling anything - called after every rebuild (ShowFleet) so an edit elsewhere
+    /// (Move Up/Down, a Task change) doesn't silently drop the row's highlight, and so a waypoint
+    /// that no longer exists (e.g. just deleted) cleanly clears the selection instead of leaving
+    /// HasSelectedWaypoint stuck true for a row that isn't there anymore.
+    /// </summary>
+    private void ApplyWaypointSelectionState()
+    {
+        bool matched = false;
+        foreach (FleetWaypointRowViewModel row in WaypointRows)
+        {
+            row.IsSelected = row.Index == selectedWaypointIndex;
+            matched |= row.IsSelected;
+        }
+
+        if (!matched)
+        {
+            selectedWaypointIndex = -1;
+        }
+
+        HasSelectedWaypoint = selectedWaypointIndex >= 0;
+
+        if (HasSelectedWaypoint && selectedFleet != null)
+        {
+            suppressWaypointTaskChange = true;
+            SelectedWaypointTaskOption = selectedFleet.Waypoints[selectedWaypointIndex].Task?.Name ?? "None";
+            suppressWaypointTaskChange = false;
+
+            suppressWaypointWarpChange = true;
+            SelectedWaypointWarp = selectedFleet.Waypoints[selectedWaypointIndex].WarpFactor;
+            suppressWaypointWarpChange = false;
+        }
+    }
+
+    /// <summary>
+    /// Pushes a Task change for whichever waypoint is currently selected - the "change an
+    /// already-added waypoint's task" half of the user's spec, mirroring FleetDetail.
+    /// WaypointTaskChanged's own immediate-apply behavior (no separate "Apply" button). Reuses
+    /// CloneWaypointFully/PushWaypointEdit exactly as MoveWaypoint does, since this is the same
+    /// "replace one waypoint in place, changing nothing but one field" operation.
+    /// </summary>
+    private void ApplySelectedWaypointTask()
+    {
+        if (selectedFleet == null || !HasSelectedWaypoint)
+        {
+            return;
+        }
+
+        Waypoint edited = CloneWaypointFully(selectedFleet.Waypoints[selectedWaypointIndex]);
+        edited.Task = BuildTask(SelectedWaypointTaskOption);
+        PushWaypointEdit(edited, selectedWaypointIndex);
+
+        ShowFleet(selectedFleet);
+        selection.NotifyMutated();
+    }
+
+    /// <summary>
+    /// Pushes a WarpFactor change for whichever waypoint is currently selected - lets an
+    /// already-queued leg's speed be sped up or slowed down after the fact, rather than only
+    /// settable once at creation time (NewWaypointWarp). Same immediate-apply, clone-and-replace
+    /// pattern as ApplySelectedWaypointTask.
+    /// </summary>
+    private void ApplySelectedWaypointWarp()
+    {
+        if (selectedFleet == null || !HasSelectedWaypoint)
+        {
+            return;
+        }
+
+        Waypoint edited = CloneWaypointFully(selectedFleet.Waypoints[selectedWaypointIndex]);
+        edited.WarpFactor = SelectedWaypointWarp;
+        PushWaypointEdit(edited, selectedWaypointIndex);
+
+        ShowFleet(selectedFleet);
+        selection.NotifyMutated();
     }
 
     private void DeleteWaypoint(int index)
@@ -1089,7 +1391,13 @@ public class InspectorViewModel : Tool
         else
         {
             ShowFleet(selectedFleet);
-            SplitMergeStatusMessage = otherFleetKey == 0 ? "Split into a new fleet." : "Merged.";
+
+            // A fuel-shortfall stranding (see SplitMergeTask.MergeFleets) pushes its own graduated
+            // message onto the task - surface that instead of the generic text when present,
+            // rather than silently overwriting it.
+            SplitMergeStatusMessage = task.Messages.Count > 0
+                ? task.Messages[^1].Text
+                : otherFleetKey == 0 ? "Split into a new fleet." : "Merged.";
         }
     }
 

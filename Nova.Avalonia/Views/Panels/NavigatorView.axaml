@@ -1,34 +1,52 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             xmlns:views="using:Nova.Avalonia.Views.Panels"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             xmlns:input="using:Avalonia.Input"
              x:Class="Nova.Avalonia.Views.Panels.NavigatorView"
              x:DataType="panels:NavigatorViewModel">
-    <TabControl>
-        <TabItem Header="Planets">
-            <ListBox ItemsSource="{Binding Planets}"
-                     SelectedItem="{Binding SelectedPlanet}">
-                <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="panels:NavigatorPlanetItemViewModel">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Name}" FontWeight="Bold" />
-                            <TextBlock Text="{Binding Status}" FontSize="11" Opacity="0.7" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </TabItem>
-        <TabItem Header="Fleets">
-            <ListBox ItemsSource="{Binding Fleets}"
-                     SelectedItem="{Binding SelectedFleet}">
-                <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="panels:NavigatorFleetItemViewModel">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Name}" FontWeight="Bold" />
-                            <TextBlock Text="{Binding Status}" FontSize="11" Opacity="0.7" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </TabItem>
-    </TabControl>
+    <Grid>
+        <TabControl>
+            <TabItem Header="Planets">
+                <ListBox ItemsSource="{Binding Planets}"
+                         SelectedItem="{Binding SelectedPlanet}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="panels:NavigatorPlanetItemViewModel">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" FontWeight="Bold" />
+                                <TextBlock Text="{Binding Status}" FontSize="11" Opacity="0.7" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </TabItem>
+            <TabItem Header="Fleets">
+                <ListBox ItemsSource="{Binding Fleets}"
+                         SelectedItem="{Binding SelectedFleet}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="panels:NavigatorFleetItemViewModel">
+                            <Grid ColumnDefinitions="Auto,*">
+                                <!-- Quick hull-type indicator - the fleet's first ship design's
+                                     own icon. Press-and-hold to see its full component layout
+                                     via the shared HullViewer, without disturbing the ListBox's
+                                     own click-to-select behavior on the row. -->
+                                <Border Grid.Column="0" Width="28" Height="28" Margin="0,0,8,0"
+                                        input:InputElement.IsHoldingEnabled="True" Holding="OnFleetIconHolding">
+                                    <Image Source="{Binding Icon}" IsVisible="{Binding Icon, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                                           Stretch="Uniform" />
+                                </Border>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding Status}" FontSize="11" Opacity="0.7" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </TabItem>
+        </TabControl>
+
+        <views:HullViewerView DataContext="{Binding HullViewer}" />
+    </Grid>
 </UserControl>

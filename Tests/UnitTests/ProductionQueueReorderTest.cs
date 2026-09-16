@@ -40,6 +40,7 @@ namespace Nova.Tests.UnitTests
 
             public bool IsSkipped(Star star) => false;
             public bool Construct(Star star) => true;
+            public int? CurrentCount(Star star) => null;
             public XmlElement ToXml(XmlDocument xmldoc) => xmldoc.CreateElement("FixedCostUnit");
         }
 

@@ -1,4 +1,6 @@
+using System.Linq;
 using Nova.Common;
+using Nova.Common.Components;
 using Nova.Common.Waypoints;
 
 namespace Nova.Avalonia.ViewModels.Panels;
@@ -16,6 +18,14 @@ public class NavigatorFleetItemViewModel
     public string Name => Fleet.Name;
 
     public string Status { get; }
+
+    /// <summary>The fleet's first ship type - see StarMapFleetViewModel.PrimaryDesign's own
+    /// comment (same reasoning, an owned Fleet always has real composition data available).
+    /// Shown as a quick "what hull is this" icon; press-and-hold shows its full component
+    /// layout via NavigatorViewModel.HullViewer.</summary>
+    public ShipDesign? PrimaryDesign => Fleet.Composition.Values.FirstOrDefault()?.Design;
+
+    public object? Icon => Fleet.Icon?.Image;
 
     public NavigatorFleetItemViewModel(Fleet fleet)
     {

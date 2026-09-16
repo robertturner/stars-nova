@@ -39,6 +39,20 @@ namespace Nova.Server.NewGame
         // the number of failed attempts to stop after
         private const int FailuresThreshold = 5000;
 
+        // Keeps every star/homeworld at least this many map units (== screen pixels at zoom 1,
+        // and scaled together with the marker itself at any other zoom - see
+        // StarMapDocumentView.axaml's LayoutTransformControl) away from the map's own edge.
+        // Without this, a star could land at e.g. Y=0, and its marker's own decorations - the
+        // gold selection ring, starbase/stargate/mass-driver dots, which are drawn at small
+        // negative offsets from the star's logical position (Canvas.Left/Top down to -9) - would
+        // then draw into negative Panel coordinates that the map's ScrollViewer can never scroll
+        // to, since it has no negative scroll range. That's the real cause of a reported "dead
+        // space that cuts off the selection ring" bug: not a layout margin, but a star spawning
+        // close enough to the edge that part of its own marker is permanently unreachable. 20
+        // comfortably covers the marker's largest offset (the -9 stargate indicator, plus the
+        // name label's height below the star) while staying a small fraction of a typical map.
+        private const int EdgeMargin = 20;
+
         // map settings
         private readonly int mapWidth;
         private readonly int mapHeight;
@@ -178,6 +192,19 @@ namespace Nova.Server.NewGame
   
         
         /// <summary>
+        /// Picks a random coordinate along one axis, kept at least EdgeMargin away from both
+        /// ends of that axis's dimension (falling back to the dimension's own midpoint region if
+        /// it's too small to fit a margin on both sides, rather than throwing).
+        /// </summary>
+        private int NextCoordinate(int dimension)
+        {
+            int margin = Math.Min(EdgeMargin, (dimension - 1) / 2);
+            int usable = dimension - (2 * margin);
+            return margin + this.random.Next(usable);
+        }
+
+
+        /// <summary>
         /// Genetate a star map.
         /// </summary>
         private void PlaceStars()
@@ -191,8 +218,8 @@ namespace Nova.Server.NewGame
                 int count = 0;
                 while (true)
                 {
-                    x = this.random.Next(this.mapWidth);
-                    y = this.random.Next(this.mapHeight);
+                    x = NextCoordinate(this.mapWidth);
+                    y = NextCoordinate(this.mapHeight);
                     double height = this.random.NextDouble();
                     if (height <= this.density[x, y])
                     {   // the star can be placed at this position
@@ -227,10 +254,10 @@ namespace Nova.Server.NewGame
             {
                 while (true)
                 {
-                    x = this.random.Next(this.mapWidth);
-                    y = this.random.Next(this.mapHeight);
+                    x = NextCoordinate(this.mapWidth);
+                    y = NextCoordinate(this.mapHeight);
                     height = this.random.NextDouble();
-                    
+
                     if (height <= this.density[x, y])
                     {   // the star can be placed at this position
                         break;

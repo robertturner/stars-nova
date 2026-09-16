@@ -45,6 +45,17 @@ namespace Nova.Common
         public int TargetId;
 
         /// <summary>
+        /// The real dialog's fifth control (docs/behavior-specs-5/client-ui-dialog-catalog.md:
+        /// "Primary Target, Secondary Target, Tactic, and Attack Who - plus a Dump Cargo checkbox
+        /// and a Rename... button"), missing from this port entirely until now. Like
+        /// PrimaryTarget/SecondaryTarget above, added for UI parity with the real dialog; nothing
+        /// in ServerState/BattleEngine.cs currently reads this field to actually jettison cargo
+        /// during combat - that would be a separate combat-mechanic change, not a dialog-parity
+        /// one.
+        /// </summary>
+        public bool DumpCargo;
+
+        /// <summary>
         /// Valid values for PrimaryTarget/SecondaryTarget - the sole source of truth for these
         /// (confirmed via ServerState/BattleEngine.cs: neither field is ever switched on there,
         /// they're pure display/storage strings). Shared here so both the WinForms and Avalonia
@@ -123,6 +134,9 @@ namespace Nova.Common
                         case "targetid":
                             TargetId = int.Parse(subnode.FirstChild.Value, System.Globalization.NumberStyles.HexNumber);
                             break;
+                        case "dumpcargo":
+                            DumpCargo = bool.Parse(subnode.FirstChild.Value);
+                            break;
                     }
                 }
                 catch
@@ -148,6 +162,7 @@ namespace Nova.Common
             Global.SaveData(xmldoc, xmlelBattlePlan, "Tactic", Tactic);
             Global.SaveData(xmldoc, xmlelBattlePlan, "Attack", Attack);
             Global.SaveData(xmldoc, xmlelBattlePlan, "TargetId", TargetId.ToString("X"));
+            Global.SaveData(xmldoc, xmlelBattlePlan, "DumpCargo", DumpCargo.ToString());
 
             return xmlelBattlePlan;
         }
