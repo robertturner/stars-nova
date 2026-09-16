@@ -3913,3 +3913,412 @@ while a row is selected.
 "warp 4" label and its fuel-on-arrival figure (43mg → 46mg, correctly recalculated since a lower
 warp costs less fuel) - no separate Apply step, matching the existing Task field's own behavior.
 Full suite still 163/165 (same 2 pre-existing, unrelated failures).
+
+## Fixed (defensively): a real device crash on End Turn - "Arg_KeyNotFoundWithKey, Bonn" (2026-09-16)
+
+A live device report: a fresh custom-IT-race game with one AI opponent, a Scout given a few plain
+waypoints, then End Turn - "Submit failed: Arg_KeyNotFoundWithKey, Bonn" (a `KeyNotFoundException`
+whose message Android/Mono couldn't localize, so it printed the raw resource id plus the missing
+key instead of "The given key 'Bonn' was not present in the dictionary."). "Bonn" is almost
+certainly a star name.
+
+**Root cause class, not confirmed to be THE exact trigger**: found three places assuming an
+empire's own `StarReports[name]` (or `OwnedStars[name]`) entry always exists, with no guard -
+`ColoniseTask.Perform`, `InvadeTask.Perform`, and `EmpireData.LinkReferences` (the fleet-InOrbit
+fixup that runs on *every* save/load, for *every* fleet sitting in orbit somewhere - the most
+frequently-executed of the three, and so the most likely actual culprit). Every star should
+already have a `StarReports` placeholder for every empire from `AssembleEmpireData` at game
+creation (`FirstStep.cs`), matching the defensive `ContainsKey`-or-`Add` pattern `ScanStep.cs`
+already uses in the equivalent spots - these three just hadn't gotten the same treatment.
+
+**Extensive reproduction attempts did not trigger it**: a temporary integration test generated
+fresh IT-race games (both the built-in Rabbitoid and, in a second pass, alongside a real
+`DefaultAi`-controlled second empire) across 30-40 seeds, gave a Scout several plain waypoints at
+varying warp factors, and ran real `TurnGenerator.Generate()` passes (up to 6 turns each, the
+second pass exercising a full 13-minute run of real AI decision-making) - none reproduced the
+crash. Per the user's own call ("just fix it defensively" rather than chasing the exact repro),
+all three unguarded spots are fixed the same way regardless: `ColoniseTask`/`InvadeTask` now
+create a fresh `StarIntel` report via `Star.GenerateReport` if one didn't already exist (matching
+`ScanStep`'s own fallback) instead of crashing; `EmpireData.LinkReferences` now resolves a fleet's
+`InOrbit` reference via `TryGetValue` and leaves it as the raw deserialized placeholder (rather
+than failing to load the whole empire) if no report is found at all.
+
+**Not yet confirmed fixed on-device** - the user will retest with the next build. Full suite still
+165/167 (same 2 pre-existing, unrelated failures) after these changes.
+
+## Mobile: "Close Game" in the burger menu (2026-09-16)
+
+Added a way to close the current game and return to the startup Continue/Open/New Game screen
+without exiting the whole app - previously the only way was the OS back button/gesture, which (per
+`PlatformHooks.TryHandleBackRequest`'s own comment) exits the app entirely once there's nowhere
+else to go back to, since this single-Activity host has no back *stack*.
+
+Needed a confirm step, unlike every other burger-menu row: closing discards any commands queued
+since the last successful End Turn (they only get written to disk on Submit). Rather than build new
+modal/dialog infrastructure for one feature, reused the same "arm, then a second explicit action"
+shape already established for the map's own "Add Waypoint via Map Tap": tapping "Close Game" swaps
+the menu's own entries for a Yes/Cancel confirmation in place (`MobileMainViewModel.
+IsConfirmingCloseGame`), rather than opening a separate dialog. Confirming raises a
+`GameCloseRequested` event that `ShellView` reacts to by calling its own existing `ShowOpenGame()` -
+the exact same method used at first launch - so a closed game returns to a screen genuinely
+identical to a fresh app start, no new navigation logic needed there.
+
+**Verified live** on the `Nova_Test` emulator: Close Game shows the confirmation in place of the
+menu entries; Cancel reverts to the normal menu; confirming returns cleanly to the
+Continue/Open/New Game/Race Designer startup screen. Full suite still 165/167 (same 2
+pre-existing, unrelated failures).
+
+## Cargo Transfer: sliders now bounded by actual cargo capacity, plus exact-value entry (2026-09-16)
+
+Previously each Cargo Transfer slider (fleet-vs-planet and fleet-vs-fleet) ranged over `[0, Total]`,
+where `Total` is just that one resource's own conserved amount (fleet + other side) - completely
+decoupled from the fleet's real `TotalCargoCapacity`. A slider could be dragged well past what the
+fleet's hold could actually carry; the real capacity constraint was only enforced once, at Apply
+time, rejecting the whole transfer with an error instead of ever stopping the drag.
+
+`CargoResourceRowViewModel` (`Nova.Avalonia/ViewModels/Panels/CargoResourceRowViewModel.cs`) now
+exposes capacity-aware `EffectiveMinimum`/`EffectiveMaximum` properties that both slider endpoints
+bind to. Every row in a transfer is wired to its siblings via a new `AttachSiblings` call, so
+dragging one resource's slider up correspondingly shrinks how far the *other* resources in the same
+hold can go - matching a real, shared cargo hold rather than four independent budgets. The Fuel row
+in a fleet-vs-fleet transfer keeps its own separate capacity pool (fuel and cargo were never the
+same budget in this codebase) by simply not sharing the cargo rows' sibling group.
+
+Also added a `NumericUpDown` alongside every slider (`InspectorView.axaml`) for typing an exact
+value, bound through the same `EffectiveMinimum`/`EffectiveMaximum` bounds - matching the app's
+existing pattern for other precise numeric entry (e.g. the Warp fields) rather than introducing a
+new tap-to-reveal popup.
+
+**Verified live** on the `Nova_Test` emulator (a freighter, "Santa Maria #1", 25kT capacity, at the
+home star): confirmed the slider's own range is now capacity-bound (25kT) rather than
+total-bound (300kT+) by checking thumb position against the known value; confirmed the shared-budget
+clamp holds exactly - driving Ironium/Boranium/Colonists up via the NumericUpDown's spinner landed
+at 9/13/0/3 kT respectively, summing to exactly the fleet's 25kT capacity, with every row's
+increment arrow correctly disabling once the shared pool was exhausted; confirmed the independent
+Fuel row (200/200 capacity) renders and clamps separately from the cargo rows. Full suite still
+165/167 (same 2 pre-existing, unrelated failures).
+
+## Fixed: Inspector kept a previously-selected fleet's Cargo/Split-Merge tabs after selecting a star (2026-09-16)
+
+Reported: after assigning orders to one fleet, then selecting a different star (one with another
+of the player's own fleets sitting in its orbit - e.g. a scout that had arrived there on a previous
+turn), the Inspector correctly showed the new star's own info, but its Cargo/Split-Merge tabs kept
+showing the PREVIOUS fleet's rows and targets - `Refresh` only ever reset `selectedFleet`/
+`IsFleetSelected` when the selection stopped being a `Fleet`, never any of the Cargo/Split-Merge
+state (`CanTransferCargo`, `CargoRows`, `CanSplitMerge`, `SplitMergeRows`, the transfer-target
+lists, status messages, etc.) - only `ShowFleet` ever populated those, so nothing ever cleared them
+back out. `InspectorViewModel.Refresh` now resets all of it alongside `selectedFleet` whenever the
+new selection isn't a `Fleet`.
+
+A second, related bug in the same report: the player "[couldn't] select or set waypoints on the
+scout" sitting at that star at all. `ShowStar` (for an owned star) has always populated an
+"Fleets here" list in the Overview tab for exactly this - clicking an entry jumps straight to that
+fleet - but `ShowStarReport` (the counterpart for a star this empire does NOT own - any neutral,
+unexplored, or foreign star, which only ever has a `StarIntel` report, never a real `Star` object)
+never populated it, and `Refresh` actively reset it to empty for anything but a `Star`. A scout
+sent out to explore is routinely sitting at exactly this kind of star, so there was previously no
+way at all to reach it from the Inspector once its star (not the fleet itself) was what got
+selected. `ShowStarReport` now populates the same list, matched by name (a fleet's own `InOrbit`
+may point at the report itself or a placeholder - never something safely reference-comparable
+against a star we don't own) rather than by reference, mirroring the same name-based match the
+map's own "fleet in orbit" ring color already used for this exact ownership gap. Mobile's "Viewing"
+switcher (`MapSelectionSwitcherViewModel`, the ComboBox that lets a screen with no separate
+Navigator tab switch between a star and its own orbiting fleets) had the identical assumption -
+its anchor detection only recognized a real `Star`, never a `StarIntel` - and is fixed the same way.
+
+**Verified live** on the `Nova_Test` emulator: selected "Santa Maria #1" (a fleet already at the
+home star), opened its Cargo tab (populating `Fleet capacity: 25kT` and its rows), then switched
+the selection to the star itself via the "Viewing" dropdown - the Cargo and Split/Merge tabs
+disappeared entirely (previously they persisted showing Santa Maria's data) and only Overview/
+Production remained; the Overview tab's "Fleets here" list correctly still listed both fleets
+there. (The unowned-star "Fleets here" gap itself wasn't separately live-verified - the available
+test save's stars are all player-owned - but the fix mirrors, line for line, the existing
+ownership-agnostic name-match already proven live earlier this session for the orbit ring's own
+color.) Full suite still 165/167 (same 2 pre-existing, unrelated failures).
+
+## Persistent, shareable error logging; fleet Overview cargo capacity; jump to Messages after End Turn (2026-09-16)
+
+Three changes from user feedback:
+
+**Error logging.** A `Report.Error`/`Report.FatalError` call only ever showed as a brief Android
+Toast (`Nova.Avalonia.Android/Application.cs`'s own `PlatformHooks.ShowError` wiring) with nothing
+left behind once it faded - reported live when one fired mid-session with no way to recover the
+actual text afterward. `PlatformHooks` gained a `ShareErrorLog` hook
+(`Common/PlatformHooks.cs`); the Android host now appends every error (timestamped) to
+`nova-error.log` under the app's own external files dir (reachable with a plain `adb pull`, unlike
+internal storage, without root or `run-as`) and implements `ShareErrorLog` by firing Android's
+native Share sheet with the log's contents. A new "Share Error Log" entry sits in the mobile burger
+menu right after "About" (`MobileMainViewModel`/`MobileMainView.axaml`), showing a "No errors have
+been logged yet." status message instead if the log is empty. The desktop host, which never wired
+`ShowError`/`ShowFatalError` at all before (silently falling through to the default
+`Console.Error.WriteLine`), now logs the same way into a `nova-error.log` next to the existing
+`nova-avalonia-crash.log` it already writes for genuinely unhandled crashes - it has plain file
+access already, so no share action was needed there.
+
+**Fleet Overview cargo capacity.** `InspectorViewModel.ShowFleet` now adds a `Cargo: {used}/{capacity}kT`
+row right under Fuel (same "used/capacity" shape as the Fuel row above it) whenever the fleet has
+any cargo hold at all (`TotalCargoCapacity > 0`) - previously the Overview tab only ever showed a
+per-resource row, and only for a resource that was actually nonzero, with no way to see the fleet's
+hold size at a glance without opening the Cargo tab. The existing per-resource rows are unchanged
+and still break the total down by Ironium/Boranium/Germanium/Colonists whenever any of them holds
+cargo.
+
+**Jump to Messages after End Turn.** `ShellView`'s turn-advance handling (previously the exact same
+method as the initial game-open) now takes a `jumpToMessagesIfAny` flag - only true when reacting
+to `GameShellViewModelBase.TurnAdvanced`, never the initial open - and sets the fresh
+`MobileMainViewModel`'s page straight to Messages when the newly-loaded `ClientData.Messages` (this
+turn's events - see `MessagesViewModel`'s own comment) is non-empty, rather than leaving the player
+to notice the burger menu's Messages row themselves.
+
+**Verified live** on the `Nova_Test` emulator: deliberately corrupted a saved race's `.intel` file
+(planted a non-numeric `Ironium` value) and confirmed the exact `FormatException` and stack trace
+landed in `nova-error.log`, then confirmed "Share Error Log" fired the native Share sheet with that
+same text (and separately confirmed the "No errors logged yet" status when the log is empty); the
+new Cargo row showed "0/25kT" for the same 25kT-capacity freighter used earlier this session.
+The Messages jump's own page-switch mechanism (`SelectedPageLabel = "Messages"`) was confirmed
+live, and the current turn's `ClientData.Messages` was confirmed non-empty (a starting "ready to
+explore" message) - but getting a full turn to actually advance against this specific save's AI
+opponent proved too slow in the test environment to watch the automatic jump trigger end-to-end
+in this pass. Full suite still 165/167 (same 2 pre-existing, unrelated failures).
+
+## Fixed: "Message.ToXml() - Unable to convert Message.Event of type ..." on every ordinary Stargate/Wormhole/Minefield/Warp-10/Cheap-Engines event (2026-09-16)
+
+The very first real payoff of the new error log/Share button above: the user hit "Nova has
+encountered an error, but will continue anyway. Details: Message.ToXml() - Unable to convert
+Message.Event of type Nova.Server.TurnGenerator" and sent the exact text.
+
+`Message.ToXml()` (`Common/DataStructures/Message.cs`) only knows how to serialize an `Event`
+object for `Type` "Minefield" or "BattleReport" (a real domain object it can pull a `Key` from) or
+"TechAdvance"/"NewComponent" (no object needed); anything else with a non-null `Event` falls into
+a `default:` case that calls `Report.Error(...)` and drops the reference. `TurnGenerator.cs` built
+six of its own messages - Stargate arrival, Stargate overgate loss (two variants), Wormhole
+transit, Warp 10 destruction, and Cheap Engines failure - all setting `message.Event = this`, i.e.
+a reference to the `TurnGenerator` instance itself rather than any domain object. That's a
+leftover placeholder, not a deliberate design: none of those `Type`s were ever handled in the
+switch above, so this fired on every single one of these perfectly ordinary events, every time the
+game state saved - Stargates and Wormholes both being common, unremarkable things to use. Fixed by
+simply not setting `Event` for any of the six - there was never anything meaningful to reference
+for a "Goto" button here, and removing it is strictly better than continuing to log-and-drop it.
+
+A second, related bug in the same failure family: `CheckForMinefields.InflictDamage`
+(`ServerState/CheckForMinefields.cs`) set `message.Event = "Minefield"` (the literal *string*
+"Minefield") while never setting `message.Type` at all - so a minefield hit ALSO always fell into
+the same `default:` case (with an even less useful logged type name, `System.String`), and the
+`Minefield` object actually available in that method's own scope was never captured at all. Fixed
+to set `Type = "Minefield"` (matching `ToXml()`'s real case for it) and `Event = minefield` (the
+actual `Minefield` instance already in scope) - this is now both silent AND round-trips a genuine
+object reference, unlike the five fixes above which just remove a meaningless one.
+
+Added `Tests/UnitTests/MessageEventSerializationTest.cs` - asserts `ToXml()` no longer calls
+`Report.Error` for any of Stargate/Wormhole/Warp 10/Cheap Engines, and that a real `Minefield`'s
+`Key` now correctly round-trips through the "Minefield" case. All 5 new cases pass; full suite now
+170/172 (same 2 pre-existing, unrelated failures).
+
+## Fixed: a fleet's map marker could render nowhere near its own route/waypoints (2026-09-16)
+
+Reported with a screenshot: a selected fleet's route legs (drawn correctly, following its actual
+queued waypoints across several stars) were fine, but the fleet's own triangle marker rendered far
+away, disconnected from that route entirely.
+
+`StarMapDocumentViewModel`'s route legs (`BuildRouteLegs`) are drawn straight from the live,
+selected `Fleet` object's own `Waypoints`/`Position` - always correct. But the fleet MARKER itself
+was built from `FleetReports` - a fleet's own self-report, refreshed once a turn by `ScanStep`
+(server-side) - using `report.Position`/`Bearing`/`Count`, never the live `Fleet`. For an OWNED
+fleet these two should never disagree: the empire's own intel on its own fleet is supposed to be
+perfect and current every turn. Root cause found in `ScanStep.Scan`'s self-scan update: unlike its
+sibling `AddStars` (which already has a `ContainsKey`-or-`Add` guard for stars), the fleet
+equivalent indexed `empire.FleetReports[scanner.Key]` directly, with nothing guaranteeing that
+entry already existed before this ran. A fleet reaching this line with no existing report (e.g.
+one whose report was never created for whatever reason) throws `KeyNotFoundException` here -
+every single subsequent turn, since the underlying gap is never fixed once it happens - leaving
+that one fleet's report frozen at whatever position/bearing/count it last held, forever, while its
+actual `Fleet` object keeps moving normally. Hardened the same way `AddStars` already handles
+stars: `ContainsKey`-or-`Add` instead of an unguarded indexer.
+
+That alone prevents new occurrences, but doesn't retroactively fix an already-stale report sitting
+in a save from before this fix. So `StarMapDocumentViewModel`'s own fleet-marker construction is
+now also more defensive in its own right: for an owned fleet it resolves the live `Fleet` object
+(already done, for `selectable`) and uses its own `Position`/`Bearing`/`InOrbit`/composition-based
+ship count instead of the report's, falling back to the report only for a fleet this empire
+doesn't own (a foreign fleet, where a report genuinely is the only thing available). The live
+object is always the ground truth for the owner's own map, regardless of whether its self-report
+has managed to stay in sync.
+
+Added `Tests/UnitTests/ScanStepFleetReportTest.cs` - an owned fleet added directly to `OwnedFleets`
+with no matching `FleetReports` entry (reproducing the gap regardless of how a real game reaches
+it) no longer throws, and gets a correct report created for it. Full suite now 171/173 (same 2
+pre-existing, unrelated failures). **Verified live** on the `Nova_Test` emulator that the existing
+save's map still renders normally (no regression to the ordinary, already-in-sync case) - the
+specific stale-report scenario itself wasn't separately reproduced live, since the available test
+save has no fleet in that state to reproduce it with.
+
+## Production queue: per-line progress, years-to-finish, and the original's color scheme (2026-09-16)
+
+Each queue line now shows "{percent}% done · {N} yrs" under its cost, colored per
+docs/behavior-specs-5/production-queue.md §8's newly-identified scheme (confirmed by inspection of
+the exported client): green if it'll both start and fully complete next turn, blue if it's already
+in progress or will start next turn but needs more turns after that, red if it'll "practically
+never" start (not within a 100-year simulated window), gray if it's an auto-build order already at
+its own "up to N" target with nothing left to build. Green/Blue are brightened from the doc's
+literal RGB (dark green/dark blue, tuned for the original's light-colored listbox) to stay legible
+against this app's dark theme.
+
+New `Common/Production/ProductionCompletionEstimator.cs` estimates this the same way the doc
+confirms the original itself does - by literally simulating up to 100 future years against a
+throwaway clone of the star (`Star.ToXml`/`new Star(XmlNode)`, the same round-trip every save/load
+path already uses, rather than new per-unit-type clone constructors), calling the star's own real
+`UpdateMinerals`/`UpdateResearch`/`UpdateResources`/`UpdatePopulation` methods each simulated year
+and replicating `Manufacture.Items`' exact queue-walk (a blocking non-auto-build item still stops
+everything behind it) - without `Manufacture`'s own ship-fleet-creation step, since this only cares
+whether/when a unit completes, not what results from it. `ProductionViewModel.RebuildQueueRows`
+computes a fresh estimate for every row whenever the queue changes (a row's estimate depends on
+every row ahead of it, so any edit anywhere can change it).
+
+**Bug found and fixed during live verification**: a large manual batch (e.g. "Factory x500") was
+wrongly shown as green - "finish" was being set the moment `ProductionOrder.Process` completed
+*any* units that year, when it should mean the *whole* line is done. A persistent auto-build order
+(Factories/Mines/Defenses "up to N") never reaches Quantity 0 at all (see `ProductionOrder.Process`'s
+own comment), so completing one unit genuinely is its only meaningful "finish" signal - but an
+ordinary multi-unit batch only truly finishes once its full Quantity is consumed. Fixed to
+distinguish the two. Also found and fixed live: the queue row's info block was already so cramped
+by five fixed-width button columns sharing one row that even the plain item name was being clipped
+(a pre-existing crowding issue that adding a third line of text made impossible to miss any
+longer) - restructured into two rows (info block at full width, then a button toolbar) rather than
+one overcrowded row.
+
+Added `Tests/UnitTests/ProductionCompletionEstimatorTest.cs` - covers all four colors, cross-checks
+the green case directly against the doc's own worked Example 1 turn-1 math, and regression-tests
+the large-batch bug above. Full suite now 176/178 (same 2 pre-existing, unrelated failures).
+**Verified live** on the `Nova_Test` emulator: a single Factory queued at Nova showed green,
+"0% done · 1 yr"; the same order re-queued at Quantity 500 showed blue, "0% done · 46 yrs" (not
+green, confirming the batch-completion fix); the restructured two-row layout rendered every line
+fully, with no clipped text.
+
+## Production queue: accelerating press-and-hold quantity +/- (2026-09-16)
+
+A quick tap on any quantity +/- still nudges by exactly 1; holding one down now ramps the step
+size up with the value itself as it climbs - by ones below 10, by tens from 10 up to 100, by
+hundreds beyond that (`ProductionViewModel.NextStep`) - for both the not-yet-queued "Add to
+queue" quantity and every already-queued row's own quantity, rather than requiring hundreds of
+individual taps to reach a large batch.
+
+**Two real bugs found and fixed along the way, both only visible by actually holding the buttons
+live rather than just reading the code:**
+
+1. **The original hand-rolled hold-repeat (a `DispatcherTimer` started from `PointerPressed`,
+   stopped from `PointerReleased`) never actually repeated at all on Android** - a held button
+   management only ever produced a single +1/-1 no matter how long the press lasted, exactly
+   matching the user's own report. Root cause never fully pinned down (Android's own touch/gesture
+   tracking for the held pointer appears to starve the ViewModel-owned timer of ticks for the
+   duration of the touch), but the fix sidesteps it entirely: every +/- is now a `RepeatButton`
+   (Avalonia's own built-in hold-repeat control, already used correctly elsewhere in this app,
+   e.g. NumericUpDown's own spinner) whose `Command` is re-invoked on Avalonia's own internal
+   timer - no hand-rolled coordination across pointer events at all.
+2. **Switching to RepeatButton then exposed a second, subtler bug**: a RepeatButton held down
+   past its very first tick still only ever managed one increment before stopping. Cause:
+   `ProductionViewModel.RebuildQueueRows` replaced the *entire* `Queue` list - and with it, every
+   row's own `ProductionItemViewModel` and the actual `RepeatButton` control bound to it - on
+   every single quantity edit. Losing its own container mid-gesture ends a hold outright,
+   regardless of which repeat mechanism holds it. Fixed by making `ProductionItemViewModel` an
+   `ObservableObject` with a `.Update(order, estimate)` method and having `RebuildQueueRows`
+   update existing row objects in place whenever the queue's own length hasn't changed (add/
+   delete still gets a full rebuild - not something a held +/- itself ever causes mid-hold, since
+   decrementing to 0 already calls `DeleteItem` and ends that hold on its own).
+
+**Verified live** on the `Nova_Test` emulator: holding "Add to queue"'s own "+" for ~8 seconds
+climbed from 2 to the 1000 cap; holding "−" afterward brought it back down to the 1 floor.
+Queuing a Factory and holding its row's own "+" for 5 seconds reached 2700 (confirming the
+container-reuse fix - previously capped at a single +1 no matter how long held); holding "−"
+afterward brought it back down to 100. Full suite unaffected (still 176/178, same 2 pre-existing
+failures) - no unit test added for RepeatButton/UI-hold behavior itself, which needs a live
+touchscreen to actually exercise.
+
+## Mobile: Dark Mode toggle in the burger menu (2026-09-16)
+
+The app previously only ever followed the system theme (`App.axaml`'s `RequestedThemeVariant="Default"`)
+with no way to override it. A "Dark Mode" checkbox now sits in the burger menu (after the section
+list, before About) - checking/unchecking it sets `Application.Current.RequestedThemeVariant`
+directly (`MobileMainViewModel.IsDarkMode`) and persists the choice via two new portable
+`PlatformHooks` (`LoadThemePreference`/`SaveThemePreference`, plain strings - Common has no
+Avalonia dependency and never interprets the value itself) so it survives an app restart. The
+checkbox's own initial state comes from `ActualThemeVariant` (the resolved theme, not
+`RequestedThemeVariant`, which is often still just "Default" until a choice is actually made), so
+it starts correctly checked/unchecked whether that reflects a previously saved choice or simply
+today's system setting.
+
+Android's own implementation (`Nova.Avalonia.Android/Application.cs`) stores the preference as a
+one-line text file under internal storage (`FilesDir`, not the external storage the error log
+uses - nobody needs to `adb pull` a theme preference).
+
+**Bug found and fixed during live verification**: saving "Dark" and relaunching left the very
+first screen (the Continue/Open/New Game start menu) stuck on the system theme regardless - only
+navigating into the game itself picked up the saved choice. Root cause: `AvaloniaAndroidApplication`'s
+own bootstrapping runs `App.OnFrameworkInitializationCompleted` (where the saved preference was
+being applied) *before* `Nova.Avalonia.Android.Application.OnCreate` ever gets to register
+`PlatformHooks.LoadThemePreference` at all, so that first application of the theme always saw the
+hook's do-nothing default. Fixed by also (redundantly, but safely - it's idempotent) applying the
+saved preference from `ShellView`'s own constructor, which - unlike `OnFrameworkInitializationCompleted`
+racing Android's own `Application.OnCreate` - is only ever reached once Android's normal
+Activity-after-Application lifecycle guarantees `OnCreate` has already run.
+
+**Verified live** on the `Nova_Test` emulator: toggled Dark Mode on (the emulator's own system
+theme happened to be Light this pass, so the switch was immediately visible), force-stopped and
+relaunched the app, and confirmed the very first screen - before ever reaching the game or its
+burger menu - now rendered dark immediately, with the checkbox itself later confirmed still
+checked once back in the game; unchecking it live-switched back to Light. Full suite unaffected
+(still 176/178, same 2 pre-existing failures) - no unit test added, same reasoning as the
+press-and-hold fix above.
+
+## Fleet waypoints show estimated years to arrival; star Mines/Factories show built vs. population-operable max (2026-09-16)
+
+Two small Inspector additions:
+
+**Years to arrival.** Each waypoint row in the Orders tab already computed a per-leg travel time
+(`distance / warp²`) purely to drive the existing cumulative fuel-on-arrival estimate, but never
+displayed it. `FleetWaypointRowViewModel` gained a `YearsUntilArrival` (and `...Display`, 1 decimal
+place) that `InspectorViewModel.ShowFleet` now accumulates the same cumulative way as
+`FuelUponArrival` - the same straight-line-distance/warp², "no in-transit turn-splitting"
+simplification that fuel estimate's own comment already documents, applied to time instead. Shown
+right before the fuel figure on each row.
+
+**Mines/Factories vs. population cap.** The Inspector's star Overview tab showed only the built
+count for both, with no way to tell whether a young colony still has real room to keep building
+more (population growing into more capacity later) or is already population-capped and building
+further would just sit idle. Both rows now read "built / operable" (e.g. "10 / 42"), using
+`Star.GetOperableMines()`/`GetOperableFactories()` - already-existing, already-correct methods
+(docs/behavior-specs-5/production-queue.md §3's `floor(population/10000) * setting` formula) that
+were previously only consumed internally for resource-rate calculations, never surfaced to the
+player directly.
+
+**Verified live** on the `Nova_Test` emulator: Nova (the IT test save's homeworld, 25,000
+population) showed "Mines: 10 / 25" and "Factories: 10 / 42"; queuing two waypoints for Scout #1
+(Nova → Atria → Cheleb, both Warp 6) showed "5.2 yrs" then "7.9 yrs" - correctly cumulative and
+increasing leg to leg, alongside the existing fuel estimate ("30mg" then "20mg", also correctly
+decreasing). Full suite unaffected (176/178, same 2 pre-existing failures) - no new unit test,
+since both changes are Inspector display-only wiring of an already-tested-by-precedent formula
+(the fuel estimate) and two library methods with no new logic of their own to cover.
+
+## Star reports show mineral concentration for explored-but-unowned stars (2026-09-16)
+
+The Inspector's Overview tab for a star you don't own (`InspectorViewModel.ShowStarReport`) always
+rendered `MineralBars` as empty, with a comment claiming "a report never reveals mineral data for
+a planet you don't own." Reading `StarIntel.Update(Star, ScanLevel, int year)` shows that comment
+was simply wrong: `MineralConcentration` (the 0-100% per-mineral concentration figure driving
+mining rates) is copied into the report at `ScanLevel.InPlace` - merely having a fleet in orbit,
+no scanner needed - the exact same threshold `Gravity`/`Radiation`/`Temperature` already use in
+that same method, and those three were already being shown. Only `ResourcesOnHand` (the surface
+mineral *stockpile*, as opposed to concentration) is genuinely ownership-only - it's never touched
+by `Update()` at any scan level. Fixed by building the same three `RangeBarViewModel.ForMineral(...)`
+bars the owned-star path already uses, from `report.MineralConcentration.{Ironium,Boranium,Germanium}`.
+
+**Verified live** on the `Nova_Test` emulator: the IT test save has no neutral star ever actually
+scanned in play, and advancing a real turn to produce one is slow/unreliable with this save's AI
+opponent, so verification used a disposable copy of `Rabbitoid.intel` with the star "Rye"'s
+`StarIntel` block hand-edited to simulate an `InPlace` scan (`Year` set to the save's current
+turn, `MineralConcentration` set to Ironium 72% / Boranium 45% / Germanium 18%, `Colonists` left
+unset to correctly simulate InPlace rather than the higher `InDeepScan` threshold). Loading that
+save and selecting Rye on the Map showed "Report age: Current" and all three mineral bars
+rendering at exactly those planted percentages, alongside the pre-existing Radiation bar - matching
+the owned-star Overview's own bar style. No unit test added: the fix is Inspector display-only
+wiring of an already-tested engine method (`StarIntel.Update`) and an already-used view-model
+helper (`RangeBarViewModel.ForMineral`), with no new logic of its own to cover.

@@ -43,7 +43,14 @@
              rather than switching pages. -->
         <Border Grid.Row="1" IsVisible="{Binding IsMenuOpen}" BorderBrush="Gray" BorderThickness="1"
                 CornerRadius="4" Padding="4" Margin="0,0,0,8">
-            <StackPanel Spacing="0">
+            <!-- Swaps to a Yes/Cancel confirmation in place of the entries themselves while
+                 IsConfirmingCloseGame is armed - see MobileMainViewModel's own comment on why
+                 Close Game needs a confirm step at all (unlike every other row here, it can
+                 discard queued-but-unsubmitted orders). Border (Decorator) only allows a single
+                 child, hence the wrapping Grid - the two StackPanels below are siblings within it,
+                 not directly inside the Border. -->
+            <Grid>
+            <StackPanel Spacing="0" IsVisible="{Binding !IsConfirmingCloseGame}">
                 <ItemsControl ItemsSource="{Binding MenuEntries}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:MobileMenuEntryViewModel">
@@ -54,9 +61,24 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <Border BorderBrush="Gray" BorderThickness="0,1,0,0" Margin="6,4" />
+                <CheckBox Content="Dark Mode" IsChecked="{Binding IsDarkMode}" Margin="10,4"
+                          ToolTip.Tip="Overrides following the system theme with an explicit choice, remembered for next time" />
                 <Button Classes="menuEntry" Content="About" Command="{Binding ShowAboutFromMenuCommand}"
                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+                <Button Classes="menuEntry" Content="Share Error Log" Command="{Binding ShareErrorLogCommand}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+                <Button Classes="menuEntry" Content="Close Game" Command="{Binding RequestCloseGameCommand}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
             </StackPanel>
+            <StackPanel Spacing="6" IsVisible="{Binding IsConfirmingCloseGame}" Margin="4">
+                <TextBlock Text="Close this game and return to the start menu? Any orders queued since your last End Turn will be lost."
+                           TextWrapping="Wrap" />
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                    <Button Grid.Column="0" Content="Cancel" Command="{Binding CancelCloseGameCommand}" HorizontalAlignment="Stretch" />
+                    <Button Grid.Column="1" Content="Close Game" Command="{Binding ConfirmCloseGameCommand}" HorizontalAlignment="Stretch" />
+                </Grid>
+            </StackPanel>
+            </Grid>
         </Border>
 
         <Grid Grid.Row="2">

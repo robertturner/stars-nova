@@ -1,9 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Avalonia; // Application - see IsDarkMode's own comment on why this needs the `using`
+                // rather than an inline `Avalonia.Application` (this namespace's own last
+                // segment is also literally "Avalonia", which shadows the real one otherwise).
+using Avalonia.Styling;
 using CommunityToolkit.Mvvm.Input;
 using Nova.Avalonia.ViewModels.Panels;
 using Nova.Client;
+using Nova.Common;
 
 namespace Nova.Avalonia.ViewModels;
 
@@ -90,13 +95,97 @@ public class MobileMainViewModel : GameShellViewModelBase
     /// setter).</summary>
     public IRelayCommand ShowAboutFromMenuCommand { get; }
 
+    /// <summary>Fires the platform's native Share sheet with whatever Report.Error history has
+    /// been persisted (see PlatformHooks.ShareErrorLog's own comment) - a Report.Error only ever
+    /// shows as a brief Toast on this host (Application.OnCreate), so without this there was no
+    /// way to recover the actual error text once it faded, e.g. to send it on for
+    /// diagnosis.</summary>
+    public IRelayCommand ShareErrorLogCommand { get; }
+
+    private bool isDarkMode;
+
+    /// <summary>Overrides the app's own default of following the system theme (App.axaml's
+    /// "Default" RequestedThemeVariant) with an explicit choice, persisted via
+    /// PlatformHooks.SaveThemePreference so it survives a restart - see App.axaml.cs's own
+    /// startup read of PlatformHooks.LoadThemePreference. Initialized from the CURRENTLY active
+    /// theme (ActualThemeVariant, the resolved one - RequestedThemeVariant itself is often just
+    /// "Default" until a choice is actually made) so the checkbox starts in the right state
+    /// whether that's from a previously saved choice or today's system setting.</summary>
+    public bool IsDarkMode
+    {
+        get => isDarkMode;
+        set
+        {
+            if (SetProperty(ref isDarkMode, value))
+            {
+                ThemeVariant variant = value ? ThemeVariant.Dark : ThemeVariant.Light;
+                if (Application.Current != null)
+                {
+                    Application.Current.RequestedThemeVariant = variant;
+                }
+
+                PlatformHooks.SaveThemePreference(value ? "Dark" : "Light");
+            }
+        }
+    }
+
+    private bool isConfirmingCloseGame;
+
+    /// <summary>True while the "Close Game" confirmation (Yes/Cancel, in place of the menu's own
+    /// entries) is showing - closing discards any commands queued since the last successful End
+    /// Turn (they only get written out on Submit), so this isn't a single-tap action the way
+    /// picking a section or About is. Same "arm, then a second explicit action" shape as the
+    /// map's own "Add Waypoint via Map Tap" - no new modal/dialog infrastructure needed for
+    /// it.</summary>
+    public bool IsConfirmingCloseGame
+    {
+        get => isConfirmingCloseGame;
+        private set => SetProperty(ref isConfirmingCloseGame, value);
+    }
+
+    public IRelayCommand RequestCloseGameCommand { get; }
+
+    public IRelayCommand ConfirmCloseGameCommand { get; }
+
+    public IRelayCommand CancelCloseGameCommand { get; }
+
+    /// <summary>Raised once the user has confirmed closing this game - the host (ShellView) reacts
+    /// by swapping back to the startup Open/New Game screen, exactly as if the app had just
+    /// launched fresh (see ShellView.ShowOpenGame). Nothing here writes or discards any file on
+    /// disk - only in-memory, not-yet-submitted commands are lost, the same as if the app were
+    /// killed without hitting End Turn.</summary>
+    public event Action? GameCloseRequested;
+
     public MobileMainViewModel(ClientData clientState) : base(clientState)
     {
+        // Set directly on the backing field, not through the IsDarkMode property setter - that
+        // setter also re-applies and re-saves the theme, which would be redundant (App.axaml.cs
+        // already applied any saved choice before this screen ever exists) and, worse, would
+        // overwrite a real saved "Light" choice with whatever the CURRENT system theme happens to
+        // be if that saved choice hasn't been applied yet on this exact code path.
+        isDarkMode = Application.Current?.ActualThemeVariant == ThemeVariant.Dark;
+
         ToggleMenuCommand = new RelayCommand(() => IsMenuOpen = !IsMenuOpen);
         ShowAboutFromMenuCommand = new RelayCommand(() =>
         {
             IsMenuOpen = false;
             ShowAboutCommand.Execute(null);
+        });
+        ShareErrorLogCommand = new RelayCommand(() =>
+        {
+            IsMenuOpen = false;
+            if (!PlatformHooks.ShareErrorLog())
+            {
+                StatusMessage = "No errors have been logged yet.";
+            }
+        });
+        RequestCloseGameCommand = new RelayCommand(() => IsConfirmingCloseGame = true);
+        CancelCloseGameCommand = new RelayCommand(() => IsConfirmingCloseGame = false);
+        ConfirmCloseGameCommand = new RelayCommand(() =>
+        {
+            IsConfirmingCloseGame = false;
+            IsMenuOpen = false;
+            GameCloseRequested?.Invoke();
         });
 
         SelectionService selection = new SelectionService();

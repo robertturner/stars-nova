@@ -180,7 +180,8 @@ namespace Nova.Server
 
             Message message = new Message();
             message.Audience = fleet.Owner;
-            message.Event = "Minefield";
+            message.Type = "Minefield";
+            message.Event = minefield;
             message.Text = "Fleet " + fleet.Name
                + " has hit a Minefield." + "\n\n";
 

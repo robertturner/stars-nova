@@ -474,7 +474,6 @@ namespace Nova.Server
                         message.Audience = fleet.Owner;
                         message.Text = "Fleet " + fleet.Name + "'s engines failed to start. Fleet has not moved this turn.";
                         message.Type = "Cheap Engines";
-                        message.Event = this;
                         serverState.AllMessages.Add(message);
                         fleetMoveResult = Fleet.TravelStatus.InTransit;
                     }
@@ -629,7 +628,6 @@ namespace Nova.Server
                     message.Text = (token.Quantity - survivors) + " of your " + token.Design.Name
                         + " in fleet " + fleet.Name + " were destroyed attempting Warp 10 travel.";
                     message.Type = "Warp 10";
-                    message.Event = this;
                     serverState.AllMessages.Add(message);
                 }
 
@@ -697,7 +695,6 @@ namespace Nova.Server
                 message.Audience = fleet.Owner;
                 message.Text = "Fleet " + fleet.Name + " has transited a Wormhole.";
                 message.Type = "Wormhole";
-                message.Event = this;
                 serverState.AllMessages.Add(message);
                 return true;
             }
@@ -796,7 +793,6 @@ namespace Nova.Server
                     allLost.Text = "All of your " + token.Design.Name + " in fleet " + fleet.Name
                         + " were lost attempting to overgate.";
                     allLost.Type = "Stargate";
-                    allLost.Event = this;
                     serverState.AllMessages.Add(allLost);
                     continue;
                 }
@@ -838,7 +834,6 @@ namespace Nova.Server
                     message.Text = (token.Quantity - survivors) + " of your " + token.Design.Name
                         + " in fleet " + fleet.Name + " were lost attempting to overgate.";
                     message.Type = "Stargate";
-                    message.Event = this;
                     serverState.AllMessages.Add(message);
                 }
 
@@ -870,7 +865,6 @@ namespace Nova.Server
             arrivalMessage.Audience = fleet.Owner;
             arrivalMessage.Text = "Fleet " + fleet.Name + " has arrived at " + destination.Name + " via Stargate.";
             arrivalMessage.Type = "Stargate";
-            arrivalMessage.Event = this;
             serverState.AllMessages.Add(arrivalMessage);
 
             return true;

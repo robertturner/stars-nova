@@ -635,6 +635,24 @@ public class InspectorViewModel : Tool
             selectedFleet = null;
             IsFleetSelected = false;
             ArmMapWaypointCommand.NotifyCanExecuteChanged();
+
+            // Cargo/Split-Merge are all fleet-specific - without this, selecting a star (or
+            // anything else) right after a fleet left its Cargo/Split-Merge tabs showing that
+            // fleet's rows/targets/status message untouched, since ShowStar/ShowStarReport/
+            // ShowMinefield never populate any of these themselves (only ShowFleet does).
+            CanTransferCargo = false;
+            CargoRows = Array.Empty<CargoResourceRowViewModel>();
+            CargoCapacity = 0;
+            CargoStatusMessage = "";
+            CanTransferCargoToFleet = false;
+            FleetCargoTransferTargets = Array.Empty<SplitMergeTargetOption>();
+            SelectedFleetCargoTransferTarget = null;
+            FleetTransferStatusMessage = "";
+            CanSplitMerge = false;
+            SplitMergeRows = Array.Empty<SplitMergeRowViewModel>();
+            SplitMergeTargets = Array.Empty<SplitMergeTargetOption>();
+            SelectedSplitMergeTarget = null;
+            SplitMergeStatusMessage = "";
         }
 
         // ShowStar/ShowStarReport (below) populate these themselves - reset here so a Fleet/
@@ -650,10 +668,11 @@ public class InspectorViewModel : Tool
             ViewStarbaseComponentsCommand.NotifyCanExecuteChanged();
         }
 
-        // Only ShowStar (below) populates this - reset for every other kind of selection,
-        // including a foreign StarIntel report (we don't have real Fleet objects for whatever's
-        // orbiting a star we don't own).
-        if (selected is not Star)
+        // Both ShowStar and ShowStarReport (below) populate this for this empire's own fleets in
+        // orbit there - a scout can easily be sitting at a neutral/unowned/unexplored star, which
+        // only ever has a StarIntel report (never a real Star), and still needs to be selectable
+        // from here. Reset for every other kind of selection.
+        if (selected is not Star && selected is not StarIntel)
         {
             OrbitingFleets = Array.Empty<OrbitingFleetRowViewModel>();
         }
@@ -688,6 +707,17 @@ public class InspectorViewModel : Tool
     {
         Kind = "Planet (report)";
         Name = report.Name;
+
+        // Matches the "own fleet in orbit" ring's own gate (StarMapDocumentViewModel) - a scout
+        // can easily be sitting at a neutral/unowned/unexplored star, which never has a real Star
+        // object for us, only this report, and still needs to be selectable here. Matched by name
+        // rather than reference, since a fleet's own InOrbit may point at this very report object
+        // (see EmpireData.LinkReferences) or at a placeholder, never at something we could compare
+        // by identity against a StarIntel we don't own.
+        OrbitingFleets = clientState.EmpireState.OwnedFleets.Values
+            .Where(fleet => fleet.InOrbit != null && fleet.InOrbit.Name == report.Name)
+            .Select(fleet => new OrbitingFleetRowViewModel(fleet.Name, () => selection.Selected = fleet))
+            .ToList();
 
         if (report.Year == Global.Unset)
         {
@@ -727,7 +757,21 @@ public class InspectorViewModel : Tool
             RangeBarViewModel.ForEnvironment("Temperature", report.Temperature, race.TemperatureTolerance.MinimumValue, race.TemperatureTolerance.MaximumValue, race.TemperatureTolerance.Immune, Temperature.FormatWithUnit(report.Temperature)),
             RangeBarViewModel.ForEnvironment("Radiation", report.Radiation, race.RadiationTolerance.MinimumValue, race.RadiationTolerance.MaximumValue, race.RadiationTolerance.Immune, $"{report.Radiation}mR"),
         };
-        MineralBars = Array.Empty<RangeBarViewModel>(); // a report never reveals mineral data for a planet you don't own
+
+        // Concentration (0-100%, how mineral-rich the ground is) IS revealed for a star we don't
+        // own - StarIntel.Update sets it the moment a fleet is merely in orbit (ScanLevel.InPlace,
+        // no scanners even needed), the exact same gate Gravity/Temperature/Radiation above are
+        // already set under, on the exact same report - so if we've gotten this far (past the
+        // Year == Unset return above), it's already there to show. Only the SURFACE STOCKPILE
+        // (ResourcesOnHand - how much is actually sitting mined-and-ready) genuinely never reaches
+        // a report at any scan level (see StarIntel.Update's own logic) - that half of ShowStar's
+        // own mineral bars stays owned-only.
+        MineralBars = new List<RangeBarViewModel>
+        {
+            RangeBarViewModel.ForMineral("Ironium concentration", report.MineralConcentration.Ironium, 100, $"{report.MineralConcentration.Ironium}%", Brushes.IndianRed),
+            RangeBarViewModel.ForMineral("Boranium concentration", report.MineralConcentration.Boranium, 100, $"{report.MineralConcentration.Boranium}%", Brushes.YellowGreen),
+            RangeBarViewModel.ForMineral("Germanium concentration", report.MineralConcentration.Germanium, 100, $"{report.MineralConcentration.Germanium}%", Brushes.SteelBlue),
+        };
     }
 
     private void ShowStar(Star star)
@@ -744,8 +788,12 @@ public class InspectorViewModel : Tool
         {
             new InspectorRow("Population", $"{star.Colonists:N0}"),
             new InspectorRow("Habitability", $"{habitability:0}%"),
-            new InspectorRow("Mines", $"{star.Mines}"),
-            new InspectorRow("Factories", $"{star.Factories}"),
+            // "built / population-operable-cap" (docs/behavior-specs-5/production-queue.md §3) -
+            // a star can physically hold more of either than its current population can actually
+            // run (Star.GetOperableMines/Factories), so the built count alone doesn't say whether
+            // there's room to keep growing into more, or whether it's already population-capped.
+            new InspectorRow("Mines", $"{star.Mines} / {star.GetOperableMines()}"),
+            new InspectorRow("Factories", $"{star.Factories} / {star.GetOperableFactories()}"),
             new InspectorRow("Defenses", star.DefenseType),
         };
 
@@ -829,6 +877,15 @@ public class InspectorViewModel : Tool
             new InspectorRow("Fuel", $"{fleet.FuelAvailable:0}/{fleet.TotalFuelCapacity}"),
         };
 
+        // Always shown (even at 0 used) so the fleet's hold size itself is visible without
+        // opening the Cargo tab - same "used/capacity" shape as the Fuel row just above, which
+        // already answers "what's used" as a total; the per-resource rows below break that total
+        // down by Ironium/Boranium/Germanium/Colonists whenever any of them is actually nonzero.
+        if (fleet.TotalCargoCapacity > 0)
+        {
+            rowList.Add(new InspectorRow("Cargo", $"{fleet.Cargo.Mass}/{fleet.TotalCargoCapacity}kT"));
+        }
+
         if (fleet.InOrbit != null)
         {
             rowList.Add(new InspectorRow("Orbiting", fleet.InOrbit.Name));
@@ -858,11 +915,13 @@ public class InspectorViewModel : Tool
         Rows = rowList;
 
         // Waypoints beyond index 0 (the current position) are the ones an order can change.
-        // Fuel-upon-arrival is tracked cumulatively leg by leg, starting from the fleet's actual
-        // current fuel and position (Waypoints[0]) - same per-leg formula as FleetDetail's own
-        // "leg fuel" panel in the WinForms original (see FleetWaypointRowViewModel.FuelUponArrival).
+        // Fuel-upon-arrival and years-until-arrival are both tracked cumulatively leg by leg,
+        // starting from the fleet's actual current fuel/position (Waypoints[0]) - same per-leg
+        // formula as FleetDetail's own "leg fuel" panel in the WinForms original (see
+        // FleetWaypointRowViewModel.FuelUponArrival/YearsUntilArrival).
         var editableRows = new List<FleetWaypointRowViewModel>();
         double runningFuel = fleet.FuelAvailable;
+        double runningYears = 0;
         NovaPoint previousPosition = fleet.Waypoints[0].Position;
         Race race = clientState.EmpireState.Race;
         for (int i = 1; i < fleet.Waypoints.Count; i++)
@@ -877,6 +936,7 @@ public class InspectorViewModel : Tool
                 double distance = PointUtilities.Distance(previousPosition, waypoint.Position);
                 double time = distance / (waypoint.WarpFactor * waypoint.WarpFactor);
                 runningFuel -= fleet.FuelConsumption(waypoint.WarpFactor, race) * time;
+                runningYears += time;
             }
             previousPosition = waypoint.Position;
 
@@ -884,6 +944,7 @@ public class InspectorViewModel : Tool
                 index,
                 waypoint,
                 runningFuel,
+                runningYears,
                 onDelete: () => DeleteWaypoint(index),
                 onMoveUp: canMoveUp ? () => MoveWaypoint(index, index - 1) : null,
                 onMoveDown: canMoveDown ? () => MoveWaypoint(index, index + 1) : null,
@@ -901,13 +962,24 @@ public class InspectorViewModel : Tool
         {
             CanTransferCargo = true;
             CargoCapacity = fleet.TotalCargoCapacity;
-            CargoRows = new List<CargoResourceRowViewModel>
+
+            // targetCapacity is left null for every row - a planet's stockpile isn't bounded by
+            // anything this transfer needs to enforce, only the fleet's own hold size is (see
+            // CargoResourceRowViewModel's own comment on why the slider range is now capacity-
+            // aware instead of just clamped to each resource's own conserved total).
+            var cargoRows = new List<CargoResourceRowViewModel>
             {
-                new CargoResourceRowViewModel("Ironium", fleet.Cargo.Ironium + orbitStar.ResourcesOnHand.Ironium, fleet.Cargo.Ironium),
-                new CargoResourceRowViewModel("Boranium", fleet.Cargo.Boranium + orbitStar.ResourcesOnHand.Boranium, fleet.Cargo.Boranium),
-                new CargoResourceRowViewModel("Germanium", fleet.Cargo.Germanium + orbitStar.ResourcesOnHand.Germanium, fleet.Cargo.Germanium),
-                new CargoResourceRowViewModel("Colonists", fleet.Cargo.ColonistsInKilotons + (orbitStar.Colonists / Global.ColonistsPerKiloton), fleet.Cargo.ColonistsInKilotons),
+                new CargoResourceRowViewModel("Ironium", fleet.Cargo.Ironium + orbitStar.ResourcesOnHand.Ironium, fleet.Cargo.Ironium, fleet.TotalCargoCapacity),
+                new CargoResourceRowViewModel("Boranium", fleet.Cargo.Boranium + orbitStar.ResourcesOnHand.Boranium, fleet.Cargo.Boranium, fleet.TotalCargoCapacity),
+                new CargoResourceRowViewModel("Germanium", fleet.Cargo.Germanium + orbitStar.ResourcesOnHand.Germanium, fleet.Cargo.Germanium, fleet.TotalCargoCapacity),
+                new CargoResourceRowViewModel("Colonists", fleet.Cargo.ColonistsInKilotons + (orbitStar.Colonists / Global.ColonistsPerKiloton), fleet.Cargo.ColonistsInKilotons, fleet.TotalCargoCapacity),
             };
+            foreach (CargoResourceRowViewModel row in cargoRows)
+            {
+                row.AttachSiblings(cargoRows);
+            }
+
+            CargoRows = cargoRows;
         }
         else
         {
@@ -969,18 +1041,33 @@ public class InspectorViewModel : Tool
             return;
         }
 
-        FleetTransferRows = new List<CargoResourceRowViewModel>
+        // Both sides are real fleets here (unlike the fleet-vs-planet case above), each with its
+        // own real cargo-hold size - so unlike there, targetCapacity is set too.
+        var rows = new List<CargoResourceRowViewModel>
         {
-            new CargoResourceRowViewModel("Ironium", selectedFleet.Cargo.Ironium + target.Cargo.Ironium, selectedFleet.Cargo.Ironium),
-            new CargoResourceRowViewModel("Boranium", selectedFleet.Cargo.Boranium + target.Cargo.Boranium, selectedFleet.Cargo.Boranium),
-            new CargoResourceRowViewModel("Germanium", selectedFleet.Cargo.Germanium + target.Cargo.Germanium, selectedFleet.Cargo.Germanium),
-            new CargoResourceRowViewModel("Colonists", selectedFleet.Cargo.ColonistsInKilotons + target.Cargo.ColonistsInKilotons, selectedFleet.Cargo.ColonistsInKilotons),
+            new CargoResourceRowViewModel("Ironium", selectedFleet.Cargo.Ironium + target.Cargo.Ironium, selectedFleet.Cargo.Ironium, selectedFleet.TotalCargoCapacity, target.TotalCargoCapacity),
+            new CargoResourceRowViewModel("Boranium", selectedFleet.Cargo.Boranium + target.Cargo.Boranium, selectedFleet.Cargo.Boranium, selectedFleet.TotalCargoCapacity, target.TotalCargoCapacity),
+            new CargoResourceRowViewModel("Germanium", selectedFleet.Cargo.Germanium + target.Cargo.Germanium, selectedFleet.Cargo.Germanium, selectedFleet.TotalCargoCapacity, target.TotalCargoCapacity),
+            new CargoResourceRowViewModel("Colonists", selectedFleet.Cargo.ColonistsInKilotons + target.Cargo.ColonistsInKilotons, selectedFleet.Cargo.ColonistsInKilotons, selectedFleet.TotalCargoCapacity, target.TotalCargoCapacity),
         };
+        foreach (CargoResourceRowViewModel row in rows)
+        {
+            row.AttachSiblings(rows);
+        }
 
-        FleetTransferFuelRow = new CargoResourceRowViewModel(
+        FleetTransferRows = rows;
+
+        // Fuel isn't part of the cargo-mass budget above (a fleet's fuel tank and cargo hold are
+        // separate capacities in this game) - its own row gets its own capacity pair and isn't
+        // wired to the cargo rows' sibling group, just its own (single-row) one.
+        var fuelRow = new CargoResourceRowViewModel(
             "Fuel",
             (int)(selectedFleet.FuelAvailable + target.FuelAvailable),
-            (int)selectedFleet.FuelAvailable);
+            (int)selectedFleet.FuelAvailable,
+            selectedFleet.TotalFuelCapacity,
+            target.TotalFuelCapacity);
+        fuelRow.AttachSiblings(new[] { fuelRow });
+        FleetTransferFuelRow = fuelRow;
 
         FleetTransferStatusMessage = "";
     }

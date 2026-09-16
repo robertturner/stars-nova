@@ -108,9 +108,28 @@ namespace Nova.Server.TurnSteps
                 }
                 else
                 {
-                    scanRange = (scanner as Fleet).ScanRange;
-                    penScanRange = (scanner as Fleet).PenScanRange;
-                    empire.FleetReports[scanner.Key].Update(scanner as Fleet, ScanLevel.Owned, empire.TurnYear);    
+                    Fleet ownFleet = scanner as Fleet;
+                    scanRange = ownFleet.ScanRange;
+                    penScanRange = ownFleet.PenScanRange;
+
+                    // Unlike AddStars (above) for stars, nothing guarantees every owned fleet
+                    // already has its own FleetReports entry before this self-scan runs - a fleet
+                    // created this same turn (Split/Merge, a freshly-built ship) has none yet.
+                    // Left unguarded, that threw KeyNotFoundException here, silently leaving this
+                    // fleet's own report (and everything drawn from it - see
+                    // StarMapDocumentViewModel's own comment on the marker-position bug this
+                    // caused) stuck at whatever position/bearing/ship count it last had - forever,
+                    // since the same fleet would keep hitting this same throw every subsequent
+                    // turn once its report ever fell behind. Matches AddStars' own
+                    // ContainsKey-or-Add pattern.
+                    if (empire.FleetReports.ContainsKey(scanner.Key))
+                    {
+                        empire.FleetReports[scanner.Key].Update(ownFleet, ScanLevel.Owned, empire.TurnYear);
+                    }
+                    else
+                    {
+                        empire.FleetReports.Add(scanner.Key, ownFleet.GenerateReport(ScanLevel.Owned, empire.TurnYear));
+                    }
                 }
                 
                 // Scan everything

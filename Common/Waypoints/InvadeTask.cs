@@ -208,7 +208,18 @@ namespace Nova.Common.Waypoints
                 receiver.OwnedStars.Remove(star);
                 star.Owner = fleet.Owner;
                 sender.OwnedStars.Add(star);
-                sender.StarReports[star.Key].Update(star, ScanLevel.Owned, sender.TurnYear);
+
+                // See ColoniseTask.Perform's own comment - same defensive
+                // ContainsKey-or-Add pattern for the equivalent "took a star this empire never
+                // had a report for" case, rather than assuming StarReports already has an entry.
+                if (sender.StarReports.ContainsKey(star.Key))
+                {
+                    sender.StarReports[star.Key].Update(star, ScanLevel.Owned, sender.TurnYear);
+                }
+                else
+                {
+                    sender.StarReports.Add(star.Key, star.GenerateReport(ScanLevel.Owned, sender.TurnYear));
+                }
                 
                 messageText += "The defenders were slain but "
                             + attackersKilled +

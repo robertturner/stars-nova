@@ -23,6 +23,7 @@ sealed class Program
         AppDomain.CurrentDomain.UnhandledException += (sender, e) => LogCrash(e.ExceptionObject as Exception);
 
         RegisterPlatformHooks();
+        RegisterErrorLogging();
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
@@ -38,6 +39,35 @@ sealed class Program
     private static void RegisterPlatformHooks()
     {
         PlatformHooks.LoadImage = path => new Bitmap(path);
+    }
+
+    /// <summary>
+    /// Neither Report.Error nor Report.FatalError was ever wired on this host - both fell through
+    /// to PlatformHooks.ShowError/ShowFatalError's own default (Console.Error.WriteLine), which
+    /// vanishes on a desktop app with no attached console. Logs the same non-fatal/handled errors
+    /// this session's mobile counterpart now persists too (see Nova.Avalonia.Android/
+    /// Application.cs's own comment) into a sibling file next to the unhandled-crash log - this
+    /// host has plain file access already, so unlike Android there's no need for an in-app "share"
+    /// action, just somewhere for the text to land instead of disappearing.
+    /// </summary>
+    private static void RegisterErrorLogging()
+    {
+        PlatformHooks.ShowError = message => AppendToLog("nova-error.log", message);
+        PlatformHooks.ShowFatalError = message => AppendToLog("nova-error.log", message);
+    }
+
+    private static void AppendToLog(string fileName, string text)
+    {
+        try
+        {
+            string logPath = Path.Combine(AppContext.BaseDirectory, fileName);
+            string entry = string.Format("{0:u}{1}{2}{1}{1}", DateTime.Now, Environment.NewLine, text);
+            File.AppendAllText(logPath, entry);
+        }
+        catch
+        {
+            // Best-effort, same as LogCrash below.
+        }
     }
 
     private static void LogCrash(Exception exception)

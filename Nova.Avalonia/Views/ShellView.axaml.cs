@@ -24,6 +24,11 @@ public partial class ShellView : UserControl
     {
         InitializeComponent();
 
+        // See App.ApplySavedThemePreference's own comment for why this needs calling again
+        // here, specifically - on Android, App.OnFrameworkInitializationCompleted's own call
+        // runs too early to see PlatformHooks.LoadThemePreference at all.
+        App.ApplySavedThemePreference();
+
         ShowOpenGame();
 
         // See PlatformHooks.TryHandleBackRequest's own comment for why this exists at all: this
@@ -61,7 +66,17 @@ public partial class ShellView : UserControl
         ContentHost.Content = openGameView;
     }
 
-    private void OnGameOpened(ClientData clientState)
+    private void OnGameOpened(ClientData clientState) => ShowMain(clientState, jumpToMessagesIfAny: false);
+
+    /// <summary>The same screen construction as opening a game fresh, except a turn that just
+    /// advanced (see GameShellViewModelBase.TurnAdvanced) also jumps straight to the Messages page
+    /// when it produced any - "this turn's events" (see MessagesViewModel's own comment) - rather
+    /// than leaving the player to notice the burger menu's Messages row themselves. Only on a
+    /// genuine turn advance, not the initial open, so opening a game you're resuming mid-session
+    /// doesn't get redirected away from the Map the moment it loads.</summary>
+    private void OnTurnAdvanced(ClientData clientState) => ShowMain(clientState, jumpToMessagesIfAny: true);
+
+    private void ShowMain(ClientData clientState, bool jumpToMessagesIfAny)
     {
         // MobileMainViewModel/MobileMainView, not MainViewModel/MainView - the desktop dock
         // layout doesn't translate to a phone at all (see MobileMainViewModel's own comment).
@@ -69,8 +84,14 @@ public partial class ShellView : UserControl
         // screen; the desktop head's own MainWindow.axaml.cs is untouched and keeps using
         // MainViewModel/MainView directly.
         var viewModel = new MobileMainViewModel(clientState);
+        if (jumpToMessagesIfAny && clientState.Messages.Count > 0)
+        {
+            viewModel.SelectedPageLabel = "Messages";
+        }
+
         viewModel.AboutRequested += ShowAbout;
-        viewModel.TurnAdvanced += OnGameOpened;
+        viewModel.TurnAdvanced += OnTurnAdvanced;
+        viewModel.GameCloseRequested += ShowOpenGame;
 
         mainView = new MobileMainView { DataContext = viewModel };
         ContentHost.Content = mainView;

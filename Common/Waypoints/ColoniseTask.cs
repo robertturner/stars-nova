@@ -126,10 +126,23 @@ namespace Nova.Common.Waypoints
             star.ResourcesOnHand += fleet.TotalCost * 0.75;
             
             fleet.Composition.Clear();
-            
+
             sender.OwnedStars.Add(star);
-            sender.StarReports[star.Name].Update(star, ScanLevel.Owned, sender.TurnYear);
-            
+
+            // Every star should already have a StarReports placeholder for every empire from
+            // AssembleEmpireData at game creation (FirstStep.cs) - but colonizing one this empire
+            // never had a report for at all (rather than merely an unscanned ScanLevel.None one)
+            // shouldn't crash the whole turn generation over it. Matches the same
+            // ContainsKey-or-Add pattern ScanStep.AddStars already uses for the equivalent case.
+            if (sender.StarReports.ContainsKey(star.Name))
+            {
+                sender.StarReports[star.Name].Update(star, ScanLevel.Owned, sender.TurnYear);
+            }
+            else
+            {
+                sender.StarReports.Add(star.Name, star.GenerateReport(ScanLevel.Owned, sender.TurnYear));
+            }
+
             return true;
         }
         

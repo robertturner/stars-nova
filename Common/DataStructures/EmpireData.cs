@@ -634,13 +634,25 @@ namespace Nova.Common
             {
                 if (fleet.InOrbit != null)
                 {
-                    if (StarReports[fleet.InOrbit.Name].Owner == fleet.Owner)
+                    // fleet.InOrbit is still just the name-only placeholder Star the XML loader
+                    // built (see Fleet's own load constructor) - resolve it to the real, shared
+                    // Star/StarIntel object this empire already has, rather than assuming
+                    // StarReports/OwnedStars must have an entry for it. Every star should already
+                    // have a StarReports placeholder for every empire from AssembleEmpireData at
+                    // game creation, but a save/load round trip is not the place to crash over a
+                    // gap in that bookkeeping - better to leave this one fleet's InOrbit
+                    // unresolved (falls back to the placeholder, which at least still carries the
+                    // star's name) than fail loading this empire's entire state.
+                    if (StarReports.TryGetValue(fleet.InOrbit.Name, out StarIntel inOrbitReport))
                     {
-                        fleet.InOrbit = OwnedStars[fleet.InOrbit.Name];
-                    }
-                    else
-                    {
-                        fleet.InOrbit = StarReports[fleet.InOrbit.Name];
+                        if (inOrbitReport.Owner == fleet.Owner && OwnedStars.ContainsKey(fleet.InOrbit.Name))
+                        {
+                            fleet.InOrbit = OwnedStars[fleet.InOrbit.Name];
+                        }
+                        else
+                        {
+                            fleet.InOrbit = inOrbitReport;
+                        }
                     }
                 }
                 

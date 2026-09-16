@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using Dock.Model.Mvvm.Controls;
 using Nova.Client;
@@ -17,9 +16,10 @@ namespace Nova.Avalonia.ViewModels.Panels;
 /// The Production panel: the build queue for whichever planet the Navigator/Inspector
 /// currently has selected (via the shared <see cref="SelectionService"/>), editable the same
 /// way ProductionDialog.cs is - push a ProductionCommand onto ClientData.Commands and apply
-/// it locally for immediate feedback. Quantity is a NumericUpDown instead of the original's
-/// Shift/Ctrl-click x10/x100 (the per-row +/- buttons' press-and-hold covers rapid bulk edits
-/// instead). Auto-build (docs/behavior-specs-4/production-queue.md §9) IS exposed here - see
+/// it locally for immediate feedback. Quantity is an editable field instead of the original's
+/// Shift/Ctrl-click x10/x100 - both it and every already-queued row's own quantity instead use
+/// a RepeatButton +/- pair whose step size ramps up with the current value itself as it's held
+/// (see NextStep's own comment). Auto-build (docs/behavior-specs-4/production-queue.md §9) IS exposed here - see
 /// AutoBuildOnAdd/ToggleAutoBuild - even though neither the WinForms client nor this port
 /// originally surfaced it despite the engine (ProductionOrder.IsAutoBuild) always supporting it.
 /// </summary>
@@ -126,24 +126,31 @@ public class ProductionViewModel : Tool
 
     public IRelayCommand AddToQueueCommand { get; }
 
-    /// <summary>
-    /// Press-and-hold acceleration for the per-row +/- buttons: a quick click already does its
-    /// normal +1/-1 via IncrementCommand/DecrementCommand (untouched), but holding one down
-    /// keeps rapidly bulk-adjusting by <see cref="HoldStep"/> every <see cref="HoldInterval"/>
-    /// for as long as the pointer stays down - a fast way to add/remove large quantities.
-    /// Owned here (the panel VM, which outlives every edit) rather than on the row itself,
-    /// since every single tick's AdjustQuantity call rebuilds the whole Queue - and with it,
-    /// every row object and its on-screen Button - out from under whichever row started the
-    /// hold. The View only needs to tell us which index/direction to keep adjusting; it never
-    /// needs to keep the original row or Button alive for the timer to keep working.
-    /// </summary>
-    private const int HoldStep = 10;
+    /// <summary>Bound to a RepeatButton (see ProductionView.axaml), not a plain Button - a quick
+    /// tap fires this once (a plain +1, since NextStep(anything &lt; 10) is 1), and holding it
+    /// down has Avalonia's own RepeatButton re-invoke it on a timer for as long as the pointer
+    /// stays down, with each invocation reading AddQuantity fresh - so the step size ramps up
+    /// with the value itself as it climbs (see NextStep's own comment), entirely through
+    /// Avalonia's already-correct, natively-handled repeat mechanism rather than a hand-rolled
+    /// DispatcherTimer coordinated across PointerPressed/PointerReleased. That hand-rolled
+    /// version (this class's own prior implementation) turned out not to actually repeat at all
+    /// on Android - confirmed live: the held pointer's own gesture tracking appears to starve the
+    /// ViewModel-owned DispatcherTimer of ticks for as long as the touch stays down, so nothing
+    /// ever fired until release, which then ran the button's own Click (a single +1) - exactly
+    /// matching the reported "holding doesn't speed anything up" symptom.</summary>
+    public IRelayCommand IncrementAddQuantityCommand { get; }
 
-    private static readonly TimeSpan HoldInterval = TimeSpan.FromSeconds(1);
+    public IRelayCommand DecrementAddQuantityCommand { get; }
 
-    private DispatcherTimer? holdTimer;
-    private int holdIndex;
-    private int holdDirection;
+    /// <summary>By ones below 10, by tens from 10 up to 100, by hundreds beyond that - so a
+    /// small nudge near zero stays precise, but reaching a large batch via a held RepeatButton
+    /// doesn't take hundreds of individual ticks.</summary>
+    private static int NextStep(int currentValue) => currentValue switch
+    {
+        < 10 => 1,
+        < 100 => 10,
+        _ => 100,
+    };
 
     public ProductionViewModel(string id, string title, ClientData clientState, SelectionService selection)
     {
@@ -153,6 +160,8 @@ public class ProductionViewModel : Tool
         this.selection = selection;
 
         AddToQueueCommand = new RelayCommand(AddToQueue);
+        IncrementAddQuantityCommand = new RelayCommand(() => AddQuantity = Math.Clamp(AddQuantity + NextStep(AddQuantity), 1, 1000));
+        DecrementAddQuantityCommand = new RelayCommand(() => AddQuantity = Math.Clamp(AddQuantity - NextStep(AddQuantity), 1, 1000));
 
         selection.PropertyChanged += OnSelectionChanged;
         Refresh(selection.Selected);
@@ -166,60 +175,8 @@ public class ProductionViewModel : Tool
         }
     }
 
-    /// <summary>
-    /// Starts (or restarts) the hold-repeat timer for the row at <paramref name="index"/>.
-    /// <paramref name="direction"/> is +1 (the "+" button) or -1 (the "−" button); the actual
-    /// per-tick step is <see cref="HoldStep"/>, matching the WinForms QueueList's Shift-click
-    /// x10 precedent (see ProductionItemViewModel's own doc comment).
-    /// </summary>
-    public void BeginHold(int index, int direction)
-    {
-        EndHold();
-
-        holdIndex = index;
-        holdDirection = direction;
-        holdTimer = new DispatcherTimer { Interval = HoldInterval };
-        holdTimer.Tick += OnHoldTick;
-        holdTimer.Start();
-    }
-
-    public void EndHold()
-    {
-        if (holdTimer == null)
-        {
-            return;
-        }
-
-        holdTimer.Stop();
-        holdTimer.Tick -= OnHoldTick;
-        holdTimer = null;
-    }
-
-    private void OnHoldTick(object? sender, EventArgs e)
-    {
-        if (selectedStar == null || holdIndex >= selectedStar.ManufacturingQueue.Queue.Count)
-        {
-            // The row we were adjusting is gone (deleted by an earlier tick, or the selected
-            // planet changed) - nothing left to keep repeating on.
-            EndHold();
-            return;
-        }
-
-        int countBefore = selectedStar.ManufacturingQueue.Queue.Count;
-        AdjustQuantity(holdIndex, holdDirection * HoldStep);
-
-        if (selectedStar == null || selectedStar.ManufacturingQueue.Queue.Count < countBefore)
-        {
-            // This tick's decrement reached 0 and deleted the row - don't let the next tick
-            // slide onto whatever item now occupies the same index.
-            EndHold();
-        }
-    }
-
     private void Refresh(object? selected)
     {
-        EndHold();
-
         if (selected is Star star)
         {
             selectedStar = star;
@@ -293,10 +250,23 @@ public class ProductionViewModel : Tool
         return items;
     }
 
+    /// <summary>
+    /// Updates an existing row in place whenever the queue's own length hasn't changed - see
+    /// ProductionItemViewModel's own top comment for why: replacing it (and every other row) with
+    /// a brand new instance on every single quantity nudge was destroying the very RepeatButton a
+    /// held +/- press depends on to keep repeating, capping every hold at a single tick. A length
+    /// change (add/delete) still gets a full rebuild - not something a held +/- press itself ever
+    /// causes mid-hold (decrementing to 0 calls DeleteItem, ending that hold on its own already).
+    /// </summary>
     private void RebuildQueueRows(Star star)
     {
-        var rows = new List<ProductionItemViewModel>();
         int count = star.ManufacturingQueue.Queue.Count;
+        Race race = clientState.EmpireState.Race;
+        int researchBudget = clientState.EmpireState.ResearchBudget;
+
+        bool canReuse = queue.Count == count && queue is List<ProductionItemViewModel>;
+        var rows = canReuse ? (List<ProductionItemViewModel>)queue : new List<ProductionItemViewModel>(count);
+
         for (int i = 0; i < count; i++)
         {
             int index = i; // captured per-row, not the loop variable
@@ -304,20 +274,37 @@ public class ProductionViewModel : Tool
             bool canMoveUp = index >= 1;
             bool canMoveDown = index < count - 1;
 
-            rows.Add(new ProductionItemViewModel(
-                index,
-                order,
-                onIncrement: () => AdjustQuantity(index, 1),
-                onDecrement: () => AdjustQuantity(index, -1),
-                onDelete: () => DeleteItem(index),
-                onMoveUp: canMoveUp ? () => SwapQueueItems(index, index - 1) : null,
-                onMoveDown: canMoveDown ? () => SwapQueueItems(index, index + 1) : null,
-                onToggleAutoBuild: () => ToggleAutoBuild(index)));
+            // Every row's own estimate depends on everything ahead of it in the queue too (a
+            // blocked item stops all funding downstream - docs/behavior-specs-5/
+            // production-queue.md §8), so this is recomputed for the whole queue on every
+            // rebuild rather than cached per-row.
+            ProductionCompletionEstimate estimate = ProductionCompletionEstimator.Estimate(star, index, race, researchBudget);
+
+            if (canReuse)
+            {
+                rows[index].Update(order, estimate);
+            }
+            else
+            {
+                rows.Add(new ProductionItemViewModel(
+                    order,
+                    estimate,
+                    onIncrement: () => AdjustQuantity(index, +1),
+                    onDecrement: () => AdjustQuantity(index, -1),
+                    onDelete: () => DeleteItem(index),
+                    onMoveUp: canMoveUp ? () => SwapQueueItems(index, index - 1) : null,
+                    onMoveDown: canMoveDown ? () => SwapQueueItems(index, index + 1) : null,
+                    onToggleAutoBuild: () => ToggleAutoBuild(index)));
+            }
         }
 
-        Queue = rows;
-        Message = rows.Count == 0 ? "Nothing queued." : "";
-        HasMessage = rows.Count == 0;
+        if (!canReuse)
+        {
+            Queue = rows;
+        }
+
+        Message = count == 0 ? "Nothing queued." : "";
+        HasMessage = count == 0;
     }
 
     private void AddToQueue()
@@ -350,7 +337,12 @@ public class ProductionViewModel : Tool
         ApplyCommand(new ProductionCommand(CommandMode.Edit, edited, selectedStar.Name, index));
     }
 
-    private void AdjustQuantity(int index, int delta)
+    /// <summary>
+    /// <paramref name="direction"/> is +1 (the "+" RepeatButton) or -1 (the "−" one) - the actual
+    /// step size ramps up with the order's own current Quantity (see NextStep's own comment), the
+    /// same way IncrementAddQuantityCommand/DecrementAddQuantityCommand do for AddQuantity.
+    /// </summary>
+    private void AdjustQuantity(int index, int direction)
     {
         if (selectedStar == null)
         {
@@ -358,7 +350,7 @@ public class ProductionViewModel : Tool
         }
 
         ProductionOrder existing = selectedStar.ManufacturingQueue.Queue[index];
-        int newQuantity = existing.Quantity + delta;
+        int newQuantity = existing.Quantity + (direction * NextStep(existing.Quantity));
         if (newQuantity <= 0)
         {
             DeleteItem(index);

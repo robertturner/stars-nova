@@ -44,6 +44,15 @@ public class FleetWaypointRowViewModel : ViewModelBase
     /// warning color, but per-waypoint rather than only for the route as a whole.</summary>
     public bool HasFuelShortfall => FuelUponArrival < 0;
 
+    /// <summary>Estimated years from the fleet's CURRENT position (cumulative across every leg
+    /// up to and including this one, not just this leg alone) until arrival here - the same
+    /// straight-line distance/warp² formula and "no in-transit turn-splitting" simplification
+    /// FuelUponArrival's own comment already documents, applied to time instead of fuel, and
+    /// summed the same cumulative way.</summary>
+    public double YearsUntilArrival { get; }
+
+    public string YearsUntilArrivalDisplay => $"{YearsUntilArrival:0.0} yr" + (YearsUntilArrival == 1.0 ? "" : "s");
+
     public IRelayCommand DeleteCommand { get; }
 
     public IRelayCommand MoveUpCommand { get; }
@@ -60,13 +69,14 @@ public class FleetWaypointRowViewModel : ViewModelBase
         set => SetProperty(ref isSelected, value);
     }
 
-    public FleetWaypointRowViewModel(int index, Waypoint waypoint, double fuelUponArrival, System.Action onDelete, System.Action? onMoveUp, System.Action? onMoveDown, System.Action onSelect)
+    public FleetWaypointRowViewModel(int index, Waypoint waypoint, double fuelUponArrival, double yearsUntilArrival, System.Action onDelete, System.Action? onMoveUp, System.Action? onMoveDown, System.Action onSelect)
     {
         Index = index;
         Destination = waypoint.Destination;
         Warp = waypoint.WarpFactor;
         Task = waypoint.Task?.Name ?? "None";
         FuelUponArrival = fuelUponArrival;
+        YearsUntilArrival = yearsUntilArrival;
         DeleteCommand = new RelayCommand(onDelete);
         MoveUpCommand = new RelayCommand(onMoveUp ?? (() => { }), () => onMoveUp != null);
         MoveDownCommand = new RelayCommand(onMoveDown ?? (() => { }), () => onMoveDown != null);

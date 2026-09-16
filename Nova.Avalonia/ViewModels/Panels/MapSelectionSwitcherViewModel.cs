@@ -46,7 +46,10 @@ public class MapSelectionSwitcherViewModel : ViewModelBase
     private readonly ClientData clientState;
     private readonly SelectionService selection;
 
-    private Star? anchorStar;
+    // Either a real (owned) Star or an unowned/neutral StarIntel report - a scout can easily be
+    // sitting in orbit at a star this empire doesn't own, which only ever has a report, never a
+    // real Star object (see InspectorViewModel.ShowStarReport's own fix for the same gap).
+    private Mappable? anchorStar;
 
     private IReadOnlyList<MapSelectionSwitcherOptionViewModel> options = Array.Empty<MapSelectionSwitcherOptionViewModel>();
 
@@ -99,10 +102,11 @@ public class MapSelectionSwitcherViewModel : ViewModelBase
 
     private void Refresh()
     {
-        Star? newAnchor = selection.Selected switch
+        Mappable? newAnchor = selection.Selected switch
         {
             Star star => star,
-            Fleet { InOrbit: Star fleetStar } => fleetStar,
+            StarIntel report => report,
+            Fleet { InOrbit: not null } fleet => fleet.InOrbit,
             _ => null,
         };
 
@@ -133,9 +137,19 @@ public class MapSelectionSwitcherViewModel : ViewModelBase
             new(anchorStar.Name + " (Planet)", anchorStar),
         };
 
+        // anchorStar may be a real (owned) Star or an unowned StarIntel report - both carry their
+        // own Starbase field (see StarIntel's own comment), but neither is on their common
+        // Mappable base, so it's read per-type here rather than via anchorStar directly.
+        Fleet? anchorStarbase = anchorStar switch
+        {
+            Star star => star.Starbase,
+            StarIntel report => report.Starbase,
+            _ => null,
+        };
+
         foreach (Fleet fleet in clientState.EmpireState.OwnedFleets.Values)
         {
-            if (fleet.InOrbit == anchorStar && fleet != anchorStar.Starbase)
+            if (fleet.InOrbit != null && fleet.InOrbit.Name == anchorStar.Name && fleet != anchorStarbase)
             {
                 list.Add(new MapSelectionSwitcherOptionViewModel(fleet.Name, fleet));
             }

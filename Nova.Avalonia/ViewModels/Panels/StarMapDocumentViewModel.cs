@@ -278,21 +278,35 @@ public class StarMapDocumentViewModel : Document
         var fleets = new List<StarMapFleetViewModel>();
         foreach (FleetIntel report in clientState.EmpireState.FleetReports.Values)
         {
-            if (report.InOrbit)
+            bool isOwn = report.Owner == clientState.EmpireState.Id;
+
+            // A fleet's own self-report is only ever refreshed once a turn (ScanStep, server-
+            // side) - if that update is ever missed for a given fleet (e.g. one just created this
+            // turn by a Split/Merge, before its own report exists at all), the report's Position/
+            // Bearing/InOrbit/Count can lag behind the live Fleet by a turn or more, which showed
+            // up live as a real, reported bug: the selected fleet's own route legs (drawn from
+            // the live Fleet - see BuildRouteLegs) were correct, but its map marker (drawn from
+            // the stale report) rendered nowhere near them. For an owned fleet we always have the
+            // live, authoritative Fleet object right here - prefer it over the report for
+            // everything the report could possibly be behind on, rather than only for
+            // `selectable`. A foreign fleet has no live object to fall back to - its report is
+            // genuinely the only thing we know.
+            Fleet? ownFleet = isOwn && clientState.EmpireState.OwnedFleets.TryGetValue(report.Key, out Fleet fleet) ? fleet : null;
+
+            bool inOrbit = ownFleet != null ? ownFleet.InOrbit != null : report.InOrbit;
+            if (inOrbit)
             {
                 continue;
             }
 
-            bool isOwn = report.Owner == clientState.EmpireState.Id;
             IBrush color = isOwn ? Brushes.GreenYellow : Brushes.OrangeRed;
+            object selectable = ownFleet ?? (object)report;
 
-            object selectable = report;
-            if (isOwn && clientState.EmpireState.OwnedFleets.TryGetValue(report.Key, out Fleet ownFleet))
-            {
-                selectable = ownFleet;
-            }
+            NovaPoint position = ownFleet?.Position ?? report.Position;
+            double bearing = ownFleet?.Bearing ?? report.Bearing;
+            int shipCount = ownFleet?.Composition.Values.Sum(token => token.Quantity) ?? report.Count;
 
-            fleets.Add(new StarMapFleetViewModel(report.Name, report.Position.X + edgeMargin, report.Position.Y + edgeMargin, report.Bearing, color, selectable, selection, report.Count));
+            fleets.Add(new StarMapFleetViewModel(report.Name, position.X + edgeMargin, position.Y + edgeMargin, bearing, color, selectable, selection, shipCount));
         }
 
         // Scan-range washes - long-range (dark red, stars and fleets) and penetrating

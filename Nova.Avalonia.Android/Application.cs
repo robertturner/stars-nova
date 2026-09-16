@@ -1,5 +1,7 @@
+using System;
 using System.IO;
 using Android.App;
+using Android.Content;
 using Android.OS;
 using Android.Runtime;
 using Android.Widget;
@@ -13,6 +15,16 @@ namespace Nova.Avalonia.Android
     [Application]
     public class Application : AvaloniaAndroidApplication<Nova.Avalonia.App>
     {
+        // App-specific external storage (not FilesDir/internal storage) - reachable with a plain
+        // `adb pull`, no `run-as`/root needed, unlike internal storage. A Report.Error the user
+        // only saw as a brief Toast (see ShowError's own comment) previously left nothing behind
+        // to diagnose it from afterward - this gives it somewhere to land.
+        private string ErrorLogPath => Path.Combine((GetExternalFilesDir(null) ?? FilesDir)!.AbsolutePath, "nova-error.log");
+
+        // Internal storage, not external - purely a display preference nobody needs to `adb
+        // pull`, unlike the error log above.
+        private string ThemePreferencePath => Path.Combine(FilesDir!.AbsolutePath, "theme-preference.txt");
+
         protected Application(nint javaReference, JniHandleOwnership transfer) : base(javaReference, transfer)
         {
         }
@@ -53,9 +65,91 @@ namespace Nova.Avalonia.Android
             // the UI thread.
             Handler mainHandler = new Handler(Looper.MainLooper!);
             PlatformHooks.ShowError = message =>
+            {
+                AppendToErrorLog(message);
                 mainHandler.Post(() => Toast.MakeText(this, message, ToastLength.Long)?.Show());
+            };
             PlatformHooks.ShowInformation = message =>
                 mainHandler.Post(() => Toast.MakeText(this, message, ToastLength.Long)?.Show());
+            PlatformHooks.ShowFatalError = message =>
+            {
+                AppendToErrorLog(message);
+                mainHandler.Post(() => Toast.MakeText(this, message, ToastLength.Long)?.Show());
+            };
+            PlatformHooks.ShareErrorLog = ShareErrorLog;
+
+            PlatformHooks.LoadThemePreference = LoadThemePreference;
+            PlatformHooks.SaveThemePreference = SaveThemePreference;
+        }
+
+        private string LoadThemePreference()
+        {
+            try
+            {
+                return File.Exists(ThemePreferencePath) ? File.ReadAllText(ThemePreferencePath).Trim() : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private void SaveThemePreference(string preference)
+        {
+            try
+            {
+                File.WriteAllText(ThemePreferencePath, preference ?? "");
+            }
+            catch
+            {
+                // Best-effort - worst case the choice just doesn't survive a restart.
+            }
+        }
+
+        private void AppendToErrorLog(string message)
+        {
+            try
+            {
+                string entry = string.Format("{0:u}{1}{2}{1}{1}", DateTime.Now, System.Environment.NewLine, message);
+                File.AppendAllText(ErrorLogPath, entry);
+            }
+            catch
+            {
+                // Best-effort - the original Toast (or the app itself, for a fatal error) still
+                // gets to happen either way.
+            }
+        }
+
+        private bool ShareErrorLog()
+        {
+            string text;
+            try
+            {
+                if (!File.Exists(ErrorLogPath))
+                {
+                    return false;
+                }
+
+                text = File.ReadAllText(ErrorLogPath);
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            Intent sendIntent = new Intent(Intent.ActionSend);
+            sendIntent.SetType("text/plain");
+            sendIntent.PutExtra(Intent.ExtraText, text);
+
+            Intent chooser = Intent.CreateChooser(sendIntent, "Share Nova error log");
+            chooser!.AddFlags(ActivityFlags.NewTask);
+            StartActivity(chooser);
+            return true;
         }
 
         protected override AppBuilder CustomizeAppBuilder(AppBuilder builder)

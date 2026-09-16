@@ -103,8 +103,10 @@
 
                             <!-- Fleets sitting at this planet - click one to jump straight to it
                                  (waypoints, cargo, etc.) without going by way of the Navigator's
-                                 Fleets tab. Only ever populated for an owned Star - see
-                                 InspectorViewModel.ShowStar. -->
+                                 Fleets tab. Populated for both an owned Star and an unowned
+                                 StarIntel report (a scout can easily be sitting at a neutral/
+                                 unexplored star) - see InspectorViewModel.ShowStar/
+                                 ShowStarReport. -->
                             <StackPanel IsVisible="{Binding HasOrbitingFleets}" Margin="0,4,0,0" Spacing="2">
                                 <TextBlock Text="Fleets here" FontWeight="Bold" Opacity="0.8" FontSize="11" />
                                 <ItemsControl ItemsSource="{Binding OrbitingFleets}">
@@ -179,16 +181,18 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="panels:FleetWaypointRowViewModel">
                                         <Button Classes="waypointRow" Classes.selected="{Binding IsSelected}" Command="{Binding SelectCommand}">
-                                            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto" Margin="2">
+                                            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="2">
                                                 <TextBlock Grid.Column="0" Text="{Binding Destination}" />
                                                 <TextBlock Grid.Column="1" Text="{Binding Warp, StringFormat='warp {0}'}" Opacity="0.7" Margin="8,0" />
                                                 <TextBlock Grid.Column="2" Text="{Binding Task}" Opacity="0.7" Margin="0,0,8,0" />
-                                                <TextBlock Grid.Column="3" Classes="waypointFuel" Classes.shortfall="{Binding HasFuelShortfall}"
+                                                <TextBlock Grid.Column="3" Text="{Binding YearsUntilArrivalDisplay}" Opacity="0.7" Margin="0,0,8,0"
+                                                           ToolTip.Tip="Estimated years to reach this waypoint" />
+                                                <TextBlock Grid.Column="4" Classes="waypointFuel" Classes.shortfall="{Binding HasFuelShortfall}"
                                                            Text="{Binding FuelUponArrival, StringFormat='{}{0:0}mg'}" Margin="0,0,8,0"
                                                            ToolTip.Tip="Estimated fuel remaining on arrival" />
-                                                <Button Grid.Column="4" Content="▲" Padding="4,0" Command="{Binding MoveUpCommand}" />
-                                                <Button Grid.Column="5" Content="▼" Padding="4,0" Command="{Binding MoveDownCommand}" Margin="2,0,0,0" />
-                                                <Button Grid.Column="6" Content="✕" Padding="4,0" Command="{Binding DeleteCommand}" Margin="4,0,0,0" />
+                                                <Button Grid.Column="5" Content="▲" Padding="4,0" Command="{Binding MoveUpCommand}" />
+                                                <Button Grid.Column="6" Content="▼" Padding="4,0" Command="{Binding MoveDownCommand}" Margin="2,0,0,0" />
+                                                <Button Grid.Column="7" Content="✕" Padding="4,0" Command="{Binding DeleteCommand}" Margin="4,0,0,0" />
                                             </Grid>
                                         </Button>
                                     </DataTemplate>
@@ -264,8 +268,21 @@
                                                     <TextBlock Grid.Column="0" Text="{Binding Label}" />
                                                     <TextBlock Grid.Column="1" Text="{Binding PlanetAmount, StringFormat='Planet: {0}kT'}" Opacity="0.6" FontSize="11" />
                                                 </Grid>
-                                                <Slider Minimum="0" Maximum="{Binding Total}" Value="{Binding FleetAmount}" />
-                                                <TextBlock Text="{Binding FleetAmount, StringFormat='Fleet: {0}kT'}" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
+                                                <!-- Range is capacity-aware, not just clamped to
+                                                     this one resource's own conserved total - see
+                                                     CargoResourceRowViewModel's own comment.
+                                                     Dragging one resource's slider up shrinks how
+                                                     far every other resource's own slider can go,
+                                                     matching a real shared cargo hold. The
+                                                     NumericUpDown alongside it is for typing an
+                                                     exact value instead of dragging. -->
+                                                <Slider Minimum="{Binding EffectiveMinimum}" Maximum="{Binding EffectiveMaximum}" Value="{Binding FleetAmount}" />
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <TextBlock Grid.Column="0" Text="Fleet" FontSize="11" Opacity="0.8" VerticalAlignment="Center" />
+                                                    <NumericUpDown Grid.Column="1" Value="{Binding FleetAmount}"
+                                                                   Minimum="{Binding EffectiveMinimum}" Maximum="{Binding EffectiveMaximum}"
+                                                                   FormatString="0" Width="110" Padding="4,0" />
+                                                </Grid>
                                             </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
@@ -295,20 +312,35 @@
                                                     <TextBlock Grid.Column="0" Text="{Binding Label}" />
                                                     <TextBlock Grid.Column="1" Text="{Binding PlanetAmount, StringFormat='Other fleet: {0}kT'}" Opacity="0.6" FontSize="11" />
                                                 </Grid>
-                                                <Slider Minimum="0" Maximum="{Binding Total}" Value="{Binding FleetAmount}" />
-                                                <TextBlock Text="{Binding FleetAmount, StringFormat='This fleet: {0}kT'}" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
+                                                <!-- Capacity-aware on BOTH sides here (unlike the
+                                                     fleet-vs-planet section above) - see
+                                                     CargoResourceRowViewModel's own comment. -->
+                                                <Slider Minimum="{Binding EffectiveMinimum}" Maximum="{Binding EffectiveMaximum}" Value="{Binding FleetAmount}" />
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <TextBlock Grid.Column="0" Text="This fleet" FontSize="11" Opacity="0.8" VerticalAlignment="Center" />
+                                                    <NumericUpDown Grid.Column="1" Value="{Binding FleetAmount}"
+                                                                   Minimum="{Binding EffectiveMinimum}" Maximum="{Binding EffectiveMaximum}"
+                                                                   FormatString="0" Width="110" Padding="4,0" />
+                                                </Grid>
                                             </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
                                 <StackPanel IsVisible="{Binding FleetTransferFuelRow, Converter={x:Static conv:ObjectConverters.IsNotNull}}" Margin="0,4">
-                                    <Grid ColumnDefinitions="*,Auto">
-                                        <TextBlock Grid.Column="0" Text="Fuel" />
-                                        <TextBlock Grid.Column="1" Text="{Binding FleetTransferFuelRow.PlanetAmount, StringFormat='Other fleet: {0}mg'}" Opacity="0.6" FontSize="11" />
-                                    </Grid>
-                                    <Slider Minimum="0" Maximum="{Binding FleetTransferFuelRow.Total}" Value="{Binding FleetTransferFuelRow.FleetAmount}" />
-                                    <TextBlock Text="{Binding FleetTransferFuelRow.FleetAmount, StringFormat='This fleet: {0}mg'}" FontSize="11" Opacity="0.8" HorizontalAlignment="Right" />
+                                    <StackPanel DataContext="{Binding FleetTransferFuelRow}" x:DataType="panels:CargoResourceRowViewModel">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Grid.Column="0" Text="Fuel" />
+                                            <TextBlock Grid.Column="1" Text="{Binding PlanetAmount, StringFormat='Other fleet: {0}mg'}" Opacity="0.6" FontSize="11" />
+                                        </Grid>
+                                        <Slider Minimum="{Binding EffectiveMinimum}" Maximum="{Binding EffectiveMaximum}" Value="{Binding FleetAmount}" />
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Grid.Column="0" Text="This fleet" FontSize="11" Opacity="0.8" VerticalAlignment="Center" />
+                                            <NumericUpDown Grid.Column="1" Value="{Binding FleetAmount}"
+                                                           Minimum="{Binding EffectiveMinimum}" Maximum="{Binding EffectiveMaximum}"
+                                                           FormatString="0" Width="110" Padding="4,0" />
+                                        </Grid>
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <Button Content="Apply Transfer" Command="{Binding ApplyFleetCargoTransferCommand}" HorizontalAlignment="Left" Margin="0,4,0,0" />

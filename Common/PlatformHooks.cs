@@ -62,6 +62,31 @@ namespace Nova.Common
         public static Action<string> ShowDebug = message => Console.WriteLine("DEBUG: " + message);
 
         /// <summary>
+        /// Offers whatever error history the host has persisted (if any) to the user for sharing
+        /// elsewhere - e.g. the mobile burger menu's "Share Error Log" entry, which fires
+        /// Android's native Share sheet with the log's contents so a Report.Error the user only
+        /// saw as a brief, non-persistent Toast can still be sent on afterward. Returns true if
+        /// there was anything to share, false if the log is empty/missing or this host hasn't
+        /// wired persistence at all (the default here does neither - see ShowError's own default,
+        /// which never writes anywhere a later "share" could read back from).
+        /// </summary>
+        public static Func<bool> ShareErrorLog = () => false;
+
+        /// <summary>
+        /// Loads a previously saved UI theme preference ("Dark" or "Light"), or null if the user
+        /// has never chosen one - in which case the host's own default (following the system
+        /// theme) should be left alone. Purely a display preference with no effect on game state,
+        /// so this stays a plain string rather than an Avalonia ThemeVariant - Common itself has
+        /// no Avalonia (or any UI-toolkit) dependency and never interprets the value beyond
+        /// passing it back.
+        /// </summary>
+        public static Func<string> LoadThemePreference = () => null;
+
+        /// <summary>Persists a UI theme preference ("Dark" or "Light") for LoadThemePreference to
+        /// read back on the next launch.</summary>
+        public static Action<string> SaveThemePreference = _ => { };
+
+        /// <summary>
         /// Load an image from disk, given its path, for a component/ship/race icon. The image
         /// type itself is platform-specific (System.Drawing.Bitmap on WinForms, an Avalonia
         /// Bitmap on Avalonia, etc.) so Common only ever sees it as a plain object - it stores
