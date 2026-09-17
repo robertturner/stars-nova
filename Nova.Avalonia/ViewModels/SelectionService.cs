@@ -36,11 +36,11 @@ public class SelectionService : ViewModelBase
         OnPropertyChanged(nameof(Selected));
     }
 
-    private Action<string>? waypointTargetCallback;
+    private Action<Mappable, string>? waypointTargetCallback;
 
     private bool isAddingWaypoint;
 
-    /// <summary>Whether "tap a planet on the map to add a waypoint there" mode is currently
+    /// <summary>Whether "tap something on the map to add a waypoint there" mode is currently
     /// armed - the Star Map shows a banner while this is true (see StarMapDocumentViewModel),
     /// regardless of which panel actually armed it.</summary>
     public bool IsAddingWaypoint
@@ -50,16 +50,20 @@ public class SelectionService : ViewModelBase
     }
 
     /// <summary>
-    /// Arms map-tap waypoint targeting: the next Star/StarIntel consumed via
+    /// Arms map-tap waypoint targeting: the next Mappable consumed via
     /// <see cref="TryConsumeWaypointTarget"/> (called from MapMarkerViewModel.SelectCommand
-    /// before it would otherwise change <see cref="Selected"/>) is handed to onStarPicked
-    /// instead - so the fleet whose orders are being edited stays selected throughout, the same
-    /// way ShipDesignViewModel's tap-to-arm-then-tap-to-place keeps the hull viewport in place
-    /// while a component is armed.
+    /// before it would otherwise change <see cref="Selected"/>) is handed to onTargetPicked -
+    /// along with a best-effort Destination star name (see that method's own comment) - instead
+    /// of becoming the new Selected, so the fleet whose orders are being edited stays selected
+    /// throughout, the same way ShipDesignViewModel's tap-to-arm-then-tap-to-place keeps the hull
+    /// viewport in place while a component is armed. The raw Mappable (not just its Position) is
+    /// passed through so a task like "Merge With Fleet" can recover the tapped Fleet's own Key.
     /// </summary>
-    public void ArmWaypointTarget(Action<string> onStarPicked)
+    public void ArmWaypointTarget(Action<Mappable, string> onTargetPicked)
     {
-        waypointTargetCallback = onStarPicked;
+        measureTargetCallback = null;
+        IsMeasuringDistance = false;
+        waypointTargetCallback = onTargetPicked;
         IsAddingWaypoint = true;
     }
 
@@ -71,28 +75,109 @@ public class SelectionService : ViewModelBase
 
     /// <summary>
     /// Called from every map marker's SelectCommand before it falls back to normal selection -
-    /// only a Star or StarIntel report satisfies an armed waypoint target (matching the
-    /// Inspector's own destination picker, which offers every known star by name); tapping
-    /// anything else, or tapping with nothing armed, leaves selection handling to the caller.
+    /// any Mappable (a star, a fleet - own or another empire's - a minefield, a wormhole)
+    /// satisfies an armed waypoint target, resolved to a raw Position plus a best-effort
+    /// Destination star name (used for arrival/orbit bookkeeping - see TurnGenerator - and left
+    /// blank for anything that isn't sitting at a known star, exactly like a plain deep-space
+    /// waypoint already works everywhere else in this codebase). Tapping anything else, or
+    /// tapping with nothing armed, leaves selection handling to the caller.
     /// </summary>
     public bool TryConsumeWaypointTarget(object selectable)
     {
-        string? starName = selectable switch
-        {
-            Star star => star.Name,
-            StarIntel intel => intel.Name,
-            _ => null,
-        };
-
-        if (waypointTargetCallback == null || starName == null)
+        if (selectable is not Mappable mappable)
         {
             return false;
         }
 
-        Action<string> callback = waypointTargetCallback;
+        // A best-effort Destination star name (used for arrival/orbit bookkeeping - see
+        // TurnGenerator) for anything sitting at a known star; everything else falls back to the
+        // same "Space at (x, y)" label a plain deep-space waypoint already uses everywhere else
+        // in this codebase (TurnGenerator.cs/StarMap.cs/FleetReport.cs) - NOT an empty string,
+        // which is what this previously did. A genuinely empty Destination round-trips through a
+        // save/load as an XML element with no child at all (XmlDocument doesn't preserve
+        // insignificant whitespace by default), and Waypoint's own XmlNode constructor does
+        // `mainNode.FirstChild.Value` with no null check - confirmed live on a real device as a
+        // NullReferenceException that used to terminate the entire app on every subsequent load,
+        // for every waypoint ever added by tapping a fleet in deep space (not orbiting a star), a
+        // foreign fleet report, a minefield, or a wormhole as the target. A fleet in orbit is a
+        // real rendezvous at that star (arriving should register as visiting it, same as a
+        // star-targeted waypoint); one in deep space, or another empire's fleet report
+        // (FleetIntel.InOrbit is only a bool - whether it's at some star, with no reference to
+        // which one), falls back to the position-based label instead.
+        string? destination = mappable switch
+        {
+            Star star => star.Name,
+            StarIntel intel => intel.Name,
+            Fleet fleet => fleet.InOrbit?.Name ?? "Space at " + fleet.Position,
+            FleetIntel fleetIntel => "Space at " + fleetIntel.Position,
+            Minefield minefield => "Space at " + minefield.Position,
+            Wormhole wormhole => "Space at " + wormhole.Position,
+            _ => null,
+        };
+
+        if (waypointTargetCallback == null || destination == null)
+        {
+            return false;
+        }
+
+        Action<Mappable, string> callback = waypointTargetCallback;
         waypointTargetCallback = null;
         IsAddingWaypoint = false;
-        callback(starName);
+        callback(mappable, destination);
+        return true;
+    }
+
+    private Action<NovaPoint, string>? measureTargetCallback;
+
+    private bool isMeasuringDistance;
+
+    /// <summary>Whether "tap something on the map to measure the distance to it" mode is
+    /// currently armed - mirrors <see cref="IsAddingWaypoint"/>, shown as its own banner on the
+    /// Star Map (see StarMapDocumentViewModel) regardless of which panel armed it.</summary>
+    public bool IsMeasuringDistance
+    {
+        get => isMeasuringDistance;
+        private set => SetProperty(ref isMeasuringDistance, value);
+    }
+
+    /// <summary>
+    /// Arms map-tap distance-measuring: the next Mappable consumed via
+    /// <see cref="TryConsumeMeasureTarget"/> has its position/name handed to onTargetPicked
+    /// instead of becoming the new <see cref="Selected"/> - same tap-to-arm-then-tap-to-pick
+    /// shape as <see cref="ArmWaypointTarget"/>, and mutually exclusive with it (arming one
+    /// cancels the other, since only one banner/gesture can be "live" on the map at a time).
+    /// </summary>
+    public void ArmMeasureTarget(Action<NovaPoint, string> onTargetPicked)
+    {
+        waypointTargetCallback = null;
+        IsAddingWaypoint = false;
+        measureTargetCallback = onTargetPicked;
+        IsMeasuringDistance = true;
+    }
+
+    public void CancelMeasureTarget()
+    {
+        measureTargetCallback = null;
+        IsMeasuringDistance = false;
+    }
+
+    /// <summary>
+    /// Called from every map marker's SelectCommand, after <see cref="TryConsumeWaypointTarget"/>
+    /// has already had its chance - any Mappable at all satisfies an armed measure target (unlike
+    /// the waypoint case, this just needs a position and a display name, not a turn-processing-
+    /// relevant star name), resolved straight from the Mappable base every one of them shares.
+    /// </summary>
+    public bool TryConsumeMeasureTarget(object selectable)
+    {
+        if (measureTargetCallback == null || selectable is not Mappable mappable)
+        {
+            return false;
+        }
+
+        Action<NovaPoint, string> callback = measureTargetCallback;
+        measureTargetCallback = null;
+        IsMeasuringDistance = false;
+        callback(mappable.Position, mappable.Name);
         return true;
     }
 }

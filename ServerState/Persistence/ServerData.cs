@@ -195,8 +195,14 @@ namespace Nova.Server
                 }
                 catch (Exception e)
                 {
-                    Report.FatalError(e.Message + "\n Details: \n" + e);
-                }    
+                    // Non-fatal - see Waypoint.cs's own comment for the live-reproduced crash
+                    // this "one bad field exits the whole app" pattern caused. The advance above
+                    // sits inside the try (unlike its siblings in other files' loaders), so it
+                    // never ran when this fires - repeat it here too, or a node that keeps
+                    // throwing would spin this loop forever instead of just being skipped.
+                    Report.Error(e.Message + "\n Details: \n" + e);
+                    xmlnode = xmlnode?.NextSibling;
+                }
             }
         }
 

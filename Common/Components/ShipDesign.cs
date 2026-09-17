@@ -647,9 +647,21 @@ namespace Nova.Common.Components
             Weapons.Clear();
             ConventionalBombs = new Bomb(0, 0, 0, false);
             SmartBombs = new Bomb(0, 0, 0, true);
-            StandardMines = new MineLayer();
-            HeavyMines = new MineLayer();
-            SpeedBumbMines = new MineLayer();
+
+            // Each accumulator needs its OWN bucket's HitChance from the start, not
+            // MineLayer's default constructor value (0.3, i.e. "Standard") - the SumProperty
+            // switch below only ever adds a real mine-layer component into an accumulator
+            // whose HitChance already matches (MineLayer.operator+ rejects a mismatch and
+            // silently leaves the accumulator unchanged, logging an error instead). Starting
+            // HeavyMines/SpeedBumbMines at the Standard default meant the very FIRST heavy or
+            // speed-trap mine layer component ever added to any design's accumulator would
+            // always mismatch and get rejected, so a design's laying rate for either type could
+            // never become nonzero - StandardMines only ever happened to work because its own
+            // real HitChance (0.3) coincidentally equals MineLayer's unrelated class default.
+            // Confirmed live: a Speed Trap 20-equipped design reported a laying rate of 0.
+            StandardMines = new MineLayer { HitChance = MineLayer.StandardHitChance };
+            HeavyMines = new MineLayer { HitChance = MineLayer.HeavyHitChance };
+            SpeedBumbMines = new MineLayer { HitChance = MineLayer.SpeedTrapHitChance };
 
             // Add those properties which are included with the hull
 

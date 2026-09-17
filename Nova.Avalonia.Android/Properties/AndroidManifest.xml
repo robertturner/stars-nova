@@ -1,4 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" android:installLocation="auto">
-	<application android:label="Stars! Nova" android:icon="@drawable/Icon" />
+	<application android:label="Stars! Nova" android:icon="@drawable/Icon">
+		<!-- Lets Application.cs's ShareText hand another app (Gmail, Drive, whatever the user
+		     picks from the share sheet) a content:// Uri for a save/crash/error log written to
+		     our own cache/share/ folder, without exposing any other private storage - see
+		     file_paths.xml. Needed because a plain Intent.ExtraText string silently fails once
+		     the shared text passes ~1MB (a real, played game's .intel file routinely does,
+		     unlike this project's own small test saves) - StartActivity itself doesn't throw,
+		     the chooser just never visibly opens, confirmed live as a "Share Save File does
+		     nothing" report. -->
+		<provider
+			android:name="androidx.core.content.FileProvider"
+			android:authorities="${applicationId}.fileprovider"
+			android:exported="false"
+			android:grantUriPermissions="true">
+			<meta-data
+				android:name="android.support.FILE_PROVIDER_PATHS"
+				android:resource="@xml/file_paths" />
+		</provider>
+	</application>
 </manifest>

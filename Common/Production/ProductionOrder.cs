@@ -123,6 +123,7 @@ namespace Nova.Common
         public int Process(Star star)
         {
             int done = 0;
+            Resources lastResourcesOnHand = new Resources(star.ResourcesOnHand);
 
             int? currentCount = IsAutoBuild ? Unit.CurrentCount(star) : null;
             if (currentCount.HasValue)
@@ -139,6 +140,21 @@ namespace Nova.Common
                     {
                         remaining--;
                         done++;
+                    }
+                    else if (!MadeProgress(star, ref lastResourcesOnHand))
+                    {
+                        // A real, live-reproduced infinite loop: IsSkipped()==false ("there's
+                        // something to spend") and Construct()==false ("not a whole unit yet")
+                        // can both hold forever on a genuine rounding edge case in a partial
+                        // build (Resources' own int-rounded * double operator) - neither ever
+                        // flips, so nothing here ever changes and this would otherwise spin at
+                        // 100% CPU permanently (confirmed live via adb: an ANR with the main
+                        // thread pegged inside this exact assembly for 12+ seconds straight,
+                        // reordering a large queue with a permanently-unaffordable item in it).
+                        // A tick that neither completes a unit nor actually spends any resources
+                        // is never going to start doing either just by repeating - bail out for
+                        // this year instead of hanging.
+                        break;
                     }
                 }
 
@@ -157,11 +173,33 @@ namespace Nova.Common
                     Quantity--;
                     done++;
                 }
+                else if (!MadeProgress(star, ref lastResourcesOnHand))
+                {
+                    // Same guard as the auto-build loop above - see its own comment.
+                    break;
+                }
             }
 
             return done;
         }
-        
+
+        /// <summary>
+        /// True if the star's resources actually changed since <paramref name="last"/> was taken
+        /// (which is then updated to the current amount) - see Process's own comment for why a
+        /// Construct() call that neither completes a unit nor spends anything at all can never
+        /// resolve itself by simply being called again.
+        /// </summary>
+        private static bool MadeProgress(Star star, ref Resources last)
+        {
+            if (star.ResourcesOnHand == last)
+            {
+                return false;
+            }
+
+            last = new Resources(star.ResourcesOnHand);
+            return true;
+        }
+
         /// <summary>
         /// Load: Read in a ProductionQueue.Item from and XmlNode representation.
         /// </summary>

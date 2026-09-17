@@ -146,7 +146,11 @@ namespace Nova.Common
         {
             if (node == null)
             {
-                Report.FatalError("Item.cs: Item(XmlNode node) - node is null - no Item found.");
+                // Non-fatal - see Waypoint.cs's own comment for why "one bad piece of save data
+                // exits the whole app" is worse than leaving this one Item blank. The `return`
+                // already leaves every field at its default, same outcome as before this change
+                // minus the process exit.
+                Report.Error("Item.cs: Item(XmlNode node) - node is null - no Item found.");
                 return;
             }
 
@@ -165,7 +169,8 @@ namespace Nova.Common
             
             if (itemNode == null)
             {
-                Report.FatalError("Item.cs: Item(XmlNode node) - could not find Item node, input file may be corrupt.");
+                // Non-fatal - see the null-node check above.
+                Report.Error("Item.cs: Item(XmlNode node) - could not find Item node, input file may be corrupt.");
                 return;
             }
 

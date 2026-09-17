@@ -218,23 +218,17 @@ public class InspectorViewModel : Tool
         private set => SetProperty(ref waypointRows, value);
     }
 
-    /// <summary>Every known star's name, for the "Add Waypoint" destination picker.</summary>
-    public IReadOnlyList<string> DestinationOptions { get; }
-
     /// <summary>
-    /// The waypoint task types cheap to support without their own dedicated UI (no extra
-    /// parameters beyond the task itself) - CargoTask (needs an amount/resource picker) and
-    /// SplitMergeTask (needs a composition editor) are deferred to their own phases.
+    /// The waypoint task types this dropdown supports directly. Most need no extra parameters
+    /// beyond the task itself; "Merge With Fleet" is the one exception - it needs a target FLEET
+    /// specifically (not just a position), which AddWaypoint enforces by rejecting the tap if the
+    /// thing picked isn't one - see its own comment. A full cargo Transport task still needs its
+    /// own amount/resource picker (the dedicated Cargo tab) and isn't offered here; a PARTIAL
+    /// merge (moving only some ships, not the whole fleet) likewise still needs the Split/Merge
+    /// tab's own composition editor - this option only covers a full "merge everything" order.
     /// </summary>
-    public IReadOnlyList<string> TaskOptions { get; } = new[] { "None", "Colonise", "Scrap", "Lay Mines", "Invade" };
-
-    private string? newWaypointDestination;
-
-    public string? NewWaypointDestination
-    {
-        get => newWaypointDestination;
-        set => SetProperty(ref newWaypointDestination, value);
-    }
+    public IReadOnlyList<string> TaskOptions { get; } =
+        new[] { "None", "Colonise", "Scrap", "Lay Mines", "Invade", "Merge With Fleet" };
 
     private int newWaypointWarp = 6;
 
@@ -251,8 +245,6 @@ public class InspectorViewModel : Tool
         get => newWaypointTask;
         set => SetProperty(ref newWaypointTask, value);
     }
-
-    public IRelayCommand AddWaypointCommand { get; }
 
     // -1 = nothing selected. Tracks the real Fleet.Waypoints index (see FleetWaypointRowViewModel.
     // Index) so a change of Task can be pushed for exactly that waypoint, and so "Add Waypoint"
@@ -322,6 +314,30 @@ public class InspectorViewModel : Tool
     /// shows a "tap a planet" banner while this is true; the button here that arms it flips to a
     /// "Cancel" label the same way.</summary>
     public bool IsAddingWaypoint => selection.IsAddingWaypoint;
+
+    private string addWaypointStatusMessage = "";
+
+    /// <summary>Set when AddWaypoint rejects a tap - currently only "Merge With Fleet" can reject
+    /// one (it needs a real Fleet, not a star/minefield/wormhole) - cleared on the next attempt.</summary>
+    public string AddWaypointStatusMessage
+    {
+        get => addWaypointStatusMessage;
+        private set
+        {
+            if (SetProperty(ref addWaypointStatusMessage, value))
+            {
+                HasAddWaypointStatusMessage = !string.IsNullOrEmpty(value);
+            }
+        }
+    }
+
+    private bool hasAddWaypointStatusMessage;
+
+    public bool HasAddWaypointStatusMessage
+    {
+        get => hasAddWaypointStatusMessage;
+        private set => SetProperty(ref hasAddWaypointStatusMessage, value);
+    }
 
     private string newFleetName = "";
 
@@ -528,7 +544,53 @@ public class InspectorViewModel : Tool
     public SplitMergeTargetOption? SelectedSplitMergeTarget
     {
         get => selectedSplitMergeTarget;
-        set => SetProperty(ref selectedSplitMergeTarget, value);
+        set
+        {
+            if (SetProperty(ref selectedSplitMergeTarget, value))
+            {
+                // Re-default every row's slider for the newly-picked "other side", rather than
+                // leaving whatever was left over from before: switching TO an existing fleet
+                // (a genuine merge) defaults to moving everything there (Keep: 0) - the actual
+                // point of a merge, and previously required manually dragging every single
+                // design's slider to 0 first, with no visible feedback that anything needed to
+                // change at all, which is what made merging look broken/undiscoverable. Switching
+                // back to "New Fleet" (a split) restores the original "keep everything, peel off
+                // what you choose" default. The user can still drag any row back afterward for a
+                // partial merge/split either way - this only changes the STARTING point.
+                bool isMergingIntoExistingFleet = value?.Fleet != null;
+                foreach (SplitMergeRowViewModel row in SplitMergeRows)
+                {
+                    row.KeepInSource = isMergingIntoExistingFleet ? 0 : row.OriginalQuantity;
+                }
+
+                OnPropertyChanged(nameof(SplitMergeNameFieldLabel));
+            }
+        }
+    }
+
+    /// <summary>Label for the name textbox below - switches meaning with the target picker
+    /// rather than needing two separate fields for what's really the same "name a fleet involved
+    /// in this operation" idea: naming a brand-new split-off fleet when that's the target, or
+    /// renaming the fleet being split/merged FROM otherwise (including when nothing is being
+    /// moved at all - the simplest way to just rename a fleet from here instead of switching to
+    /// the Orders tab's own rename box).</summary>
+    public string SplitMergeNameFieldLabel => SelectedSplitMergeTarget?.IsNewFleet == true
+        ? "New fleet's name"
+        : "Rename this fleet";
+
+    /// <summary>Editable name applied at Apply time - to the newly-created fleet when splitting
+    /// into "New Fleet" (defaulted to the source fleet's own name, the common case of splitting
+    /// off part of a fleet while keeping both halves under the same name, e.g. a scout squadron -
+    /// the engine's own generic "New Fleet #N" fallback is still used verbatim if this is left
+    /// blank), or to the SOURCE fleet itself otherwise (a merge that leaves some ships behind, or
+    /// no split/merge at all - just a rename). See <see cref="SplitMergeNameFieldLabel"/> for
+    /// which case is currently active.</summary>
+    private string newSplitFleetName = "";
+
+    public string NewSplitFleetName
+    {
+        get => newSplitFleetName;
+        set => SetProperty(ref newSplitFleetName, value);
     }
 
     private string splitMergeStatusMessage = "";
@@ -565,8 +627,6 @@ public class InspectorViewModel : Tool
         this.selection = selection;
         Production = production;
 
-        DestinationOptions = clientState.EmpireState.StarReports.Keys.OrderBy(n => n).ToList();
-        AddWaypointCommand = new RelayCommand(AddWaypoint);
         SubmitRenameCommand = new RelayCommand(SubmitRename);
         ApplyCargoCommand = new RelayCommand(ApplyCargoTransfer);
         ApplyFleetCargoTransferCommand = new RelayCommand(ApplyFleetCargoTransfer);
@@ -595,10 +655,10 @@ public class InspectorViewModel : Tool
     }
 
     /// <summary>
-    /// Arms map-tap targeting for the currently selected fleet - the picked star just becomes
-    /// NewWaypointDestination and funnels into the exact same AddWaypoint() the dropdown-based
-    /// "Add Waypoint" button already uses (Warp/Task/insert-position all still apply), so the
-    /// two entry points share every bit of validation and insertion logic.
+    /// Arms map-tap targeting for the currently selected fleet - tapping a star, a fleet
+    /// (own or another empire's), a minefield or a wormhole on the map (see
+    /// SelectionService.TryConsumeWaypointTarget) becomes the new waypoint's position/
+    /// destination, using whatever Warp/Task are currently set below.
     /// </summary>
     private void ArmMapWaypoint()
     {
@@ -607,11 +667,8 @@ public class InspectorViewModel : Tool
             return;
         }
 
-        selection.ArmWaypointTarget(starName =>
-        {
-            NewWaypointDestination = starName;
-            AddWaypoint();
-        });
+        AddWaypointStatusMessage = "";
+        selection.ArmWaypointTarget(AddWaypoint);
     }
 
     private object? lastSelectionForTabReset;
@@ -688,6 +745,9 @@ public class InspectorViewModel : Tool
             case StarIntel report:
                 ShowStarReport(report);
                 break;
+            case FleetIntel fleetReport:
+                ShowFleetReport(fleetReport);
+                break;
             case Minefield minefield:
                 ShowMinefield(minefield);
                 break;
@@ -717,6 +777,7 @@ public class InspectorViewModel : Tool
         OrbitingFleets = clientState.EmpireState.OwnedFleets.Values
             .Where(fleet => fleet.InOrbit != null && fleet.InOrbit.Name == report.Name)
             .Select(fleet => new OrbitingFleetRowViewModel(fleet.Name, () => selection.Selected = fleet))
+            .Concat(BuildForeignOrbitingFleetRows(report.Position))
             .ToList();
 
         if (report.Year == Global.Unset)
@@ -774,6 +835,70 @@ public class InspectorViewModel : Tool
         };
     }
 
+    /// <summary>
+    /// A foreign fleet tapped on the map (or reached from its star's own "orbiting fleets" list
+    /// - see BuildForeignOrbitingFleetRows) - previously fell all the way through Refresh's
+    /// switch to "Nothing selected" with no case for FleetIntel at all, discarding everything we
+    /// actually know about it. Shows whatever the report actually has: Composition/Mass/Speed
+    /// only ever get set from ScanLevel.InScan upward (see FleetIntel.Update) - a report that's
+    /// merely been seen from a distance can be name/position/owner only, so each row falls back
+    /// to "Unknown" rather than showing a stale zero.
+    /// </summary>
+    private void ShowFleetReport(FleetIntel report)
+    {
+        Kind = "Fleet (report)";
+        Name = report.Name;
+
+        string owner = report.Owner == Global.Nobody
+            ? "Unknown"
+            : report.Owner == clientState.EmpireState.Id
+                ? "You"
+                : clientState.EmpireState.EmpireReports.TryGetValue(report.Owner, out EmpireIntel empireIntel)
+                    ? empireIntel.RaceName
+                    : $"Empire #{report.Owner}";
+
+        var rowList = new List<InspectorRow>
+        {
+            new InspectorRow("Report age", report.Year == Global.Unset
+                ? "Unknown"
+                : report.Year == clientState.EmpireState.TurnYear
+                    ? "Current"
+                    : $"{clientState.EmpireState.TurnYear - report.Year} year(s) old"),
+            new InspectorRow("Owner", owner),
+            new InspectorRow("Ships", report.Composition.Count > 0 ? $"{report.Count}" : "Unknown"),
+        };
+
+        if (report.Composition.Count > 0)
+        {
+            rowList.Add(new InspectorRow("Mass", $"{report.Mass}kT"));
+        }
+
+        rowList.Add(new InspectorRow("Speed", report.Speed == Global.Unset ? "Unknown" : $"Warp {report.Speed}"));
+        rowList.Add(new InspectorRow("In orbit", report.InOrbit ? "Yes" : "No"));
+
+        if (report.IsStarbase)
+        {
+            rowList.Add(new InspectorRow("Type", "Starbase"));
+        }
+
+        Rows = rowList;
+    }
+
+    /// <summary>
+    /// Foreign fleets we have a report for, sitting at the given position - appended to the
+    /// "own fleets in orbit" list ShowStar/ShowStarReport already build, so a foreign fleet
+    /// orbiting a star is reachable from that star's own Inspector view too, not just by tapping
+    /// its own map marker directly. Matched by position rather than a star-name reference, since
+    /// FleetIntel.InOrbit is only a bool (see its own declaring comment) - no reference to which
+    /// star a reported fleet is actually at.
+    /// </summary>
+    private IEnumerable<OrbitingFleetRowViewModel> BuildForeignOrbitingFleetRows(NovaPoint position)
+    {
+        return clientState.EmpireState.FleetReports.Values
+            .Where(report => report.Position == position)
+            .Select(report => new OrbitingFleetRowViewModel(report.Name, () => selection.Selected = report));
+    }
+
     private void ShowStar(Star star)
     {
         Kind = "Planet";
@@ -784,10 +909,19 @@ public class InspectorViewModel : Tool
             ? race.HabitalValue(report) * 100.0
             : 0.0;
 
+        // Only worth showing a projected figure once terraforming could actually still improve
+        // things - a star already at (or beyond) this race's terraform ceiling would otherwise
+        // show a redundant "58% (58%)".
+        int currentPercent = (int)Math.Round(habitability);
+        int terraformedPercent = (int)Math.Round(race.HabitalValueAfterTerraform(star) * 100.0);
+        string habitabilityText = terraformedPercent > currentPercent
+            ? $"{currentPercent}% ({terraformedPercent}%)"
+            : $"{currentPercent}%";
+
         var rowList = new List<InspectorRow>
         {
             new InspectorRow("Population", $"{star.Colonists:N0}"),
-            new InspectorRow("Habitability", $"{habitability:0}%"),
+            new InspectorRow("Habitability", habitabilityText),
             // "built / population-operable-cap" (docs/behavior-specs-5/production-queue.md §3) -
             // a star can physically hold more of either than its current population can actually
             // run (Star.GetOperableMines/Factories), so the built count alone doesn't say whether
@@ -803,6 +937,7 @@ public class InspectorViewModel : Tool
         OrbitingFleets = clientState.EmpireState.OwnedFleets.Values
             .Where(fleet => fleet.InOrbit == star && fleet != star.Starbase)
             .Select(fleet => new OrbitingFleetRowViewModel(fleet.Name, () => selection.Selected = fleet))
+            .Concat(BuildForeignOrbitingFleetRows(star.Position))
             .ToList();
 
         EnvironmentBars = new List<RangeBarViewModel>
@@ -954,7 +1089,6 @@ public class InspectorViewModel : Tool
         WaypointRows = editableRows;
         ApplyWaypointSelectionState();
         NewFleetName = fleet.Name;
-        NewWaypointDestination = DestinationOptions.FirstOrDefault();
         NewWaypointWarp = 6;
         NewWaypointTask = "None";
 
@@ -1009,6 +1143,7 @@ public class InspectorViewModel : Tool
 
         SplitMergeTargets = targets;
         SelectedSplitMergeTarget = targets[0];
+        NewSplitFleetName = fleet.Name;
         SplitMergeStatusMessage = "";
 
         var transferTargets = new List<SplitMergeTargetOption>();
@@ -1130,24 +1265,116 @@ public class InspectorViewModel : Tool
         FleetTransferStatusMessage = "Transfer applied.";
     }
 
-    private void AddWaypoint()
+    /// <summary>
+    /// Resolves a "Merge With Fleet" tap to the actual target Fleet - tapping the fleet directly
+    /// only ever works for one currently in transit: an ORBITING fleet has no map marker of its
+    /// own at all (see StarMapDocumentViewModel's own comment - "an orbiting fleet is implied by
+    /// the star it's sitting on"), which is by far the more common case for a merge (two fleets
+    /// sitting together at a rally point or a home star). So tapping the STAR a fleet is orbiting
+    /// resolves to that fleet too, the same lookup Inspector's own "orbiting fleets" list already
+    /// uses - unambiguous when exactly one other owned fleet (excluding the star's own starbase,
+    /// and the fleet whose orders are being edited) is there; anything else (nothing there, or
+    /// several candidates) is rejected with a specific message rather than guessing.
+    /// </summary>
+    private Fleet? ResolveMergeTarget(Mappable target, out string? rejectionMessage)
     {
-        if (selectedFleet == null || string.IsNullOrEmpty(NewWaypointDestination))
+        rejectionMessage = null;
+
+        if (target is Fleet directFleet)
+        {
+            if (directFleet.Key == selectedFleet!.Key)
+            {
+                rejectionMessage = "Can't merge a fleet with itself.";
+                return null;
+            }
+
+            return directFleet;
+        }
+
+        string? starName = target switch
+        {
+            Star star => star.Name,
+            StarIntel intel => intel.Name,
+            _ => null,
+        };
+
+        if (starName == null)
+        {
+            rejectionMessage = "Merge With Fleet needs a fleet - tap one in transit, or a star with another fleet in orbit.";
+            return null;
+        }
+
+        // Excludes the star's own starbase two ways, not just one: fleet.Type == Starbase is the
+        // correct, current signal for a freshly-created one, but an existing save from before
+        // AllocateStarbase's own Type-stamping fix (see PROJECT-STATUS.md) can still have a
+        // starbase whose Type was never corrected to match - confirmed live, exactly this
+        // mismatch made a starbase count as a phantom second "other fleet" here. Comparing
+        // directly against the owning star's own Starbase reference (when the target is a real,
+        // owned Star - never true for a StarIntel, which has no live object to compare against)
+        // catches that regardless of what Type says.
+        Star? ownedStar = target as Star;
+        List<Fleet> candidates = clientState.EmpireState.OwnedFleets.Values
+            .Where(fleet => fleet.InOrbit != null && fleet.InOrbit.Name == starName
+                && fleet.Key != selectedFleet!.Key
+                && fleet.Type != ItemType.Starbase
+                && !ReferenceEquals(fleet, ownedStar?.Starbase))
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            rejectionMessage = $"No other fleet is in orbit at {starName}.";
+            return null;
+        }
+
+        if (candidates.Count > 1)
+        {
+            rejectionMessage = $"{starName} has {candidates.Count} other fleets in orbit - use the Split/Merge tab (or Navigator) to pick which one.";
+            return null;
+        }
+
+        return candidates[0];
+    }
+
+    /// <summary>
+    /// Builds and inserts/appends the new waypoint once the map tap resolves - "Merge With
+    /// Fleet" needs a real target Fleet (its Key becomes SplitMergeTask.OtherFleetKey; empty
+    /// Left/RightComposition dictionaries are fine, since SplitMergeTask.Perform's actual merge
+    /// path never reads them - those only matter for a split), rejected with a status message
+    /// when ResolveMergeTarget can't find exactly one (see its own comment). Every other task in
+    /// TaskOptions just needs the tapped Mappable's own Position/Destination, same as before.
+    /// </summary>
+    private void AddWaypoint(Mappable target, string destination)
+    {
+        if (selectedFleet == null)
         {
             return;
         }
 
-        if (!clientState.EmpireState.StarReports.TryGetValue(NewWaypointDestination, out StarIntel destinationReport))
+        AddWaypointStatusMessage = "";
+
+        IWaypointTask task;
+        if (NewWaypointTask == "Merge With Fleet")
         {
-            return;
+            Fleet? targetFleet = ResolveMergeTarget(target, out string? rejectionMessage);
+            if (targetFleet == null)
+            {
+                AddWaypointStatusMessage = rejectionMessage ?? "Merge With Fleet needs a fleet as the destination.";
+                return;
+            }
+
+            task = new SplitMergeTask(new Dictionary<long, ShipToken>(), new Dictionary<long, ShipToken>(), targetFleet.Key);
+        }
+        else
+        {
+            task = BuildTask(NewWaypointTask);
         }
 
         var waypoint = new Waypoint
         {
-            Position = destinationReport.Position,
-            Destination = destinationReport.Name,
+            Position = target.Position,
+            Destination = destination,
             WarpFactor = NewWaypointWarp,
-            Task = BuildTask(NewWaypointTask),
+            Task = task,
         };
 
         // "In front of" the selected waypoint, per the user's own spec: the new one takes that
@@ -1411,7 +1638,24 @@ public class InspectorViewModel : Tool
             return;
         }
 
-        if (!SplitMergeRows.Any(row => row.OtherQuantity > 0))
+        bool anythingToMove = SplitMergeRows.Any(row => row.OtherQuantity > 0);
+
+        // Renaming THIS fleet (not naming a new split-off one - see SplitMergeNameFieldLabel)
+        // doesn't need a SplitMergeTask at all, so it's the one case allowed through even when
+        // nothing's being moved - the simplest way to just rename a fleet from this tab instead
+        // of switching to Orders' own rename box.
+        bool wantsSourceRename = SelectedSplitMergeTarget?.IsNewFleet != true
+            && !string.IsNullOrWhiteSpace(NewSplitFleetName)
+            && NewSplitFleetName != selectedFleet.Name;
+
+        if (!anythingToMove && wantsSourceRename)
+        {
+            ApplyCommand(new RenameFleetCommand(selectedFleet, NewSplitFleetName));
+            SplitMergeStatusMessage = "Renamed.";
+            return;
+        }
+
+        if (!anythingToMove)
         {
             SplitMergeStatusMessage = "Nothing to move - adjust at least one row.";
             return;
@@ -1465,6 +1709,34 @@ public class InspectorViewModel : Tool
             }
 
             empire.TemporaryFleets.Clear();
+
+            // Apply the suggested/edited split-off name now that the new fleet is actually in
+            // OwnedFleets (RenameFleetCommand.IsValid requires that) - left as the engine's own
+            // "New Fleet #N" default if the field was cleared entirely.
+            if (newlyCreatedFleet != null && !string.IsNullOrWhiteSpace(NewSplitFleetName) && NewSplitFleetName != newlyCreatedFleet.Name)
+            {
+                var renameCommand = new RenameFleetCommand(newlyCreatedFleet, NewSplitFleetName);
+                clientState.Commands.Push(renameCommand);
+                if (renameCommand.IsValid(clientState.EmpireState))
+                {
+                    renameCommand.ApplyToState(clientState.EmpireState);
+                }
+            }
+            // Same idea, but for the SOURCE fleet - only when this wasn't a split into "New
+            // Fleet" (that case already means this field named the new fleet instead - see
+            // SplitMergeNameFieldLabel) and the source actually still exists afterward (a partial
+            // merge/split that left some ships behind - a full merge/split empties it, and
+            // RenameFleetCommand.IsValid would reject a fleet no longer in OwnedFleets anyway).
+            else if (newlyCreatedFleet == null && selectedFleet.Composition.Count > 0
+                && !string.IsNullOrWhiteSpace(NewSplitFleetName) && NewSplitFleetName != selectedFleet.Name)
+            {
+                var renameCommand = new RenameFleetCommand(selectedFleet, NewSplitFleetName);
+                clientState.Commands.Push(renameCommand);
+                if (renameCommand.IsValid(clientState.EmpireState))
+                {
+                    renameCommand.ApplyToState(clientState.EmpireState);
+                }
+            }
         }
 
         selection.NotifyMutated();

@@ -119,14 +119,22 @@ namespace Nova.Server
             {
                 if (star.Starbase != null)
                 {
-                    // Old starbases are not scrapped. Instead, the reduced
-                    // upgrade cost should have already been factored when first
-                    // queuing the "upgrade", so the old SB is just
-                    // discarded and replaced at this point. -Aeglos 2 Aug 11
+                    // Old starbases are not scrapped (no scrap-value refund) - the reduced
+                    // upgrade cost should have already been factored when first queuing the
+                    // "upgrade", so the old SB is just discarded and replaced at this point.
+                    // -Aeglos 2 Aug 11
+                    //
+                    // "Discarded" has to mean actually removed from the empire's own
+                    // bookkeeping (OwnedFleets/FleetReports), not just detached from
+                    // star.Starbase - left in OwnedFleets with nothing pointing back to it, the
+                    // old fleet kept showing up everywhere "the fleets in orbit at this star"
+                    // are listed (e.g. the mobile Map's switcher), since those only ever
+                    // exclude whichever fleet star.Starbase CURRENTLY points to, never a stale
+                    // one that used to hold that role.
+                    empire.RemoveFleet(star.Starbase);
                     star.Starbase = null;
-                    // waypointTasks.Scrap(star.Starbase, star, false);
                 }
-                
+
                 star.Starbase = fleet;
                 fleet.Type = ItemType.Starbase;
                 fleet.Name = star.Name + " " + fleet.Type;

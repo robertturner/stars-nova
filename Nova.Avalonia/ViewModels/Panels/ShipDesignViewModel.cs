@@ -35,6 +35,11 @@ public class ShipDesignViewModel : Tool
 
     public IReadOnlyList<HullOptionViewModel> HullOptions { get; }
 
+    /// <summary>Press-and-hold on a "My Designs" row shows its full component layout here - same
+    /// shared HullViewerView/ViewModel already used from the Star Map, Navigator, and Inspector
+    /// (each panel owns its own instance rather than a singleton, matching those).</summary>
+    public HullViewerViewModel HullViewer { get; } = new HullViewerViewModel();
+
     // Pan/zoom for the hull slot grid - same pattern as StarMapDocumentViewModel's own Zoom
     // (ScrollViewer for panning, a bound ScaleTransform for zoom, +/- buttons since a touchscreen
     // never raises a mouse-wheel event at all - see that class's own comment on why the buttons

@@ -102,6 +102,14 @@ public class MobileMainViewModel : GameShellViewModelBase
     /// diagnosis.</summary>
     public IRelayCommand ShareErrorLogCommand { get; }
 
+    /// <summary>Fires the platform's native Share sheet with the currently-open game's own .intel
+    /// file (this empire's full saved state, plain XML) - e.g. for diagnosing a save that's
+    /// showing broken behavior. Android's scoped storage otherwise makes this file awkward to
+    /// reach even for the player who owns it (no plain file-browser access, and `adb run-as`
+    /// needs a debuggable build a real release APK isn't), so this is the only practical way to
+    /// get a copy off the device at all.</summary>
+    public IRelayCommand ShareGameSaveCommand { get; }
+
     private bool isDarkMode;
 
     /// <summary>Overrides the app's own default of following the system theme (App.axaml's
@@ -177,6 +185,26 @@ public class MobileMainViewModel : GameShellViewModelBase
             if (!PlatformHooks.ShareErrorLog())
             {
                 StatusMessage = "No errors have been logged yet.";
+            }
+        });
+        ShareGameSaveCommand = new RelayCommand(() =>
+        {
+            IsMenuOpen = false;
+
+            string text;
+            try
+            {
+                text = GameSession.BuildShareableSaveText(clientState.GameFolder, clientState.EmpireState.Race.Name);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Couldn't read the save file: {ex.Message}";
+                return;
+            }
+
+            if (!PlatformHooks.ShareText(text))
+            {
+                StatusMessage = "Sharing isn't available on this platform.";
             }
         });
         RequestCloseGameCommand = new RelayCommand(() => IsConfirmingCloseGame = true);

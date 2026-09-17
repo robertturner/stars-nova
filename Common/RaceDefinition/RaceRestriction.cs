@@ -210,7 +210,9 @@ namespace Nova.Common
                 }
                 catch (Exception e)
                 {
-                    Report.FatalError(e.Message + "\n Details: \n" + e.ToString());
+                    // Non-fatal - see Waypoint.cs's own comment for the live-reproduced crash
+                    // this "one bad field exits the whole app" pattern caused.
+                    Report.Error(e.Message + "\n Details: \n" + e.ToString());
                 }
                 subnode = subnode.NextSibling;
             }

@@ -208,6 +208,8 @@ namespace Nova.Common
             XmlNode subNode;
             while (mainNode != null)
             {
+                try
+                {
                 switch (mainNode.Name.ToLower())
                 {
                     case "id":
@@ -334,6 +336,18 @@ namespace Nova.Common
                         BattleReports.Add(battle);
                         break;
                 }
+                }
+                catch (Exception e)
+                {
+                    // Non-fatal, matching every sibling XML loader in this codebase (see
+                    // Waypoint.cs's own comment) - this switch previously had no try/catch at
+                    // all, so a single malformed field here (or in any nested Star/Fleet/
+                    // FleetIntel/etc. this constructs) threw straight out of this constructor
+                    // uncaught, which is worse than the "one bad field exits the whole app"
+                    // pattern fixed elsewhere: an empire whose data has one bad field couldn't
+                    // even be skipped by a caller, since there is no outer field to skip.
+                    Report.Error(e.Message + "\n Details: \n" + e);
+                }
 
                 // If no orders have ever been turned in then ensure battle plans contain at least the default
                 if (BattlePlans.Count == 0)
@@ -343,8 +357,21 @@ namespace Nova.Common
 
                 mainNode = mainNode.NextSibling;
             }
-            
-            LinkReferences();
+
+            try
+            {
+                LinkReferences();
+            }
+            catch (Exception e)
+            {
+                // Non-fatal, same reasoning as the loop above - this resolves cross-references
+                // (fleet.InOrbit, token.Design, star.Starbase, ...) via several unguarded
+                // dictionary indexers; one legitimately mismatched reference (e.g. a design key
+                // an empire doesn't actually have) would otherwise throw straight out of this
+                // constructor uncaught. The XML fields already loaded above stay intact either
+                // way - only the cross-linking pass is what's cut short.
+                Report.Error(e.Message + "\n Details: \n" + e);
+            }
         }
 
         /// <summary>
@@ -714,6 +741,8 @@ namespace Nova.Common
                 }
             }
 
+            RemoveOrphanedStarbaseFleets();
+
             // Same fix-up, but for this empire's own StarReports entries - without it, a report's
             // Starbase.Composition stays permanently empty after a normal save/load round trip
             // (StarIntel's XML constructor only recovers the placeholder Fleet(long) stub - see
@@ -729,6 +758,59 @@ namespace Nova.Common
                     report.Starbase = OwnedFleets[report.Starbase.Key];
                 }
             }
+        }
+
+        /// <summary>
+        /// Self-heals a real, previously-shipped bug (Manufacture.CreateShips's starbase-
+        /// replacement branch): building a REPLACEMENT starbase detached the OLD one from
+        /// star.Starbase without ever removing it from OwnedFleets/FleetReports, leaving it to
+        /// linger there forever - showing up as a stray extra "fleet in orbit" at that star in
+        /// every UI fleet listing (the Inspector's own Overview correctly showed the NEW one as
+        /// the star's starbase throughout). Fixing the bug going forward doesn't repair a save
+        /// that already has the corruption baked in, so this runs on every load instead of
+        /// requiring a one-off fix per affected save: any owned, starbase-SHAPED fleet sitting in
+        /// orbit at a star this empire owns, but which isn't that star's own (already-resolved)
+        /// Starbase reference, is exactly that leftover - remove it. A star can only ever have
+        /// one real starbase, so anything else matching this shape is corruption, never a
+        /// legitimate second starbase.
+        ///
+        /// "Starbase-shaped" is judged from the fleet's own COMPOSITION (its design's Type), not
+        /// the fleet's own Type field - confirmed from a real affected save that a game's very
+        /// first, game-creation-time starbase (StarMapInitialiser.AllocateStarbase, a second,
+        /// separate bug now also fixed) was never actually stamped Type=Starbase on the fleet
+        /// itself in the first place, only correctly wired via star.Starbase - so checking the
+        /// fleet's own Type here would have missed it entirely, exactly as it did live.
+        /// </summary>
+        private void RemoveOrphanedStarbaseFleets()
+        {
+            List<Fleet> orphaned = OwnedFleets.Values
+                .Where(fleet => IsStarbaseShaped(fleet)
+                    && fleet.InOrbit is Star star
+                    && star.Owner == Id
+                    && !ReferenceEquals(fleet, star.Starbase))
+                .ToList();
+
+            foreach (Fleet fleet in orphaned)
+            {
+                RemoveFleet(fleet);
+            }
+        }
+
+        /// <summary>True if this fleet is built from a Starbase-type design - either because its
+        /// own Type field says so (the normal, Manufacture.CreateShips-built case), or because
+        /// its (immobile, single-design) composition's design is one, covering the
+        /// StarMapInitialiser-built starting-starbase case where the fleet's own Type was never
+        /// actually set at all. Checking the design rather than trusting the fleet's own Type is
+        /// what makes this reliable regardless of which path created the fleet.</summary>
+        private static bool IsStarbaseShaped(Fleet fleet)
+        {
+            if (fleet.Type == ItemType.Starbase)
+            {
+                return true;
+            }
+
+            ShipToken token = fleet.Composition.Values.FirstOrDefault();
+            return token?.Design.Type == ItemType.Starbase;
         }
     }
 }

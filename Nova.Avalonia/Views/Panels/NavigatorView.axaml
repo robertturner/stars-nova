@@ -27,15 +27,39 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="panels:NavigatorFleetItemViewModel">
                             <Grid ColumnDefinitions="Auto,*">
-                                <!-- Quick hull-type indicator - the fleet's first ship design's
-                                     own icon. Press-and-hold to see its full component layout
-                                     via the shared HullViewer, without disturbing the ListBox's
-                                     own click-to-select behavior on the row. -->
-                                <Border Grid.Column="0" Width="28" Height="28" Margin="0,0,8,0"
-                                        input:InputElement.IsHoldingEnabled="True" Holding="OnFleetIconHolding">
-                                    <Image Source="{Binding Icon}" IsVisible="{Binding Icon, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
-                                           Stretch="Uniform" />
-                                </Border>
+                                <!-- One icon per distinct ship design in this fleet - press-and-
+                                     hold any one of them to see ITS OWN full component layout via
+                                     the shared HullViewer, without disturbing the ListBox's own
+                                     click-to-select behavior on the row. -->
+                                <ItemsControl Grid.Column="0" ItemsSource="{Binding ShipTypes}" Margin="0,0,8,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="4" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="panels:NavigatorFleetShipTypeViewModel">
+                                            <!-- Border (the hold target) is deliberately bigger than
+                                                 the 28x28 icon it centers, so a slightly-off touch
+                                                 still holds the right ship type - the StackPanel
+                                                 above spaces items by their own bounds, so growing
+                                                 this doesn't cause adjacent icons to overlap.
+                                                 Background="Transparent" is required, not
+                                                 decorative - a Border's own empty margin (outside
+                                                 whatever its child actually covers) isn't hit-test
+                                                 visible at all without one, confirmed live: without
+                                                 it, holding anywhere in the widened margin around
+                                                 the icon did nothing, only the icon's own pixels
+                                                 responded, defeating the point of widening this. -->
+                                            <Border Width="40" Height="40" Background="Transparent"
+                                                    input:InputElement.IsHoldingEnabled="True" Holding="OnFleetShipTypeHolding">
+                                                <Image Source="{Binding Icon}" IsVisible="{Binding Icon, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                                                       Width="28" Height="28" Stretch="Uniform"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                                 <StackPanel Grid.Column="1">
                                     <TextBlock Text="{Binding Name}" FontWeight="Bold" />
                                     <TextBlock Text="{Binding Status}" FontSize="11" Opacity="0.7" />

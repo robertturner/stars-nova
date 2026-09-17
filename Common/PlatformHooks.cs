@@ -73,6 +73,33 @@ namespace Nova.Common
         public static Func<bool> ShareErrorLog = () => false;
 
         /// <summary>
+        /// Same idea as <see cref="ShareErrorLog"/>, but for the separate crash log a genuinely
+        /// unhandled exception writes (nova-avalonia-crash.log on Android, nova-avalonia-crash.log
+        /// next to the exe on desktop) - unlike a Report.Error/Report.FatalError call, this covers
+        /// a crash the app never recovered from at all. Deliberately exposed from the startup
+        /// screen (see OpenGameViewModel.ShareCrashLogCommand), not just the in-game burger menu
+        /// ShareErrorLog lives in - a crash on "Continue"/"Open" itself means the in-game menu is
+        /// never reached, and the startup screen is the one place still guaranteed reachable
+        /// right after reproducing it. Returns true if there was anything to share.
+        /// </summary>
+        public static Func<bool> ShareCrashLog = () => false;
+
+        /// <summary>
+        /// Offers arbitrary text to the user for sharing elsewhere - specifically, the mobile
+        /// burger menu's "Share Save File" entry, which reads the currently-open game's own
+        /// .intel file (plain XML, containing this empire's full state - fleets, stars, starbase
+        /// references, everything) and fires this so it can be sent on (e.g. to support/
+        /// diagnosis) without needing file-system access to the app's private storage, which
+        /// Android's scoped storage otherwise makes awkward to reach even for the user who owns
+        /// the data. Takes the text itself (not a path) since only the platform host knows how to
+        /// actually invoke a share sheet, while reading the file itself is ordinary, portable
+        /// I/O the caller already has to do anyway (to know if there's anything to share at all).
+        /// Returns true if the share sheet was actually offered, false if this host hasn't wired
+        /// one (the default here does nothing).
+        /// </summary>
+        public static Func<string, bool> ShareText = _ => false;
+
+        /// <summary>
         /// Loads a previously saved UI theme preference ("Dark" or "Light"), or null if the user
         /// has never chosen one - in which case the host's own default (following the system
         /// theme) should be left alone. Purely a display preference with no effect on game state,

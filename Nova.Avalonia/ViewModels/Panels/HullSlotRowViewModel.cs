@@ -30,6 +30,15 @@ public class HullSlotRowViewModel : ViewModelBase
 
     public int Maximum => Module.ComponentMaximum;
 
+    /// <summary>An Engine slot's mount count isn't a player choice the way a Weapon/Armor slot's
+    /// fill-count is (fewer weapons than a hull can carry is a legitimate cost/mass tradeoff; a
+    /// multi-engine hull running on fewer engines than it has mounts for isn't a real reduced-
+    /// power option, just a broken design) - so once an engine design is picked here, Quantity is
+    /// locked at this slot's own Maximum rather than freely adjustable down. Matches the
+    /// established `ComponentType == "Engine"` check elsewhere (StarMapInitialiser,
+    /// DefaultAIPlanner) rather than inventing a new way to identify an engine slot.</summary>
+    public bool HasFixedQuantity => Module.ComponentType == "Engine";
+
     /// <summary>Position in the hull's 5-wide slot grid - see components.xml's per-hull
     /// CellNumber (0-24, row-major) for each Module, exactly mirroring HullGrid's own
     /// grid0..grid24 WinForms panel layout.</summary>
@@ -66,7 +75,15 @@ public class HullSlotRowViewModel : ViewModelBase
         get => quantity;
         set
         {
-            int clamped = Math.Clamp(value, 0, Module.ComponentMaximum);
+            // A filled, fixed-quantity (Engine) slot ignores whatever was actually requested and
+            // stays pinned at Maximum - reachable via TryPlace's own drag-drop math as much as the
+            // Decrement button below, so this is enforced here rather than only in the command's
+            // CanExecute. IsFilled is checked (not just HasFixedQuantity) so Clear() can still
+            // legitimately bring an engine slot down to empty (0) - Clear() nulls
+            // Module.AllocatedComponent before setting Quantity, so IsFilled is already false by
+            // the time this runs for that path.
+            int requested = HasFixedQuantity && IsFilled ? Module.ComponentMaximum : value;
+            int clamped = Math.Clamp(requested, 0, Module.ComponentMaximum);
             if (SetProperty(ref quantity, clamped))
             {
                 Module.ComponentCount = clamped;
@@ -108,7 +125,7 @@ public class HullSlotRowViewModel : ViewModelBase
         this.onChanged = onChanged;
 
         IncrementCommand = new RelayCommand(() => Quantity++, () => IsFilled && Quantity < Maximum);
-        DecrementCommand = new RelayCommand(() => Quantity--, () => IsFilled && Quantity > 0);
+        DecrementCommand = new RelayCommand(() => Quantity--, () => IsFilled && Quantity > 0 && !HasFixedQuantity);
     }
 
     /// <summary>

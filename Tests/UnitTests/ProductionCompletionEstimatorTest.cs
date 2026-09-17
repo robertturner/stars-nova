@@ -21,6 +21,8 @@
 
 namespace Nova.Tests.UnitTests
 {
+    using System.Collections.Generic;
+
     using NUnit.Framework;
 
     using Nova.Common;
@@ -124,6 +126,43 @@ namespace Nova.Tests.UnitTests
 
             Assert.That(estimate.Color, Is.Not.EqualTo(ProductionQueueColor.Green));
             Assert.That(estimate.YearsToFinish, Is.GreaterThan(1));
+        }
+
+        [Test]
+        public void EstimateAll_MatchesCallingEstimatePerIndex()
+        {
+            // A real, live-reproduced ANR: ProductionViewModel.RebuildQueueRows used to call
+            // Estimate() once per row, each running its own independent 100-year simulation -
+            // reordering one item in a several-dozen-line queue meant several dozen redundant
+            // full resimulations synchronously on the UI thread, long enough to trip Android's
+            // ANR watchdog. EstimateAll replaces that with one shared simulation pass; this pins
+            // its contract against the original per-index Estimate() so the optimization can
+            // never silently change what gets shown for any row.
+            Race race = MakeDefaultRace();
+            // No Germanium on hand and no concentration to mine it from - the second, manual
+            // order below can never be afforded (Red), same as
+            // Estimate_ManualOrderPermanentlyBlockedOnAMineralThatWillNeverArrive_IsRed. The
+            // first order's "already satisfied" check never touches Germanium at all, so it stays
+            // unaffected - a satisfied auto-build (Gray) and a permanently-blocked manual order
+            // (Red) sitting in the same queue, matching the user's own report: a stardock moved
+            // to the front of a queue full of factories, permanently blocked on minerals it could
+            // never mine.
+            Star star = new Star { Colonists = 100000, ThisRace = race, Factories = 10 };
+            star.ManufacturingQueue.Queue.Add(new ProductionOrder(10, new FactoryProductionUnit(race), isAutoBuild: true));
+            star.ManufacturingQueue.Queue.Add(new ProductionOrder(1, new FactoryProductionUnit(race), isAutoBuild: false));
+
+            IReadOnlyList<ProductionCompletionEstimate> all = ProductionCompletionEstimator.EstimateAll(star, race, researchBudget: 0);
+
+            Assert.That(all.Count, Is.EqualTo(2));
+            Assert.That(all[0].Color, Is.EqualTo(ProductionQueueColor.Gray));
+            Assert.That(all[1].Color, Is.EqualTo(ProductionQueueColor.Red));
+            for (int i = 0; i < all.Count; i++)
+            {
+                ProductionCompletionEstimate individual = ProductionCompletionEstimator.Estimate(star, i, race, researchBudget: 0);
+                Assert.That(all[i].Color, Is.EqualTo(individual.Color), $"index {i}: color mismatch");
+                Assert.That(all[i].YearsToFinish, Is.EqualTo(individual.YearsToFinish), $"index {i}: years-to-finish mismatch");
+                Assert.That(all[i].PercentComplete, Is.EqualTo(individual.PercentComplete), $"index {i}: percent-complete mismatch");
+            }
         }
 
         [Test]

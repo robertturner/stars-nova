@@ -103,7 +103,11 @@ namespace Nova.Tests.UnitTests
         [Test]
         public void calculateAdvantagePointsForStandardJoat()
         {
-            Assert.IsTrue(Math.Abs(result1 - 25) <= 1, "was: " + result1 + " expected: 25");
+            // Expected value is 29, not 25 - see commit ecfb1cd ("Bug: Race Designer Costs -
+            // issue #3296768 ... standard joat has now 29 points"), which fixed
+            // RaceAdvantagePointCalculator itself to match the real game's known value from that
+            // SourceForge report, but never updated this test's hardcoded expectation to match.
+            Assert.IsTrue(Math.Abs(result1 - 29) <= 1, "was: " + result1 + " expected: 29");
         }
 
         [Test]

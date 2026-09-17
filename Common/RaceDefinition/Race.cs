@@ -219,8 +219,46 @@ namespace Nova.Common
             star.Gravity = report.Gravity;
             star.Radiation = report.Radiation;
             star.Temperature = report.Temperature;
-            
+
             return HabValue(star);
+        }
+
+        /// <summary>
+        /// This race's Habitability for <paramref name="star"/> if it were terraformed to the
+        /// maximum extent this race can reach - each of Gravity/Temperature/Radiation nudged
+        /// toward this race's own optimum level, up to this race's total terraform allowance
+        /// (15%, or 30% with Total Terraforming) measured from the star's ORIGINAL (pre-terraform)
+        /// value, mirroring TerraformProductionUnit's own per-1%-step algorithm without actually
+        /// stepping through it turn by turn. Same -1..+1 normalized range as <see cref="HabValue"/>.
+        /// Only meaningful for a star this race actually owns (terraforming anything else isn't
+        /// possible) - callers are expected to gate on that themselves, same as
+        /// <see cref="HabValue"/> itself doesn't check ownership.
+        /// </summary>
+        public double HabitalValueAfterTerraform(Star star)
+        {
+            int maxPercent = HasTrait("TT") ? 30 : 15;
+
+            Star projected = new Star
+            {
+                Gravity = TerraformedAxis(star.Gravity, star.OriginalGravity, GravityTolerance.OptimumLevel, maxPercent),
+                Temperature = TerraformedAxis(star.Temperature, star.OriginalTemperature, TemperatureTolerance.OptimumLevel, maxPercent),
+                Radiation = TerraformedAxis(star.Radiation, star.OriginalRadiation, RadiationTolerance.OptimumLevel, maxPercent),
+            };
+
+            return HabValue(projected);
+        }
+
+        /// <summary>One environment axis's best reachable value: <paramref name="current"/> moved
+        /// toward <paramref name="optimum"/> by whatever terraform allowance (out of
+        /// <paramref name="maxPercent"/> total) hasn't already been used getting from
+        /// <paramref name="original"/> to <paramref name="current"/>.</summary>
+        private static int TerraformedAxis(int current, int original, int optimum, int maxPercent)
+        {
+            int alreadyUsed = Math.Abs(current - original);
+            int remaining = Math.Max(0, maxPercent - alreadyUsed);
+            int distanceToOptimum = Math.Abs(optimum - current);
+            int step = Math.Min(remaining, distanceToOptimum);
+            return current + (Math.Sign(optimum - current) * step);
         }
 
         public virtual int GetAdvantagePoints()
@@ -557,7 +595,9 @@ namespace Nova.Common
                 }
                 catch (Exception e)
                 {
-                    Report.FatalError(e.Message + "\n Details: \n" + e);
+                    // Non-fatal - see Waypoint.cs's own comment for the live-reproduced crash
+                    // this "one bad field exits the whole app" pattern caused.
+                    Report.Error(e.Message + "\n Details: \n" + e);
                 }
 
                 xmlnode = xmlnode.NextSibling;

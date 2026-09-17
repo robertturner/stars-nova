@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             xmlns:views="using:Nova.Avalonia.Views.Panels"
              xmlns:input="using:Avalonia.Input"
              xmlns:conv="using:Avalonia.Data.Converters"
              x:Class="Nova.Avalonia.Views.Panels.ShipDesignView"
@@ -135,26 +136,44 @@
         </Border>
 
         <!-- Everything else, in its own independent scroll - not nested inside/around the hull
-             viewport's own ScrollViewer above (see this Grid's own comment on why that matters). -->
+             viewport's own ScrollViewer above (see this Grid's own comment on why that matters).
+             This is the ScrollViewer where the scroll-fling/first-tap-does-nothing issue was
+             first found and confirmed live - see App.axaml's global ScrollViewer style
+             (IsScrollInertiaEnabled="False"), which now fixes this everywhere, not just here. -->
         <ScrollViewer Grid.Row="2">
         <StackPanel Spacing="4">
             <TextBlock Text="My Designs" FontWeight="Bold" Opacity="0.8" />
-            <ItemsControl ItemsSource="{Binding OwnedDesigns}">
-                <ItemsControl.ItemTemplate>
+            <!-- A ListBox, not a plain ItemsControl - matches the Navigator's own Fleets list,
+                 a confirmed-working shape. SelectedItem is deliberately left unbound, since this
+                 list has no selection concept of its own, only Delete/hold-to-inspect. -->
+            <ListBox ItemsSource="{Binding OwnedDesigns}">
+                <ListBox.ItemTemplate>
                     <DataTemplate x:DataType="panels:OwnedDesignRowViewModel">
-                        <Border BorderBrush="Gray" BorderThickness="0,0,0,1" Padding="0,4" Margin="0,2">
-                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Name}" FontWeight="Bold" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Content="Delete" Command="{Binding DeleteCommand}" VerticalAlignment="Center" />
-                                <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Spacing="12">
-                                    <TextBlock Text="{Binding CostSummary}" Opacity="0.7" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding QuantityInUse, StringFormat='{}{0} in use'}" Opacity="0.7" />
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                            <!-- Press-and-hold anywhere on the name/cost/usage area to see this
+                                 design's full component layout via the shared HullViewer -
+                                 kept separate from the Delete button (its own column) so the
+                                 hold gesture never competes with that button's own tap.
+                                 Background="Transparent" is required, not decorative - a Border's
+                                 own empty margin (outside whatever its child actually covers,
+                                 e.g. below/right of the text lines here) isn't hit-test visible
+                                 without one, confirmed live: holding on the text itself worked,
+                                 holding on the surrounding blank space in this same Border didn't. -->
+                            <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Background="Transparent"
+                                    input:InputElement.IsHoldingEnabled="True" Holding="OnOwnedDesignHolding">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <TextBlock Text="{Binding CostSummary}" Opacity="0.7" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding QuantityInUse, StringFormat='{}{0} in use'}" Opacity="0.7" />
+                                    </StackPanel>
                                 </StackPanel>
-                            </Grid>
-                        </Border>
+                            </Border>
+                            <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Content="Delete" Command="{Binding DeleteCommand}" VerticalAlignment="Center" />
+                        </Grid>
                     </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                </ListBox.ItemTemplate>
+            </ListBox>
 
             <TextBlock Text="Create Design" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
 
@@ -258,5 +277,7 @@
                 </StackPanel>
             </Border>
         </Border>
+
+        <views:HullViewerView Grid.Row="0" Grid.RowSpan="3" DataContext="{Binding HullViewer}" />
     </Grid>
 </UserControl>

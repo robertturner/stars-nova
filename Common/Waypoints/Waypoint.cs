@@ -106,7 +106,7 @@ namespace Nova.Common.Waypoints
                         case "position":
                             Position = new NovaPoint(mainNode);
                             break;
-                            
+
                         default:
                             LoadTask(mainNode.Name.ToString(), mainNode);
                             break;
@@ -114,11 +114,26 @@ namespace Nova.Common.Waypoints
                 }
                 catch (Exception e)
                 {
-                    Report.FatalError(e.Message + "\n Details: \n" + e.ToString());
+                    // Non-fatal - confirmed live as a real, repeated crash: Report.FatalError
+                    // calls Environment.Exit, so one malformed field in one waypoint (e.g. an
+                    // empty <Destination/> with no text child, from an .orders/.cstate write
+                    // that was itself interrupted by an earlier crash) killed the whole app on
+                    // every subsequent load, forever - a single bad field is never worth losing
+                    // the entire game session over. Skip just this field and keep going, matching
+                    // this file's own EmpireData/FleetIntel-style tolerance for a save that's
+                    // slightly damaged in one place.
+                    Report.Error(e.Message + "\n Details: \n" + e.ToString());
                 }
 
                 mainNode = mainNode.NextSibling;
             }
+
+            // The parameterless constructor defaults this to NoTask() before anything runs;
+            // this XML constructor only ever sets it via LoadTask, so if every task-shaped child
+            // node failed to load (or none was present at all - also possible on a damaged save),
+            // Task would otherwise stay null and crash the many callers that assume every
+            // Waypoint has one (Perform, Name, ToXml, ...).
+            Task ??= new NoTask();
         }
 
         public IWaypointTask LoadTask(string taskName, XmlNode node)

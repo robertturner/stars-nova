@@ -267,18 +267,23 @@ public class ProductionViewModel : Tool
         bool canReuse = queue.Count == count && queue is List<ProductionItemViewModel>;
         var rows = canReuse ? (List<ProductionItemViewModel>)queue : new List<ProductionItemViewModel>(count);
 
+        // Every row's own estimate depends on everything ahead of it in the queue too (a blocked
+        // item stops all funding downstream - docs/behavior-specs-5/production-queue.md §8), so
+        // this is recomputed for the whole queue on every rebuild rather than cached per-row -
+        // but as ONE shared 100-year simulation covering every row at once (EstimateAll), not one
+        // independent simulation per row. The per-row form used to be called here in a loop -
+        // confirmed live as a real ANR: reordering one item in a several-dozen-line queue meant
+        // several dozen redundant full-star-clone-and-100-year-resimulate passes synchronously on
+        // the UI thread, long enough to trip Android's 10-second "not responding" watchdog.
+        IReadOnlyList<ProductionCompletionEstimate> estimates = ProductionCompletionEstimator.EstimateAll(star, race, researchBudget);
+
         for (int i = 0; i < count; i++)
         {
             int index = i; // captured per-row, not the loop variable
             ProductionOrder order = star.ManufacturingQueue.Queue[i];
             bool canMoveUp = index >= 1;
             bool canMoveDown = index < count - 1;
-
-            // Every row's own estimate depends on everything ahead of it in the queue too (a
-            // blocked item stops all funding downstream - docs/behavior-specs-5/
-            // production-queue.md §8), so this is recomputed for the whole queue on every
-            // rebuild rather than cached per-row.
-            ProductionCompletionEstimate estimate = ProductionCompletionEstimator.Estimate(star, index, race, researchBudget);
+            ProductionCompletionEstimate estimate = estimates[index];
 
             if (canReuse)
             {

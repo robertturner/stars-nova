@@ -47,8 +47,16 @@
                  IsConfirmingCloseGame is armed - see MobileMainViewModel's own comment on why
                  Close Game needs a confirm step at all (unlike every other row here, it can
                  discard queued-but-unsubmitted orders). Border (Decorator) only allows a single
-                 child, hence the wrapping Grid - the two StackPanels below are siblings within it,
-                 not directly inside the Border. -->
+                 child, hence the wrapping ScrollViewer/Grid - the two StackPanels below are
+                 siblings within the Grid, not directly inside the Border.
+                 MaxHeight caps this at a generous-but-bounded size and the ScrollViewer makes
+                 whatever doesn't fit reachable by scrolling, rather than silently running off the
+                 bottom of the screen uncscrollable - confirmed live as a real bug once enough
+                 entries piled up here (Share Save File/Close Game, the last two rows, ended up
+                 partially or fully below the visible area with no way to reach them at all on a
+                 short screen; this Grid.Row is "Auto" in the outer layout, which grows to fit all
+                 content instead of clipping it, so nothing here was scrollable before this). -->
+            <ScrollViewer MaxHeight="420">
             <Grid>
             <StackPanel Spacing="0" IsVisible="{Binding !IsConfirmingCloseGame}">
                 <ItemsControl ItemsSource="{Binding MenuEntries}">
@@ -67,6 +75,9 @@
                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
                 <Button Classes="menuEntry" Content="Share Error Log" Command="{Binding ShareErrorLogCommand}"
                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+                <Button Classes="menuEntry" Content="Share Save File" Command="{Binding ShareGameSaveCommand}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        ToolTip.Tip="Share this game's .intel save file - useful for diagnosing a save that's behaving unexpectedly" />
                 <Button Classes="menuEntry" Content="Close Game" Command="{Binding RequestCloseGameCommand}"
                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
             </StackPanel>
@@ -79,6 +90,7 @@
                 </Grid>
             </StackPanel>
             </Grid>
+            </ScrollViewer>
         </Border>
 
         <Grid Grid.Row="2">

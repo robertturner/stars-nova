@@ -110,11 +110,8 @@ public class MapSelectionSwitcherViewModel : ViewModelBase
             _ => null,
         };
 
-        if (!ReferenceEquals(newAnchor, anchorStar))
-        {
-            anchorStar = newAnchor;
-            RebuildOptions();
-        }
+        anchorStar = newAnchor;
+        RebuildOptions();
 
         // Sync which entry reads as "selected" without going through the property setter above -
         // that setter's job is to PUSH a user pick back into SelectionService; this is the
@@ -126,10 +123,35 @@ public class MapSelectionSwitcherViewModel : ViewModelBase
 
     private void RebuildOptions()
     {
+        List<MapSelectionSwitcherOptionViewModel> newOptions = BuildOptions();
+
+        // Only actually reassign (and so rebind/flicker the ComboBox) when the options genuinely
+        // changed - both WHICH objects are listed and what each one is currently labeled.
+        // Without this check, this would need to run unconditionally on every Refresh() - e.g.
+        // merely switching selection between the star and one of its own already-listed fleets
+        // fires this same Refresh() but shouldn't visibly rebuild the list. It DOES need to
+        // actually run every time (not just when the anchor reference changes, as before) - an
+        // in-place mutation that leaves the anchor unchanged but changes who's in orbit (e.g. a
+        // fleet Split creating a new fleet at the same star) previously left Options stale until
+        // the user navigated away and back, since that was the only way to force the anchor
+        // reference itself to change. Comparing Name alongside Selectable catches the same shape
+        // of staleness for a rename (Split/Merge's own "Rename this fleet", or Orders' own rename
+        // box) - the object stays the same, only its label changes, which a Selectable-only
+        // comparison would never notice.
+        bool unchanged = newOptions.Count == options.Count
+            && newOptions.Zip(options, (a, b) => ReferenceEquals(a.Selectable, b.Selectable) && a.Name == b.Name).All(same => same);
+
+        if (!unchanged)
+        {
+            Options = newOptions;
+        }
+    }
+
+    private List<MapSelectionSwitcherOptionViewModel> BuildOptions()
+    {
         if (anchorStar == null)
         {
-            Options = Array.Empty<MapSelectionSwitcherOptionViewModel>();
-            return;
+            return new List<MapSelectionSwitcherOptionViewModel>();
         }
 
         var list = new List<MapSelectionSwitcherOptionViewModel>
@@ -155,6 +177,6 @@ public class MapSelectionSwitcherViewModel : ViewModelBase
             }
         }
 
-        Options = list;
+        return list;
     }
 }

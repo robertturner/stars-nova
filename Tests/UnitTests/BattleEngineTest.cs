@@ -126,9 +126,12 @@ namespace Nova.Tests.UnitTests
 
             cruiser.Blueprint = shipHull;
             cruiser.Name = "Cruiser";
+            cruiser.Update(); // ShipDesign.Cost reads Summary, which only Update() populates -
+                               // see the same pattern/comment in ColonizerCommitmentAdvisorTest.
 
             frigate.Blueprint = shipHull;
             frigate.Name = "Frigate";
+            frigate.Update();
 
             token1 = new ShipToken(cruiser, 1);
             token2 = new ShipToken(frigate, 1);

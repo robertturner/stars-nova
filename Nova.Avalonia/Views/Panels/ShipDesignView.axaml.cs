@@ -42,6 +42,29 @@ public partial class ShipDesignView : UserControl
         }
     }
 
+    // Same Holding gesture as above, but for an EXISTING design in "My Designs" - shows the
+    // shared HullViewer (same one the Star Map/Navigator/Inspector already use to inspect any
+    // design's full component layout) rather than the single-component info popup ShowInfo/
+    // HideInfo drives.
+    private void OnOwnedDesignHolding(object? sender, HoldingRoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: OwnedDesignRowViewModel row } || DataContext is not ShipDesignViewModel viewModel)
+        {
+            return;
+        }
+
+        switch (e.HoldingState)
+        {
+            case HoldingState.Started:
+                viewModel.HullViewer.Show(row.Design);
+                break;
+            case HoldingState.Completed:
+            case HoldingState.Canceled:
+                viewModel.HullViewer.Hide();
+                break;
+        }
+    }
+
     // Same wheel-zoom convention as StarMapDocumentView's own OnMapPointerWheelChanged (panning
     // is already available via the ScrollViewer's own scrollbars/touch drag).
     private void OnHullPointerWheelChanged(object? sender, PointerWheelEventArgs e)

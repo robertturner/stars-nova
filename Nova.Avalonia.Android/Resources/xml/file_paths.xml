@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Declares which of this app's private storage the FileProvider (see AndroidManifest.xml's
+     <provider> entry and Application.cs's ShareText) is allowed to hand out content:// Uris for.
+     "share" matches the cache subfolder ShareText writes into - nothing outside that folder is
+     ever exposed to another app. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="share" path="share/" />
+</paths>

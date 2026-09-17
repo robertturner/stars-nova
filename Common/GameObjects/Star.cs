@@ -356,12 +356,20 @@ namespace Nova.Common
                 // negative hab planet
                 populationGrowth = 0.1 * this.Colonists * habitalValue;
             }
-            else if (capacity < 0.25)
+            else if (capacity <= 0.25)
             {
-                // low pop planet
+                // low pop planet - docs/behavior-specs-4/population-growth.md §3's own formula is
+                // an unconditional "capPct <= 0.25" for the no-crowding case (matching
+                // starsfaq.com's sourced formula exactly), not "< 0.25" - the previous strict
+                // inequality left capacity == 0.25 EXACTLY matching neither this branch nor the
+                // next one below, falling all the way through to the "full planet" branch and
+                // silently zeroing growth outright. Confirmed as a real, live bug from a reported
+                // save: Capacity() rounds up to a whole percentage (Math.Ceiling), so a colony
+                // whose true capacity was ~24.4% still rounded to exactly 25 and permanently
+                // stopped growing turn after turn.
                 populationGrowth = Colonists * growthRate / 100.0 * habitalValue;
             }
-            else if (capacity > 0.25 && capacity < 1.0)
+            else if (capacity < 1.0)
             {
                 // early crowding
                 populationGrowth = Colonists * growthRate / 100.0 * habitalValue;
@@ -770,7 +778,9 @@ namespace Nova.Common
                 }
                 catch (Exception e)
                 {
-                    Report.FatalError(e.Message + "\n Details: \n" + e.ToString());
+                    // Non-fatal - see Waypoint.cs's own comment for the live-reproduced crash
+                    // this "one bad field exits the whole app" pattern caused.
+                    Report.Error(e.Message + "\n Details: \n" + e.ToString());
                 }
                 mainNode = mainNode.NextSibling;
             }

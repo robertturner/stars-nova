@@ -134,6 +134,20 @@ public class OpenGameViewModel : ViewModelBase
 
     public IRelayCommand BackToStartCommand { get; }
 
+    /// <summary>
+    /// Lets the user retrieve diagnostics without adb, from the one screen guaranteed reachable
+    /// even when "Continue"/"Open" itself is what crashes (see PlatformHooks.ShareCrashLog's own
+    /// comment) - the in-game burger menu's equivalent entries never get a chance to render in
+    /// that scenario. "Crash Log" shares whatever nova-avalonia-crash.log/its desktop equivalent
+    /// holds; "Save File" shares the raw .intel XML of whatever game Continue would have loaded,
+    /// using the same GameFolder/RaceName FindContinuableGame already resolved - it reads that
+    /// file directly rather than routing through GameSession.Load, so it works even when loading
+    /// itself is what's crashing.
+    /// </summary>
+    public IRelayCommand ShareCrashLogCommand { get; }
+
+    public IRelayCommand ShareContinuableSaveCommand { get; }
+
     /// <summary>Raised once a game has been successfully loaded, carrying the ready ClientData.</summary>
     public event Action<ClientData>? GameOpened;
 
@@ -163,6 +177,15 @@ public class OpenGameViewModel : ViewModelBase
             RaceDesignerRequested?.Invoke();
         });
         BackToStartCommand = new RelayCommand(() => SwitchTo(Screen.Choices));
+        ShareCrashLogCommand = new RelayCommand(() =>
+        {
+            ContinueStatusMessage = PlatformHooks.ShareCrashLog()
+                ? ContinueStatusMessage
+                : "No crash log found - either nothing has crashed since this fix shipped, or this platform hasn't wired sharing.";
+        });
+        ShareContinuableSaveCommand = new RelayCommand(
+            ShareContinuableSave,
+            () => continuableGame != null);
 
         continuableGame = GameSession.FindContinuableGame();
         CanContinue = continuableGame != null;
@@ -184,6 +207,29 @@ public class OpenGameViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowRaceDesigner));
         OnPropertyChanged(nameof(ShowNewGame));
         OnPropertyChanged(nameof(ShowStartupHeader));
+    }
+
+    private void ShareContinuableSave()
+    {
+        if (continuableGame == null)
+        {
+            return;
+        }
+
+        string text;
+        try
+        {
+            text = GameSession.BuildShareableSaveText(continuableGame.Value.GameFolder, continuableGame.Value.RaceName);
+        }
+        catch (Exception ex)
+        {
+            ContinueStatusMessage = $"Couldn't read the save file: {ex.Message}";
+            return;
+        }
+
+        ContinueStatusMessage = PlatformHooks.ShareText(text)
+            ? ContinueStatusMessage
+            : "Sharing isn't available on this platform.";
     }
 
     private void Continue()

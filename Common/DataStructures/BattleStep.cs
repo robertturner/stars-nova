@@ -49,16 +49,20 @@ namespace Nova.Common.DataStructures
         {
             if (node == null)
             {
-                Report.FatalError("BattleReport.cs: BattleStep(XmlNode node) - node is null - no Battle Step found.");
+                // Non-fatal - see Waypoint.cs's own comment for why "one bad piece of save data
+                // exits the whole app" is worse than leaving this one BattleStep blank. The
+                // `return` already leaves every field at its default either way.
+                Report.Error("BattleReport.cs: BattleStep(XmlNode node) - node is null - no Battle Step found.");
                 return;
             }
 
-            // A BattleStep should not be loaded directly but rather by calling the base constructor 
+            // A BattleStep should not be loaded directly but rather by calling the base constructor
             // from one of the derived types.
             XmlNode battleStepNode = node.SelectSingleNode("BattleStep");
             if (battleStepNode == null)
             {
-                Report.FatalError("BattleStep.cs: BattleStep(XmlNode node) - could not find BattleStep node, input file may be corrupt.");
+                // Non-fatal - see the null-node check above.
+                Report.Error("BattleStep.cs: BattleStep(XmlNode node) - could not find BattleStep node, input file may be corrupt.");
                 return;
             }
 

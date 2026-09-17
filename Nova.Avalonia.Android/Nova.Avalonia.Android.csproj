@@ -40,6 +40,11 @@
 
   <ItemGroup>
     <PackageReference Include="Avalonia.Android" Version="12.1.2" />
+    <!-- Already pulled in transitively by Avalonia.Android - referenced explicitly since
+         Application.cs's ShareText now uses AndroidX.Core.Content.FileProvider directly (see its
+         own comment for why a plain Intent.ExtraText string can't be relied on for anything
+         above ~1MB). -->
+    <PackageReference Include="Xamarin.AndroidX.Core" Version="1.17.0.2" />
   </ItemGroup>
 
   <ItemGroup>

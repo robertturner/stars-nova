@@ -416,20 +416,38 @@ end-to-end sanity checks against whatever numbers a clean-room implementation pr
   Fixed in `GameInitialiser.cs`. This is a data cross-reference, not a live-game re-verification
   like the War Monger/Claim Adjuster entries above — worth confirming against the real game if it's
   ever reachable again.
-- **The entire "distinct starting fleet/planet-count per PRT" system is effectively unimplemented,
-  beyond Hyper Expansion's 3x colony ship count and (as of 2026-09-05) Packet Physics/Interstellar
-  Traveler's second planet.** `ServerState/NewGame/StarMapInitialiser.cs` contains a `switch` over
-  every PRT listing what it *should* start with as ships (an armed scout for War Monger, two
-  shielded scouts for Packet Physics, two mine layers for Space Demolition, a destroyer and a
-  privateer for Interstellar Traveler, two scouts/a medium freighter/a mini miner/a destroyer for
-  Jack Of All Trades, a distinct "orbital construction colony ship" for Alternate Reality, an
-  orbital terraforming ship instead of a normal colony ship for Claim Adjuster, etc.) — but the
-  entire `switch` is inside a `/* ... */` comment block and has never executed. Every race
-  currently starts with exactly the same one scout + one colony ship + one starbase (three for
-  HE's colony ships specifically), regardless of PRT. This is a substantially larger feature than
-  the single second-planet fix above — it needs the specific hull/component loadout for each
-  PRT's bonus ships confirmed (most are only sketched as one-line comments here, not sourced the
-  way the tech-level numbers above are) before it can be implemented with the same confidence.
+- ~~**The entire "distinct starting fleet/planet-count per PRT" system is effectively
+  unimplemented.**~~ **RESOLVED (2026-09-17), and this entry's own premise was half wrong even before
+  the fix:** starting RESEARCH levels per PRT were never actually part of this gap —
+  `Gameinitializer.ProcessPrimaryTraits` already set them correctly for every PRT (several already
+  live-verified against the real game, e.g. War Monger's Weapons 6 not 5, Claim Adjuster's
+  Construction 2) well before this entry was written; only the STARTING SHIPS half was genuinely
+  missing. That switch was a real, working `switch` (not the dead commented-out one this entry
+  originally described) — it's `ServerState/NewGame/StarMapInitialiser.cs`'s SEPARATE, second
+  `switch`-shaped block (inside a literal `/* ... */` comment, in `PrepareDesigns`) that listed the
+  bonus SHIPS each PRT should start with and never executed, leaving every race with the same one
+  scout + one colony ship + one starbase (three colony ships for HE) regardless of PRT. Now
+  implemented and sourced directly from the official Stars! Player's Guide's "Starting Advantages"
+  section for each Primary Trait (Step 2: Primary Trait, pp 20-3 to 20-11 —
+  https://archive.org/download/manual_Stars/Stars.pdf), not just the one-line guesses the old
+  comment carried: Hyper Expansion and War Monger get an armed scout; Packet Physics gets two
+  shielded scouts instead of one; Claim Adjuster gets a scout fitted with an Orbital Adjuster (needs
+  Biotechnology 6, already granted by ProcessPrimaryTraits); Space Demolition gets two mine layers
+  (a standard one and a Speed Trap one — Speed Trap 20 needs Biotechnology 2 and Propulsion 2,
+  exactly SD's existing tech bonus); Interstellar Traveler gets a destroyer and a privateer; Jack Of
+  All Trades gets a second scout, a medium freighter, a mini miner and a destroyer. Alternate
+  Reality's distinct "orbital construction colony ship" was already implemented (its colonizer
+  component swap predates this fix) and needed no ship-count change — the Player's Guide lists no
+  "Starting Advantages" bullets for AR at all, matching Super Stealth and Inner Strength (which
+  explicitly restate the universal one-scout-one-colony-ship baseline with no bonus). Verified via 8
+  new integration tests in `Tests/IntegrationTests/NewGameTest.cs`, one (or one `TestCase` pair) per
+  PRT bonus, checking the actual fleets/designs `GeneratePlayerAssets()` produces. Building this also
+  surfaced and fixed a genuine, unrelated pre-existing bug in `ShipDesign.Update()`: `HeavyMines`/
+  `SpeedBumbMines` accumulators started from `MineLayer`'s class-default `HitChance` (0.3, i.e.
+  "Standard") instead of their own bucket's real value, so a design's first Heavy or Speed-Trap mine
+  layer component was always rejected as a "different type" mismatch and its laying rate could never
+  become nonzero — `StandardMines` only ever worked by coincidence, since Standard's own real
+  HitChance happens to equal that unrelated class default.
 
 ## Sources
 

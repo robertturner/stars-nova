@@ -14,6 +14,10 @@ public class SplitMergeTargetOption
 
     public string DisplayName { get; }
 
+    /// <summary>True for the "New Fleet" option - the only one a suggested split-off fleet name
+    /// (<see cref="InspectorViewModel.NewSplitFleetName"/>) makes sense for.</summary>
+    public bool IsNewFleet => Fleet == null;
+
     public SplitMergeTargetOption(Fleet? fleet, string displayName)
     {
         Fleet = fleet;

@@ -83,10 +83,18 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="panels:SplitMergeRowViewModel">
                                             <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
-                                                <Border Grid.Column="0" Width="24" Height="24" Margin="0,0,8,0"
+                                                <!-- Border (the hold target) is deliberately bigger
+                                                     than the 24x24 icon it centers, so a slightly-
+                                                     off touch still holds this row's ship type.
+                                                     Background="Transparent" is required, not
+                                                     decorative - see NavigatorView.axaml's own
+                                                     comment on the same pattern: a Border's empty
+                                                     margin isn't hit-test visible without one. -->
+                                                <Border Grid.Column="0" Width="36" Height="36" Margin="0,0,8,0" Background="Transparent"
                                                         input:InputElement.IsHoldingEnabled="True" Holding="OnCompositionRowHolding">
                                                     <Image Source="{Binding Icon}" IsVisible="{Binding Icon, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
-                                                           Stretch="Uniform" />
+                                                           Width="24" Height="24" Stretch="Uniform"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                 </Border>
                                                 <TextBlock Grid.Column="1" Text="{Binding Label}" VerticalAlignment="Center" />
                                                 <TextBlock Grid.Column="2" Text="{Binding OriginalQuantity, StringFormat='x{0}'}" Opacity="0.7" VerticalAlignment="Center" />
@@ -220,7 +228,8 @@
                             <TextBlock Text="Add waypoint (inserted in front of the selected one above)"
                                        FontSize="11" Opacity="0.6" Margin="0,4,0,0" IsVisible="{Binding HasSelectedWaypoint}" />
                             <TextBlock Text="Add waypoint" FontSize="11" Opacity="0.6" Margin="0,4,0,0" IsVisible="{Binding !HasSelectedWaypoint}" />
-                            <ComboBox ItemsSource="{Binding DestinationOptions}" SelectedItem="{Binding NewWaypointDestination}" HorizontalAlignment="Stretch" />
+                            <TextBlock Text="Tap a star, fleet, minefield or wormhole on the map to set it as the destination."
+                                       FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
                             <Grid ColumnDefinitions="Auto,*" Margin="0,2">
                                 <TextBlock Grid.Column="0" Text="Warp" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <NumericUpDown Grid.Column="1" Value="{Binding NewWaypointWarp}" Minimum="0" Maximum="10" FormatString="0"
@@ -231,9 +240,7 @@
                                 <ComboBox Grid.Column="1" ItemsSource="{Binding TaskOptions}" SelectedItem="{Binding NewWaypointTask}" HorizontalAlignment="Stretch" />
                             </Grid>
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <Button Content="Add Waypoint" Command="{Binding AddWaypointCommand}" HorizontalAlignment="Left" />
-                                <!-- Arms "tap a planet on the map" targeting instead of picking a
-                                     destination from the dropdown above - see
+                                <!-- Arms "tap something on the map" targeting - see
                                      SelectionService.ArmWaypointTarget. The banner/Cancel
                                      affordance also shows on the Star Map itself (that's what the
                                      next tap actually hits); this button just toggles arm state
@@ -241,6 +248,8 @@
                                 <Button Command="{Binding CancelMapWaypointCommand}" IsVisible="{Binding IsAddingWaypoint}" Content="Cancel Map Tap" />
                                 <Button Command="{Binding ArmMapWaypointCommand}" IsVisible="{Binding !IsAddingWaypoint}" Content="Add via Map Tap" />
                             </StackPanel>
+                            <TextBlock Text="{Binding AddWaypointStatusMessage}" Foreground="OrangeRed" FontSize="11"
+                                       TextWrapping="Wrap" IsVisible="{Binding HasAddWaypointStatusMessage}" Margin="0,2" />
 
                             <TextBlock Text="Rename fleet" FontSize="11" Opacity="0.6" Margin="0,12,0,0" />
                             <Grid ColumnDefinitions="*,Auto">
@@ -378,6 +387,11 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
+
+                            <StackPanel Spacing="2" Margin="0,4,0,0">
+                                <TextBlock Text="{Binding SplitMergeNameFieldLabel}" FontSize="11" Opacity="0.6" />
+                                <TextBox Text="{Binding NewSplitFleetName}" />
+                            </StackPanel>
 
                             <Button Content="Apply" Command="{Binding ApplySplitMergeCommand}" HorizontalAlignment="Left" Margin="0,4,0,0" />
                             <TextBlock Text="{Binding SplitMergeStatusMessage}" Opacity="0.7" IsVisible="{Binding HasSplitMergeStatusMessage}" />

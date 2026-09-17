@@ -1,5 +1,7 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Nova.Avalonia.ViewModels.Panels;
 
 namespace Nova.Avalonia.Views.Panels;
@@ -9,6 +11,32 @@ public partial class StarMapDocumentView : UserControl
     public StarMapDocumentView()
     {
         InitializeComponent();
+
+        // Tunnel, not the default Bubble a plain PointerPressed="..." XAML attribute on each
+        // marker's own Button would use - a Button marks its own internal press handling
+        // Handled during the tunnel phase before bubbling back out (confirmed elsewhere this
+        // session, on ShipDesignView's component buttons: an external bubble-phase
+        // PointerPressed handler attached directly to a Button never saw the touch at all).
+        // Attaching here, on the shared ancestor, ahead of that swallowing, is what lets this
+        // resolve a star/fleet tie BEFORE either marker's own Button click can fire - see
+        // StarMapDocumentViewModel.FindNearestStarOrFleetMarker for the actual arbitration.
+        MapPanel.AddHandler(InputElement.PointerPressedEvent, OnMapPointerPressedTunnel, RoutingStrategies.Tunnel);
+    }
+
+    private void OnMapPointerPressedTunnel(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is not StarMapDocumentViewModel viewModel)
+        {
+            return;
+        }
+
+        Point position = e.GetPosition(MapPanel);
+        MapMarkerViewModel? nearest = viewModel.FindNearestStarOrFleetMarker(position.X, position.Y);
+        if (nearest != null)
+        {
+            nearest.SelectCommand.Execute(null);
+            e.Handled = true;
+        }
     }
 
     // Plain wheel zooms (panning is already available via the ScrollViewer's own scrollbars/

@@ -206,42 +206,55 @@ namespace Nova.Common.Waypoints
         
         /// <inheritdoc />
         public bool Perform(Fleet fleet, Mappable target, EmpireData sender, EmpireData receiver)
-        { 
-            Fleet secondFleet = null;
-            
-            // Look for an appropiate fleet for a merge.
+        {
+            // OtherFleetKey != 0 means a merge was requested (e.g. the Inspector's "Merge With
+            // Fleet" waypoint task) - this branch must never fall through to the split path
+            // below, which assumes LeftComposition/RightComposition actually describe a split
+            // and has none of that data for a merge order (InspectorViewModel.AddWaypoint passes
+            // empty dictionaries, since the real merge path below never reads them). Falling
+            // through used to call MakeNewFleet + ReassignShips with those empty dictionaries,
+            // silently fabricating a real, permanent, genuinely empty-composition fleet added
+            // straight to OwnedFleets - confirmed live as the cause of a reported crash: Fleet.
+            // Icon safely returns null for an empty Composition, but FleetIntel.ToXml (called
+            // when this fleet's owned-fleet report gets saved) does an unguarded Icon.Source,
+            // throwing on End Turn and then again on every subsequent load/re-save of that
+            // report. If the target fleet can no longer be found (e.g. already merged/scrapped/
+            // destroyed elsewhere earlier the same turn), there is nothing left to do - the
+            // order is simply skipped, matching how other "can't do this right now" waypoint
+            // outcomes are handled elsewhere in this codebase, rather than fabricating a bogus
+            // fleet out of no real composition data.
             if (OtherFleetKey != 0)
             {
+                Fleet secondFleet = null;
+
                 // This allows to merge with other empires if desired at some point.
                 if (receiver != null && receiver.OwnedFleets.ContainsKey(OtherFleetKey))
                 {
                     secondFleet = receiver.OwnedFleets[OtherFleetKey];
                 }
-                else if (sender.OwnedFleets.ContainsKey(OtherFleetKey)) 
+                else if (sender.OwnedFleets.ContainsKey(OtherFleetKey))
                 {
                     // The other fleet is also ours: OtherFleetKey belongs to the same Race/Player as the fleet with the SplitMergeTask waypoint order.
-                    secondFleet = sender.OwnedFleets[OtherFleetKey];    
+                    secondFleet = sender.OwnedFleets[OtherFleetKey];
                 }
-            }
-            
-            // Found fleet => Merge            
-            if (secondFleet != null)
-            {
-                MergeFleets(fleet, secondFleet);
-            }
-            else
-            {
-                // Else it's a split. Need a new fleet so clone original
-                // and change stuff.
-                secondFleet = sender.MakeNewFleet(fleet);
-            
-                ReassignShips(fleet, secondFleet);
 
-                // Now send new Fleets to limbo pending inclusion.
-                sender.TemporaryFleets.Add(secondFleet);                
+                if (secondFleet != null)
+                {
+                    MergeFleets(fleet, secondFleet);
+                }
+
+                return true;
             }
 
-            return true;            
+            // Split. Need a new fleet so clone original and change stuff.
+            Fleet newFleet = sender.MakeNewFleet(fleet);
+
+            ReassignShips(fleet, newFleet);
+
+            // Now send new Fleets to limbo pending inclusion.
+            sender.TemporaryFleets.Add(newFleet);
+
+            return true;
         }
 
 

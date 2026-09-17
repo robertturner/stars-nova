@@ -89,6 +89,34 @@ namespace Nova.Tests.UnitTests
             Assert.AreEqual(10000, growth);
         }
 
+        /// <summary>Covers a real, reported bug: a planet whose capacity rounds to EXACTLY 25%
+        /// matched neither the "low pop" branch (`capacity < 0.25`) nor the "early crowding" one
+        /// (`capacity > 0.25`), silently falling through to the "full planet" branch and
+        /// permanently zeroing growth - confirmed live from a save where a colony sitting right at
+        /// this boundary simply never grew, turn after turn, despite 100% habitability.
+        /// docs/behavior-specs-4/population-growth.md §3's own sourced formula is an unconditional
+        /// "capPct &lt;= 0.25" for the no-crowding case, so the boundary belongs to the low-pop
+        /// branch, not a gap between the two.</summary>
+        [Test]
+        public void LowPopGrowth_AtExactlyTwentyFivePercentCapacity()
+        {
+            // setup the star - 250,000 / 1,000,000 MaxPopulation = exactly 25% capacity.
+            star.Colonists = 250000;
+            star.Gravity = 50;
+            star.Radiation = 50;
+            star.Temperature = 50;
+
+            // setup the race
+            race.GrowthRate = 10; // 10% growth
+            race.Traits.SetPrimary("SS"); // avoid the JoAT and HE complications
+
+            // run the growth calculation
+            int growth = star.CalculateGrowth(race);
+
+            // No crowding factor applied at exactly the 25% boundary itself.
+            Assert.AreEqual(25000, growth);
+        }
+
         [Test]
         public void CrowdingPopGrowth()
         {
@@ -270,6 +298,77 @@ namespace Nova.Tests.UnitTests
             race.GravityTolerance.MinimumValue = 0;
             habitalValue = race.HabValue(star);
             Assert.AreEqual(-0.10, habitalValue);
+        }
+
+        /// <summary>Covers a real, reported bug fix: the Inspector's Habitability row only ever
+        /// showed a star's CURRENT value, with no way to tell whether terraforming could still
+        /// meaningfully improve it. Race.HabitalValueAfterTerraform(Star) computes the best
+        /// reachable value without needing to actually step through TerraformProductionUnit's own
+        /// turn-by-turn 1% construction.</summary>
+        [Test]
+        public void HabitalValueAfterTerraform_MovesEachAxisTowardOptimum_UpToFlatFifteenPercent()
+        {
+            // Every axis starts 30 clicks below this race's optimum (50, the default tolerance
+            // band's median) and has never been terraformed (Original == current) - so all 15
+            // percentage points of headroom are still available on every axis.
+            star.Gravity = 20;
+            star.Temperature = 20;
+            star.Radiation = 20;
+            star.OriginalGravity = 20;
+            star.OriginalTemperature = 20;
+            star.OriginalRadiation = 20;
+
+            double afterTerraform = race.HabitalValueAfterTerraform(star);
+
+            // Moving 15 points closer on every axis (20 -> 35, still 15 short of the 50 optimum)
+            // must strictly improve on the untouched value, not just match it.
+            Assert.Greater(afterTerraform, race.HabValue(star));
+        }
+
+        [Test]
+        public void HabitalValueAfterTerraform_DoublesAllowanceWithTotalTerraforming()
+        {
+            star.Gravity = 10;
+            star.OriginalGravity = 10;
+            race.Traits.Add("TT");
+
+            double withTT = race.HabitalValueAfterTerraform(star);
+
+            race.Traits.Remove("TT");
+            double withoutTT = race.HabitalValueAfterTerraform(star);
+
+            // TT doubles the terraform ceiling (15% -> 30%), so it should reach strictly closer
+            // to this axis's optimum (and therefore a strictly better habitability) for a star
+            // this far out of range on a single axis.
+            Assert.Greater(withTT, withoutTT);
+        }
+
+        [Test]
+        public void HabitalValueAfterTerraform_NoHeadroomLeft_MatchesCurrentValue()
+        {
+            // Already terraformed the full 15% allowance away from its original value on every
+            // axis - nothing left to project.
+            star.Gravity = 35;
+            star.OriginalGravity = 20;
+            star.Temperature = 35;
+            star.OriginalTemperature = 20;
+            star.Radiation = 35;
+            star.OriginalRadiation = 20;
+
+            Assert.AreEqual(race.HabValue(star), race.HabitalValueAfterTerraform(star));
+        }
+
+        [Test]
+        public void HabitalValueAfterTerraform_AlreadyAtOptimum_MatchesCurrentValue()
+        {
+            star.Gravity = race.GravityTolerance.OptimumLevel;
+            star.OriginalGravity = star.Gravity;
+            star.Temperature = race.TemperatureTolerance.OptimumLevel;
+            star.OriginalTemperature = star.Temperature;
+            star.Radiation = race.RadiationTolerance.OptimumLevel;
+            star.OriginalRadiation = star.Radiation;
+
+            Assert.AreEqual(race.HabValue(star), race.HabitalValueAfterTerraform(star));
         }
     }
 }

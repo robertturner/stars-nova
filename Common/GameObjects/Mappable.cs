@@ -68,7 +68,10 @@ namespace Nova.Common
         {
             if (node == null)
             {
-                Report.FatalError("Mappable.cs: Mappable(XmlNode node) - node is null - no Mappable found.");
+                // Non-fatal - see Waypoint.cs's own comment for why "one bad piece of save data
+                // exits the whole app" is worse than leaving this one Mappable blank. The
+                // `return` already leaves every field at its default either way.
+                Report.Error("Mappable.cs: Mappable(XmlNode node) - node is null - no Mappable found.");
                 return;
             }
             
@@ -86,7 +89,8 @@ namespace Nova.Common
             
             if (mapNode == null)
             {
-                Report.FatalError("Mappable.cs: Mappable(XmlNode node) - could not find Mappable node, input file may be corrupt.");
+                // Non-fatal - see the null-node check above.
+                Report.Error("Mappable.cs: Mappable(XmlNode node) - could not find Mappable node, input file may be corrupt.");
                 return;
             }
            

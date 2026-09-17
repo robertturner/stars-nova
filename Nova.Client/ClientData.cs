@@ -127,8 +127,10 @@ namespace Nova.Client
                 }
                 catch (Exception e)
                 {
-                    Report.FatalError(e.Message + "\n Details: \n" + e);
-                }    
+                    // Non-fatal - one malformed field shouldn't exit the whole app (see
+                    // Waypoint.cs's own comment for the live-reproduced crash this pattern caused).
+                    Report.Error(e.Message + "\n Details: \n" + e);
+                }
             }
         }
 

@@ -42,7 +42,7 @@
                                  the fact. -->
                             <Button Content="{Binding AutoBuildLabel}" Command="{Binding ToggleAutoBuildCommand}"
                                     Opacity="0.8" Padding="4,0"
-                                    ToolTip.Tip="Click to toggle Auto Build - an auto-build order is skipped (not blocking) in a year it can't be afforded" />
+                                    ToolTip.Tip="Click to toggle Auto Build - an auto-build order is skipped (not blocking) in a year it can't be afforded. Quantity is the target count to MAINTAIN, not a batch - it won't grow on its own as population/operable capacity rises, so raise it by hand once your colony can support more (this row goes gray once built count reaches it, with nothing left to do)." />
                             <!-- RepeatButton, not Button - holding it down re-invokes Command on
                                  its own built-in timer (see ProductionViewModel.
                                  IncrementAddQuantityCommand's own comment on why a hand-rolled

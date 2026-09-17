@@ -420,50 +420,341 @@ namespace Nova.Server.NewGame
                 secondBase.Update();
                 empire.Designs[secondBase.Key] = secondBase;
             }
-            /*
-            switch (race.Traits.Primary.Code)
+            // Some PRTs start with additional ship types beyond the universal scout/colony-
+            // ship/starbase trio - this used to be exactly the dead pseudocode this comment
+            // replaces (a `switch` wrapped in a block comment, never compiled or run - every
+            // race got the same one scout + one colony ship + one starbase regardless of PRT).
+            // Now sourced directly from the official Stars! Player's Guide's "Starting
+            // Advantages" section for each Primary Trait (Step 2: Primary Trait, pp 20-3 to
+            // 20-11 - https://archive.org/download/manual_Stars/Stars.pdf). Starting RESEARCH
+            // levels for these same PRTs are a separate, already-working system - see
+            // Gameinitializer.ProcessPrimaryTraits, which several of these designs below rely
+            // on already having granted the tech a bonus component needs (e.g. CA's Orbital
+            // Adjuster requires Biotechnology 6, which ProcessPrimaryTraits already sets for CA
+            // before GeneratePlayerAssets - and therefore this method - ever runs).
+            //
+            // The scout variations (HE/WM's armed scout, PP's two shielded scouts, JOAT's
+            // second plain scout) are built here but actually assigned to a starting fleet in
+            // AllocateHomeStarOrbitalInstallations, which needs to pick the right design name
+            // per PRT instead of always "Scout".
+            if (empire.Race.HasTrait("HE") || empire.Race.HasTrait("WM"))
             {
-                case "HE":
-                    // Start with one armed scout + 3 mini-colony ships
-                case "SS":
-                    // Start with one scout + one colony ship.
-                case "WM":
-                    // Start with one armed scout + one colony ship.
-                    break;
+                // "One armed scout" (HE, p 20-3; WM, p 20-5) - the same Scout hull, with a
+                // Laser (needs no tech, same as every other starting weapon in this method) in
+                // the otherwise-empty General Purpose slot, which accepts anything except an
+                // Engine - see ShipDesignViewModel.IsCompatible's own comment.
+                ShipDesign armedScout = new ShipDesign(empire.GetNextDesignKey());
+                // A fresh Fetch(), not a reuse of the outer scoutHull - Component.Fetch()
+                // deep-clones a hull's Modules list per call (see Hull.Clone()), but Blueprint
+                // is a plain reference assignment, so reusing one already-fetched Component
+                // across two ShipDesigns would make them share (and clobber) the same
+                // HullModule objects. Confirmed live: this was originally shared with the
+                // unconditional "Scout" design above, and building this one afterwards
+                // silently turned that "Scout" design's own slots into an armed scout too.
+                armedScout.Blueprint = components.Fetch("Scout");
+                foreach (HullModule module in armedScout.Hull.Modules)
+                {
+                    if (module.ComponentType == "Engine")
+                    {
+                        module.AllocatedComponent = engine;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "Scanner")
+                    {
+                        module.AllocatedComponent = scaner;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "General Purpose")
+                    {
+                        module.AllocatedComponent = laser;
+                        module.ComponentCount = 1;
+                    }
+                }
+                armedScout.Icon = new ShipIcon(scoutHull.ImageFile, scoutHull.ComponentImage);
+                armedScout.Type = ItemType.Ship;
+                armedScout.Name = "Armed Scout";
+                armedScout.Update();
+                empire.Designs[armedScout.Key] = armedScout;
+            }
 
-                case "CA":
-                    // Start with an orbital terraforming ship
-                    break;
+            if (empire.Race.HasTrait("PP"))
+            {
+                // "Two shielded scouts" (p 20-8) - the same Scout hull again, with a Mole-skin
+                // Shield in the General Purpose slot instead of a weapon.
+                ShipDesign shieldedScout = new ShipDesign(empire.GetNextDesignKey());
+                // A fresh Fetch() - see the identical comment on armedScout.Blueprint above.
+                shieldedScout.Blueprint = components.Fetch("Scout");
+                foreach (HullModule module in shieldedScout.Hull.Modules)
+                {
+                    if (module.ComponentType == "Engine")
+                    {
+                        module.AllocatedComponent = engine;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "Scanner")
+                    {
+                        module.AllocatedComponent = scaner;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "General Purpose")
+                    {
+                        module.AllocatedComponent = shield;
+                        module.ComponentCount = 1;
+                    }
+                }
+                shieldedScout.Icon = new ShipIcon(scoutHull.ImageFile, scoutHull.ComponentImage);
+                shieldedScout.Type = ItemType.Ship;
+                shieldedScout.Name = "Shielded Scout";
+                shieldedScout.Update();
+                empire.Designs[shieldedScout.Key] = shieldedScout;
+            }
 
-                case "IS":
-                    // Start with one scout and one colony ship
-                    break;
+            if (empire.Race.HasTrait("CA"))
+            {
+                // "Every race with the Claim Adjuster trait starts out with one ship outfitted
+                // with Orbital Adjusters" (Player's Guide, "Claim Adjusters and Terraforming
+                // Other Players' Planets from Orbit", pp 6-20/6-21 and p 20-6) - the Scout hull
+                // again, with an Orbital Adjuster (needs Biotechnology 6, which
+                // ProcessPrimaryTraits already grants CA) in place of a weapon or shield.
+                Component orbitalAdjuster = components.Fetch("Orbital Adjuster");
 
-                case "SD":
-                    // Start with one scout, one colony ship, Two mine layers (one standard, one speed trap)
-                    break;
+                ShipDesign adjusterShip = new ShipDesign(empire.GetNextDesignKey());
+                // A fresh Fetch() - see the identical comment on armedScout.Blueprint above.
+                adjusterShip.Blueprint = components.Fetch("Scout");
+                foreach (HullModule module in adjusterShip.Hull.Modules)
+                {
+                    if (module.ComponentType == "Engine")
+                    {
+                        module.AllocatedComponent = engine;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "Scanner")
+                    {
+                        module.AllocatedComponent = scaner;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "General Purpose")
+                    {
+                        module.AllocatedComponent = orbitalAdjuster;
+                        module.ComponentCount = 1;
+                    }
+                }
+                adjusterShip.Icon = new ShipIcon(scoutHull.ImageFile, scoutHull.ComponentImage);
+                adjusterShip.Type = ItemType.Ship;
+                adjusterShip.Name = "Orbital Adjuster";
+                adjusterShip.Update();
+                empire.Designs[adjusterShip.Key] = adjusterShip;
+            }
 
-                case "PP":
-                    empireData.ResearchLevel[TechLevel.ResearchField.Energy] = 4;
-                    // Two shielded scouts, one colony ship, two starting planets in a non-tiny universe
-                    break;
+            if (empire.Race.HasTrait("SD"))
+            {
+                // "Two mine layers (one standard, one speed trap)" (p 20-7) - both on the
+                // dedicated Mini Mine Layer hull, its two Mine Layer slots filled to their own
+                // max with one mine type each. Speed Trap 20 needs Biotechnology 2 and
+                // Propulsion 2 - exactly what ProcessPrimaryTraits already grants SD, and
+                // presumably why those two fields (out of six) were chosen for SD's tech bonus
+                // in the first place.
+                Component mineDispenser = components.Fetch("Mine Dispenser 40");
+                Component speedTrapMine = components.Fetch("Speed Trap 20");
 
-                case "IT":
-                    empireData.ResearchLevel[TechLevel.ResearchField.Propulsion] = 5;
-                    empireData.ResearchLevel[TechLevel.ResearchField.Construction] = 5;
-                    // one scout, one colony ship, one destroyer, one privateer, 2 planets with 100/250 stargates (in non-tiny universe)
-                    break;
+                // Each design gets its own Fetch() of the hull - see the comment on
+                // armedScout.Blueprint above on why reusing one Component across two
+                // ShipDesigns would make them silently share (and clobber) the same
+                // HullModule objects.
+                ShipDesign standardMineLayer = new ShipDesign(empire.GetNextDesignKey());
+                Component mineLayerHull = components.Fetch("Mini Mine Layer");
+                standardMineLayer.Blueprint = mineLayerHull;
+                foreach (HullModule module in standardMineLayer.Hull.Modules)
+                {
+                    if (module.ComponentType == "Engine")
+                    {
+                        module.AllocatedComponent = engine;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType.Contains("Scanner"))
+                    {
+                        module.AllocatedComponent = scaner;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "Mine Layer")
+                    {
+                        module.AllocatedComponent = mineDispenser;
+                        module.ComponentCount = module.ComponentMaximum;
+                    }
+                }
+                standardMineLayer.Icon = new ShipIcon(mineLayerHull.ImageFile, mineLayerHull.ComponentImage);
+                standardMineLayer.Type = ItemType.Ship;
+                standardMineLayer.Name = "Mine Layer";
+                standardMineLayer.Update();
+                empire.Designs[standardMineLayer.Key] = standardMineLayer;
 
-                case "AR":
-                    empireData.ResearchLevel[TechLevel.ResearchField.Energy] = 1;
+                ShipDesign speedTrapLayer = new ShipDesign(empire.GetNextDesignKey());
+                Component speedTrapHull = components.Fetch("Mini Mine Layer");
+                speedTrapLayer.Blueprint = speedTrapHull;
+                foreach (HullModule module in speedTrapLayer.Hull.Modules)
+                {
+                    if (module.ComponentType == "Engine")
+                    {
+                        module.AllocatedComponent = engine;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType.Contains("Scanner"))
+                    {
+                        module.AllocatedComponent = scaner;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "Mine Layer")
+                    {
+                        module.AllocatedComponent = speedTrapMine;
+                        module.ComponentCount = module.ComponentMaximum;
+                    }
+                }
+                speedTrapLayer.Icon = new ShipIcon(speedTrapHull.ImageFile, speedTrapHull.ComponentImage);
+                speedTrapLayer.Type = ItemType.Ship;
+                speedTrapLayer.Name = "Speed Trap";
+                speedTrapLayer.Update();
+                empire.Designs[speedTrapLayer.Key] = speedTrapLayer;
+            }
 
-                    // starts with one scout, one orbital construction colony ship
-                    break;
+            if (empire.Race.HasTrait("IT") || empire.Race.HasTrait("JOAT"))
+            {
+                // "One destroyer" - both Interstellar Traveler (p 20-9) and Jack Of All Trades
+                // (p 20-10) get the same basic Destroyer, so it's built once and shared.
+                Component destroyerHull = components.Fetch("Destroyer");
 
-                case "JOAT":
-                    // two scouts, one colony ship, one medium freighter, one mini miner, one destroyer
-                    break;
-            */
+                ShipDesign destroyer = new ShipDesign(empire.GetNextDesignKey());
+                destroyer.Blueprint = destroyerHull;
+                foreach (HullModule module in destroyer.Hull.Modules)
+                {
+                    if (module.ComponentType == "Engine")
+                    {
+                        module.AllocatedComponent = engine;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType.Contains("Weapon"))
+                    {
+                        module.AllocatedComponent = laser;
+                        module.ComponentCount = module.ComponentMaximum;
+                    }
+                    else if (module.ComponentType == "Armor")
+                    {
+                        module.AllocatedComponent = armor;
+                        module.ComponentCount = module.ComponentMaximum;
+                    }
+                }
+                destroyer.Icon = new ShipIcon(destroyerHull.ImageFile, destroyerHull.ComponentImage);
+                destroyer.Type = ItemType.Ship;
+                destroyer.Name = "Destroyer";
+                destroyer.Update();
+                empire.Designs[destroyer.Key] = destroyer;
+            }
+
+            if (empire.Race.HasTrait("IT"))
+            {
+                // "One privateer" (p 20-9) - the Privateer hull's own flavour is a "multi-
+                // purpose freighter" (confirmed via the Interstellar Traveler strategy-guide
+                // appendix cited in PROJECT-STATUS.md), so alongside its shield and scanner it
+                // also gets a Laser in one of its two General Purpose slots for self-defense,
+                // leaving the other (and the unfillable Base Cargo slot - see
+                // ShipDesignViewModel.IsCompatible, nothing in this codebase has Type
+                // "Base Cargo") empty.
+                Component privateerHull = components.Fetch("Privateer");
+
+                ShipDesign privateer = new ShipDesign(empire.GetNextDesignKey());
+                privateer.Blueprint = privateerHull;
+                bool weaponPlaced = false;
+                foreach (HullModule module in privateer.Hull.Modules)
+                {
+                    if (module.ComponentType == "Engine")
+                    {
+                        module.AllocatedComponent = engine;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType.Contains("Scanner"))
+                    {
+                        module.AllocatedComponent = scaner;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "Shield or Armor")
+                    {
+                        module.AllocatedComponent = shield;
+                        module.ComponentCount = module.ComponentMaximum;
+                    }
+                    else if (module.ComponentType == "General Purpose" && !weaponPlaced)
+                    {
+                        module.AllocatedComponent = laser;
+                        module.ComponentCount = 1;
+                        weaponPlaced = true;
+                    }
+                }
+                privateer.Icon = new ShipIcon(privateerHull.ImageFile, privateerHull.ComponentImage);
+                privateer.Type = ItemType.Ship;
+                privateer.Name = "Privateer";
+                privateer.Update();
+                empire.Designs[privateer.Key] = privateer;
+            }
+
+            if (empire.Race.HasTrait("JOAT"))
+            {
+                // "One medium freighter" and "one mini miner" (p 20-10) - the "two scouts" and
+                // shared Destroyer above cover the rest of JOAT's starting fleet.
+                Component freighterHull = components.Fetch("Medium Freighter");
+
+                ShipDesign freighter = new ShipDesign(empire.GetNextDesignKey());
+                freighter.Blueprint = freighterHull;
+                foreach (HullModule module in freighter.Hull.Modules)
+                {
+                    if (module.ComponentType == "Engine")
+                    {
+                        module.AllocatedComponent = engine;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType.Contains("Scanner"))
+                    {
+                        module.AllocatedComponent = scaner;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "Shield or Armor")
+                    {
+                        module.AllocatedComponent = armor;
+                        module.ComponentCount = module.ComponentMaximum;
+                    }
+                }
+                freighter.Icon = new ShipIcon(freighterHull.ImageFile, freighterHull.ComponentImage);
+                freighter.Type = ItemType.Ship;
+                freighter.Name = "Medium Freighter";
+                freighter.Update();
+                empire.Designs[freighter.Key] = freighter;
+
+                Component minerHull = components.Fetch("Mini Miner");
+                Component miningRobot = components.Fetch("Robo-Midget Miner");
+
+                ShipDesign miner = new ShipDesign(empire.GetNextDesignKey());
+                miner.Blueprint = minerHull;
+                foreach (HullModule module in miner.Hull.Modules)
+                {
+                    if (module.ComponentType == "Engine")
+                    {
+                        module.AllocatedComponent = engine;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType.Contains("Scanner"))
+                    {
+                        module.AllocatedComponent = scaner;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "Mining Robot")
+                    {
+                        module.AllocatedComponent = miningRobot;
+                        module.ComponentCount = module.ComponentMaximum;
+                    }
+                }
+                miner.Icon = new ShipIcon(minerHull.ImageFile, minerHull.ComponentImage);
+                miner.Type = ItemType.Ship;
+                miner.Name = "Mini Miner";
+                miner.Update();
+                empire.Designs[miner.Key] = miner;
+            }
         }
 
         private void PrepareResources()
@@ -578,48 +869,104 @@ namespace Nova.Server.NewGame
         /// <param name="race"></param>
         private void AllocateHomeStarOrbitalInstallations(Star star, EmpireData empire, string player)
         {
-            ShipDesign colonyShipDesign = null;
-            foreach (ShipDesign design in empire.Designs.Values)
-            {
-                if (design.Name == "Santa Maria")
-                {
-                    colonyShipDesign = design;    
-                }
-            }
-            
+            ShipDesign colonyShipDesign = FindDesign(empire, "Santa Maria");
+
             if (empire.Race.Traits.Primary.Code != "HE")
             {
-                ShipToken cs = new ShipToken(colonyShipDesign, 1);
-                Fleet fleet1 = new Fleet(cs, star, empire.GetNextFleetKey());                               
-                fleet1.Name = colonyShipDesign.Name + " #1";
-                empire.AddOrUpdateFleet(fleet1);
+                AddShipFleet(star, empire, colonyShipDesign, colonyShipDesign.Name + " #1");
             }
             else
             {
                 for (int i = 1; i <= 3; i++)
                 {
-                    ShipToken cs = new ShipToken(colonyShipDesign, 1);
-                    Fleet fleet = new Fleet(cs, star, empire.GetNextFleetKey());                    
-                    fleet.Name = string.Format("{0} #{1}", colonyShipDesign.Name, i);                    
-                    empire.AddOrUpdateFleet(fleet);
+                    AddShipFleet(star, empire, colonyShipDesign, string.Format("{0} #{1}", colonyShipDesign.Name, i));
                 }
             }
-   
-            ShipDesign scoutDesign = null;
-            foreach (ShipDesign design in empire.Designs.Values)
+
+            // Most PRTs start with one plain Scout. Three don't - see PrepareDesigns' own
+            // comment on where these alternate designs come from (the official Stars! Player's
+            // Guide's "Starting Advantages" per Primary Trait): Hyper Expansion and War Monger
+            // get an armed one instead, Packet Physics gets two shielded ones instead, and Jack
+            // Of All Trades gets a second plain one alongside its first.
+            string primaryCode = empire.Race.Traits.Primary.Code;
+            if (primaryCode == "HE" || primaryCode == "WM")
             {
-                if (design.Name == "Scout")
-                {
-                    scoutDesign = design;    
-                }
+                AddShipFleet(star, empire, FindDesign(empire, "Armed Scout"), "Scout #1");
             }
-            
-            ShipToken scout = new ShipToken(scoutDesign, 1);
-            Fleet scoutFleet = new Fleet(scout, star, empire.GetNextFleetKey());
-            scoutFleet.Name = "Scout #1";
-            empire.AddOrUpdateFleet(scoutFleet);
+            else if (primaryCode == "PP")
+            {
+                AddShipFleet(star, empire, FindDesign(empire, "Shielded Scout"), "Scout #1");
+                AddShipFleet(star, empire, FindDesign(empire, "Shielded Scout"), "Scout #2");
+            }
+            else if (primaryCode == "JOAT")
+            {
+                ShipDesign scoutDesign = FindDesign(empire, "Scout");
+                AddShipFleet(star, empire, scoutDesign, "Scout #1");
+                AddShipFleet(star, empire, scoutDesign, "Scout #2");
+            }
+            else
+            {
+                AddShipFleet(star, empire, FindDesign(empire, "Scout"), "Scout #1");
+            }
 
             AllocateStarbase(star, empire);
+            AllocateBonusStartingShips(star, empire, primaryCode);
+        }
+
+        /// <summary>
+        /// Extra starting ships some PRTs get beyond the universal scout/colony-ship/starbase
+        /// trio and the scout variations above - see PrepareDesigns' own comment on where these
+        /// come from (the official Stars! Player's Guide's "Starting Advantages" per Primary
+        /// Trait, pp 20-3 to 20-11): Claim Adjuster's Orbital-Adjuster-equipped ship, Space
+        /// Demolition's two mine layers, Interstellar Traveler's destroyer and privateer, and
+        /// Jack Of All Trades' medium freighter, mini miner and destroyer. Only called for the
+        /// primary home star (not IT/Packet Physics' second starting planet, which only gets a
+        /// starbase - see InitializeHomeStar), matching the Player's Guide's one-off wording for
+        /// each of these ("one ship", "one destroyer", etc, never "one per planet").
+        /// </summary>
+        private void AllocateBonusStartingShips(Star star, EmpireData empire, string primaryCode)
+        {
+            if (primaryCode == "CA")
+            {
+                AddShipFleet(star, empire, FindDesign(empire, "Orbital Adjuster"), "Orbital Adjuster #1");
+            }
+            else if (primaryCode == "SD")
+            {
+                AddShipFleet(star, empire, FindDesign(empire, "Mine Layer"), "Mine Layer #1");
+                AddShipFleet(star, empire, FindDesign(empire, "Speed Trap"), "Speed Trap #1");
+            }
+            else if (primaryCode == "IT")
+            {
+                AddShipFleet(star, empire, FindDesign(empire, "Destroyer"), "Destroyer #1");
+                AddShipFleet(star, empire, FindDesign(empire, "Privateer"), "Privateer #1");
+            }
+            else if (primaryCode == "JOAT")
+            {
+                AddShipFleet(star, empire, FindDesign(empire, "Medium Freighter"), "Medium Freighter #1");
+                AddShipFleet(star, empire, FindDesign(empire, "Mini Miner"), "Mini Miner #1");
+                AddShipFleet(star, empire, FindDesign(empire, "Destroyer"), "Destroyer #1");
+            }
+        }
+
+        private static ShipDesign FindDesign(EmpireData empire, string name)
+        {
+            foreach (ShipDesign design in empire.Designs.Values)
+            {
+                if (design.Name == name)
+                {
+                    return design;
+                }
+            }
+
+            return null;
+        }
+
+        private static void AddShipFleet(Star star, EmpireData empire, ShipDesign design, string fleetName)
+        {
+            ShipToken token = new ShipToken(design, 1);
+            Fleet fleet = new Fleet(token, star, empire.GetNextFleetKey());
+            fleet.Name = fleetName;
+            empire.AddOrUpdateFleet(fleet);
         }
 
         /// <summary>
@@ -644,6 +991,18 @@ namespace Nova.Server.NewGame
             ShipToken starbase = new ShipToken(starbaseDesign, 1);
             Fleet starbaseFleet = new Fleet(starbase, star, empire.GetNextFleetKey());
             starbaseFleet.Name = star.Name + " Starbase";
+
+            // The Fleet(ShipToken, Star, long) constructor always defaults Type to
+            // ItemType.Fleet - unlike Manufacture.CreateShips's own starbase branch, nothing here
+            // ever corrected that for a starting starbase, so every new game's initial starbase
+            // (every home star, plus IT/Packet Physics' second planet) was permanently mis-typed
+            // as a plain Fleet. Harmless on its own (star.Starbase still pointed at the right
+            // object), but it meant EmpireData.RemoveOrphanedStarbaseFleets' own Type check could
+            // never recognize this one as a starbase once a real replacement superseded it later
+            // - confirmed live from a real save where exactly this starting starbase lingered as
+            // a permanent stray "fleet in orbit" after being replaced.
+            starbaseFleet.Type = ItemType.Starbase;
+
             star.Starbase = starbaseFleet;
             empire.AddOrUpdateFleet(starbaseFleet);
         }

@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
              xmlns:conv="using:Nova.Avalonia.Converters"
+             xmlns:dataConv="using:Avalonia.Data.Converters"
              xmlns:input="using:Avalonia.Input"
              xmlns:views="using:Nova.Avalonia.Views.Panels"
              x:Class="Nova.Avalonia.Views.Panels.StarMapDocumentView"
@@ -74,7 +75,7 @@
             <LayoutTransformControl.LayoutTransform>
                 <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
             </LayoutTransformControl.LayoutTransform>
-            <Panel Width="{Binding MapWidth}" Height="{Binding MapHeight}">
+            <Panel x:Name="MapPanel" Width="{Binding MapWidth}" Height="{Binding MapHeight}">
             <!-- Scan-range washes render first (so they sit behind the stars/fleets below)
                  and never intercept clicks. -->
             <ItemsControl Classes="scanLayer" ItemsSource="{Binding ScanCircles}" IsHitTestVisible="False">
@@ -161,12 +162,24 @@
                              footprint, not the icon's own center - which is exactly what made the
                              route-line endpoint stop lining up with where the star actually drew. -->
                         <Canvas>
+                            <!-- Tap target (32x32) is deliberately bigger than the visible 16x16
+                                 selection ring/dot below - both stay centered on the star's own
+                                 origin point via the same Canvas.Left/Top offset trick, so the
+                                 wider hit area is invisible and doesn't change how the marker
+                                 looks. Especially needed here since the whole map scales down
+                                 with Zoom (LayoutTransformControl above), shrinking the physical
+                                 on-screen hit area right along with it at any zoomed-out level.
+                                 Still bound to Command as a fallback - see MapPanel's own Tunnel-
+                                 phase handler in the code-behind, which resolves a star/fleet tie
+                                 by nearest-center first and only falls through to this Command
+                                 when nothing is close enough to call. -->
                             <Button Classes="starMapMarker" Command="{Binding SelectCommand}"
-                                    Canvas.Left="-8" Canvas.Top="-8" Width="16" Height="16">
+                                    Canvas.Left="-16" Canvas.Top="-16" Width="32" Height="32">
                                 <Panel>
                                     <Ellipse Width="16" Height="16"
                                              Stroke="Gold" StrokeThickness="2"
-                                             IsVisible="{Binding IsSelected}" />
+                                             IsVisible="{Binding IsSelected}"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}"
                                              Fill="{Binding Color}"
                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -240,13 +253,17 @@
                              the Button here would have no effect, since attached Canvas
                              properties only apply to a Canvas's direct children. -->
                         <Canvas>
+                            <!-- Same wider-than-visible tap target as the star marker above (32x32
+                                 hit area around a 14x14 icon), centered the same way - see the
+                                 star marker's own comment on the Tunnel-phase fallback logic. -->
                             <Button Classes="starMapMarker" Command="{Binding SelectCommand}"
-                                    Canvas.Left="-7" Canvas.Top="-7" Width="14" Height="14"
+                                    Canvas.Left="-16" Canvas.Top="-16" Width="32" Height="32"
                                     input:InputElement.IsHoldingEnabled="True" Holding="OnFleetMarkerHolding">
                                 <Panel>
                                     <Ellipse Width="14" Height="14"
                                              Stroke="Gold" StrokeThickness="2"
-                                             IsVisible="{Binding IsSelected}" />
+                                             IsVisible="{Binding IsSelected}"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     <!-- Points form a triangle pointing DOWN at Bearing=0 (apex at
                                          0,9 / base at 5,0-10,0), matching StarMap.cs's own
                                          `triangle` field ((0,5),(-5,-5),(5,-5) - apex at +Y, base
@@ -293,6 +310,10 @@
                 <Button Content="-" Command="{Binding ZoomOutCommand}" Padding="10,2" FontWeight="Bold" />
                 <Button Content="+" Command="{Binding ZoomInCommand}" Padding="10,2" FontWeight="Bold" />
                 <Button Content="Reset" Command="{Binding ResetZoomCommand}" Padding="6,2" />
+                <!-- Measures from whatever's currently selected (Overview/Navigator/a previous
+                     tap) to the next thing tapped - disabled with nothing real selected, since a
+                     distance needs two actual points. -->
+                <Button Content="Measure" Command="{Binding MeasureDistanceCommand}" Padding="8,2" />
             </StackPanel>
         </Border>
 
@@ -303,8 +324,32 @@
                 BorderThickness="1" CornerRadius="4" Padding="8,4" HorizontalAlignment="Center"
                 VerticalAlignment="Top" Margin="8">
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock Text="Tap a planet to add a waypoint" VerticalAlignment="Center" />
+                <TextBlock Text="Tap a star, fleet, minefield or wormhole to add a waypoint" VerticalAlignment="Center" />
                 <Button Content="Cancel" Command="{Binding CancelAddWaypointCommand}" Padding="8,2" />
+            </StackPanel>
+        </Border>
+
+        <!-- "Measure Distance" arming/result - same floating-banner pattern as "Add Waypoint"
+             above, just triggered from the Measure button on this same panel rather than from
+             Inspector. Only one of the two banners is ever visible at once (arming either cancels
+             the other - see SelectionService.ArmMeasureTarget/ArmWaypointTarget), and the result
+             banner only shows once a measurement has actually completed (cleared on the next
+             selection change, a fresh Measure, or Dismiss). -->
+        <Border IsVisible="{Binding IsMeasuringDistance}" Background="#442299ff" BorderBrush="DodgerBlue"
+                BorderThickness="1" CornerRadius="4" Padding="8,4" HorizontalAlignment="Center"
+                VerticalAlignment="Top" Margin="8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Tap a star, fleet, minefield or wormhole to measure the distance to it" VerticalAlignment="Center" />
+                <Button Content="Cancel" Command="{Binding CancelMeasureCommand}" Padding="8,2" />
+            </StackPanel>
+        </Border>
+
+        <Border IsVisible="{Binding MeasureDistanceResult, Converter={x:Static dataConv:ObjectConverters.IsNotNull}}"
+                Background="#dd101018" BorderBrush="DodgerBlue" BorderThickness="1" CornerRadius="4"
+                Padding="8,4" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="{Binding MeasureDistanceResult}" Foreground="White" VerticalAlignment="Center" />
+                <Button Content="Dismiss" Command="{Binding CancelMeasureCommand}" Padding="8,2" />
             </StackPanel>
         </Border>
 

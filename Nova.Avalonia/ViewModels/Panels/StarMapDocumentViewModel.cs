@@ -102,6 +102,29 @@ public class StarMapDocumentViewModel : Document
 
     public IRelayCommand CancelAddWaypointCommand { get; }
 
+    /// <summary>Mirrors SelectionService.IsMeasuringDistance - see OnSelectionChanged. Drives
+    /// this panel's own "tap something to measure distance" banner.</summary>
+    public bool IsMeasuringDistance => selection.IsMeasuringDistance;
+
+    public IRelayCommand CancelMeasureCommand { get; }
+
+    /// <summary>Arms distance measuring FROM whatever's currently selected - enabled only when
+    /// that's a real map entity (a Star/StarIntel/Fleet/FleetIntel/Minefield/Wormhole, all
+    /// Mappable), since a distance needs two real points.</summary>
+    public IRelayCommand MeasureDistanceCommand { get; }
+
+    private string? measureDistanceResult;
+
+    /// <summary>Set once a measurement completes (see MeasureDistanceCommand) - "{from} to {to}:
+    /// {distance:0.0} ly". Cleared by SyncSelection whenever the selection itself changes, and
+    /// by arming/cancelling a new measurement, so a stale readout never lingers past whatever it
+    /// was actually about.</summary>
+    public string? MeasureDistanceResult
+    {
+        get => measureDistanceResult;
+        private set => SetProperty(ref measureDistanceResult, value);
+    }
+
     public StarMapDocumentViewModel(string id, string title, ClientData clientState, SelectionService selection)
     {
         Id = id;
@@ -117,6 +140,12 @@ public class StarMapDocumentViewModel : Document
         ZoomInCommand = new RelayCommand(() => Zoom *= zoomStep);
         ZoomOutCommand = new RelayCommand(() => Zoom /= zoomStep);
         CancelAddWaypointCommand = new RelayCommand(() => selection.CancelWaypointTarget());
+        CancelMeasureCommand = new RelayCommand(() =>
+        {
+            selection.CancelMeasureTarget();
+            MeasureDistanceResult = null;
+        });
+        MeasureDistanceCommand = new RelayCommand(ArmMeasureDistance, () => selection.Selected is Mappable);
 
         // GameSettings.Restore() replaces the whole static GameSettings.Data instance
         // (Data = (GameSettings)s.Deserialize(state)) - re-deriving SettingsPathName here from
@@ -369,6 +398,10 @@ public class StarMapDocumentViewModel : Document
         {
             OnPropertyChanged(nameof(IsAddingWaypoint));
         }
+        else if (e.PropertyName == nameof(SelectionService.IsMeasuringDistance))
+        {
+            OnPropertyChanged(nameof(IsMeasuringDistance));
+        }
     }
 
     private void SyncSelection()
@@ -379,6 +412,87 @@ public class StarMapDocumentViewModel : Document
         }
 
         RouteLegs = BuildRouteLegs(selection.Selected as Fleet);
+        MeasureDistanceCommand.NotifyCanExecuteChanged();
+
+        // A stale "Nova to Diddley: 92.3 ly" readout would be confusing once the player's moved
+        // on to inspecting something else entirely - cleared on every genuine selection change,
+        // not just when a new measurement starts.
+        MeasureDistanceResult = null;
+    }
+
+    /// <summary>
+    /// Captures the "from" point/name at arm-time (whatever's selected right now - reading
+    /// selection.Selected again inside the callback would risk it having changed by the time
+    /// the second tap actually lands), then measures to whatever the next map tap resolves to,
+    /// via the same Mappable.Position/Name every selectable thing on the map already exposes.
+    /// </summary>
+    private void ArmMeasureDistance()
+    {
+        if (selection.Selected is not Mappable from)
+        {
+            return;
+        }
+
+        MeasureDistanceResult = null;
+        string fromName = from.Name;
+        NovaPoint fromPosition = from.Position;
+
+        selection.ArmMeasureTarget((toPosition, toName) =>
+        {
+            double distance = PointUtilities.Distance(fromPosition, toPosition);
+            MeasureDistanceResult = $"{fromName} to {toName}: {distance:0.0} ly";
+        });
+    }
+
+    // Both star and fleet markers share the identical fixed 32x32 (16px-radius) tap target -
+    // see StarMapDocumentView.axaml's own comment on each - and fleets are declared after (so
+    // drawn on top of) stars in the same Panel, so whenever a fleet sits within that radius of
+    // its star, the fleet's Button always won a tap regardless of which one the tap point was
+    // actually closer to (confirmed live: a fleet sitting at/near its home star made the star
+    // itself nearly unclickable). This resolves the tie properly - among every star/fleet marker
+    // whose own 16px hit-radius contains the tap, whichever CENTER is nearest to the actual tap
+    // point wins - called from the map's own Tunnel-phase pointer handler (StarMapDocumentView.
+    // axaml.cs), which fires before either marker's Button gets a chance to react on its own.
+    // Deliberately excludes minefields: their own hit area is the field's real (and often much
+    // larger) radius, already works correctly via its own Button, and sits behind both marker
+    // kinds in z-order, so it's never part of this specific tie.
+    //
+    // A genuine tie (a fleet sitting exactly on its own star, distance 0 from both) still needs
+    // a tiebreaker, since "nearest" alone can't distinguish them - which one wins depends on
+    // whether a waypoint/measure gesture is currently armed: unarmed (plain browsing), the star
+    // wins, matching the original bug report ("clicking the star is almost impossible"); armed
+    // (see SelectionService.IsAddingWaypoint/IsMeasuringDistance), a FLEET wins instead, since
+    // arming that gesture (e.g. picking "Merge With Fleet" as the waypoint task, or measuring
+    // distance to a specific ship) means the user is very likely aiming for a particular fleet,
+    // not the star it happens to be sitting at - the same star remains reachable by tapping it
+    // again once whichever fleet(s) were there have been individually addressed, or by using
+    // Navigator/the "Viewing" switcher instead.
+    private const double MarkerHitRadius = 16.0;
+
+    public MapMarkerViewModel? FindNearestStarOrFleetMarker(double x, double y)
+    {
+        bool preferFleets = selection.IsAddingWaypoint || selection.IsMeasuringDistance;
+        IEnumerable<MapMarkerViewModel> candidates = preferFleets
+            ? Fleets.Cast<MapMarkerViewModel>().Concat(Stars)
+            : Stars.Cast<MapMarkerViewModel>().Concat(Fleets);
+
+        MapMarkerViewModel? nearest = null;
+        double nearestDistanceSquared = double.MaxValue;
+
+        foreach (MapMarkerViewModel marker in candidates)
+        {
+            double dx = marker.X - x;
+            double dy = marker.Y - y;
+            double distanceSquared = (dx * dx) + (dy * dy);
+
+            if (distanceSquared <= MarkerHitRadius * MarkerHitRadius && distanceSquared < nearestDistanceSquared)
+            {
+                nearest = marker;
+                nearestDistanceSquared = distanceSquared;
+            }
+        }
+
+        return nearest;
     }
 
     private IReadOnlyList<StarMapRouteLegViewModel> BuildRouteLegs(Fleet selectedFleet)

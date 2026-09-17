@@ -14,5 +14,20 @@
         <FluentTheme />
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
         <dockFluent:DockFluentTheme />
+
+        <!-- Disables scroll fling/momentum on every ScrollViewer in the app. Confirmed live
+             (first found on the Ship Design page, but the same gesture-arbitration mechanics
+             apply to any ScrollViewer): a tap landing shortly after a touch-scroll gesture was
+             routinely swallowed as the scroll's own momentum still settling, rather than reaching
+             the control underneath (a ComboBox, a Button) - it visibly did nothing on that first
+             tap and only worked on an identical second one, once the fling had fully decayed.
+             Without inertia, a touch-drag scrolls by close to its own raw distance and stops the
+             instant the finger lifts, so there's no residual window left for the very next tap to
+             fall into. Losing "flick to scroll far" momentum is a fair trade for every scrollable
+             panel in the app having reliable first-tap response, not just the one this was first
+             noticed on. -->
+        <Style Selector="ScrollViewer">
+            <Setter Property="IsScrollInertiaEnabled" Value="False" />
+        </Style>
     </Application.Styles>
 </Application>

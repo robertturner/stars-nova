@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Nova.Client;
 using Nova.Common;
 using Nova.Common.Components;
@@ -93,5 +95,54 @@ public static class GameSession
         }
 
         return (gameFolder, Path.GetFileNameWithoutExtension(statePath));
+    }
+
+    /// <summary>
+    /// Bundles everything in a game folder useful for diagnosing a crash into one shareable
+    /// blob: the player's own .intel (what they know), the single .sstate file TurnHost.
+    /// LoadServerState reads (the actual, authoritative state TurnGenerator.Generate() operates
+    /// on during End Turn, covering every empire including any in-process AI), the player's own
+    /// .cstate (the CLIENT's own editing state - Waypoints/Commands the Inspector directly
+    /// manipulates before Submit Turn writes them out, and so a very plausible place for a
+    /// malformed Waypoint to actually originate), and every *.orders file present (each player's
+    /// submitted orders for the upcoming turn - what OrderReader.ReadOrders() re-parses on every
+    /// single load/End-Turn, so a bad Waypoint baked into one of these would explain a fault that
+    /// recurs, and recurs more than once per turn, exactly as reported live). Earlier versions of
+    /// this only shared the .intel, then the .intel+.sstate - neither actually contains the
+    /// player's own in-progress waypoint edits or submitted orders, which is why they didn't
+    /// reveal anything despite the crash being real and reproducible. Reads whatever exists and
+    /// skips the rest rather than failing outright, since a fresh game might not have all of
+    /// these yet.
+    /// </summary>
+    public static string BuildShareableSaveText(string gameFolder, string raceName)
+    {
+        var sections = new List<string>();
+
+        void AddIfExists(string path)
+        {
+            if (File.Exists(path))
+            {
+                sections.Add($"===== {Path.GetFileName(path)} =====\n{File.ReadAllText(path)}");
+            }
+        }
+
+        AddIfExists(Path.Combine(gameFolder, raceName + Global.IntelExtension));
+        AddIfExists(Path.Combine(gameFolder, raceName + Global.ClientStateExtension));
+
+        if (Directory.Exists(gameFolder))
+        {
+            string? statePath = Directory.GetFiles(gameFolder, "*" + Global.ServerStateExtension).FirstOrDefault();
+            if (statePath != null)
+            {
+                AddIfExists(statePath);
+            }
+
+            foreach (string ordersPath in Directory.GetFiles(gameFolder, "*" + Global.OrdersExtension))
+            {
+                AddIfExists(ordersPath);
+            }
+        }
+
+        return string.Join("\n\n", sections);
     }
 }

@@ -118,8 +118,17 @@ namespace Nova.Common
                             Year = int.Parse(node.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
                             break;
                         case "icon":
+                            // A fleet with an empty Composition (see ToXml's own comment) writes
+                            // this element empty rather than omitting it - GetIconBySource can't
+                            // parse an empty string (no hull name/number to extract) and this
+                            // switch's enclosing try/catch treats that as fatal (Report.FatalError
+                            // calls Environment.Exit), so skip the lookup entirely rather than
+                            // exiting the app just because a fleet happens to have no ships.
                             string iconSource = node.FirstChild.Value;
-                            Icon = AllShipIcons.Data.GetIconBySource(iconSource);
+                            if (!string.IsNullOrEmpty(iconSource))
+                            {
+                                Icon = AllShipIcons.Data.GetIconBySource(iconSource);
+                            }
                             break;
                         case "bearing":
                             Bearing = double.Parse(node.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -149,12 +158,14 @@ namespace Nova.Common
                 }
                 catch (Exception e)
                 {
-                    Report.FatalError(e.Message + "\n Details: \n" + e.ToString());
+                    // Non-fatal - see Waypoint.cs's own comment for the live-reproduced crash
+                    // this "one bad field exits the whole app" pattern caused.
+                    Report.Error(e.Message + "\n Details: \n" + e.ToString());
                 }
 
                 node = node.NextSibling;
-            }           
-        }        
+            }
+        }
         
         /// <summary>
         /// Resets all values to default.
@@ -246,8 +257,12 @@ namespace Nova.Common
             xmlelFleetIntel.AppendChild(base.ToXml(xmldoc));
             
             Global.SaveData(xmldoc, xmlelFleetIntel, "Year", Year.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            
-            Global.SaveData(xmldoc, xmlelFleetIntel, "Icon", Icon.Source);
+
+            // Icon can be null for a fleet with an empty Composition (Fleet.Icon's own getter
+            // returns null rather than throwing in that case) - confirmed live as a real crash
+            // when this went through unguarded: a NullReferenceException here, thrown while
+            // saving on End Turn, then again on every subsequent load/re-save of the same report.
+            Global.SaveData(xmldoc, xmlelFleetIntel, "Icon", Icon?.Source ?? string.Empty);
             
             Global.SaveData(xmldoc, xmlelFleetIntel, "Bearing", Bearing.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Global.SaveData(xmldoc, xmlelFleetIntel, "Speed", Speed.ToString(System.Globalization.CultureInfo.InvariantCulture));

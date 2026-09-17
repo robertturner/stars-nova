@@ -449,6 +449,182 @@ namespace Nova.Tests.IntegrationTests
             Assert.AreEqual(2, ppOwnedStars, "Packet Physics should start with two planets");
             Assert.AreEqual(1, starbasesWithMassDriver, "Exactly one of Packet Physics' two starbases should be the small dedicated Mass Driver base");
         }
+
+        /// <Summary>
+        /// Builds a single-empire ServerState with the given Primary Trait, generates its home
+        /// star and starting assets, and returns the resulting empire - shared setup for the
+        /// per-PRT starting-fleet tests below. See PrepareDesigns/AllocateHomeStarOrbitalInstallations
+        /// in StarMapInitialiser.cs (and its own citation of the Stars! Player's Guide) for what's
+        /// being verified - this was, until now, entirely dead pseudocode inside a block comment.
+        /// </Summary>
+        private static EmpireData GenerateSinglePlayerEmpire(string primaryTraitCode)
+        {
+            ServerData serverState = new ServerData();
+
+            GameSettings.Data.MapHeight = 400;
+            GameSettings.Data.MapWidth = 400;
+            GameSettings.Data.StarDensity = 60;
+            GameSettings.Data.StarSeparation = 10;
+            GameSettings.Data.StarUniformity = 60;
+
+            Race race = new Race();
+            race.Name = primaryTraitCode + "Race";
+            race.Traits.SetPrimary(primaryTraitCode);
+            serverState.AllRaces.Add(race.Name, race);
+
+            serverState.AllPlayers.Add(new PlayerSettings());
+
+            EmpireData empire = new EmpireData();
+            empire.Id = 1;
+            empire.Race = race;
+            serverState.AllEmpires[empire.Id] = empire;
+
+            StarMapinitializer starMapInitializer = new StarMapinitializer(serverState);
+            starMapInitializer.GenerateStars();
+            starMapInitializer.GeneratePlayerAssets();
+
+            return empire;
+        }
+
+        /// <Summary>
+        /// Hyper Expansion and War Monger both start with "one armed scout" (Stars! Player's
+        /// Guide, Step 2: Primary Trait, pp 20-3/20-5) instead of every other race's plain,
+        /// unarmed one - confirmed by checking the fleet's design actually carries a weapon.
+        /// </Summary>
+        [TestCase("HE")]
+        [TestCase("WM")]
+        public void GeneratePlayerAssets_ArmedScoutPrts_GetAnArmedScoutNotAPlainOne(string primaryTraitCode)
+        {
+            EmpireData empire = GenerateSinglePlayerEmpire(primaryTraitCode);
+
+            Fleet scoutFleet = empire.OwnedFleets.Values.Single(f => f.Name == "Scout #1");
+            ShipDesign scoutDesign = scoutFleet.Composition.Values.First().Design;
+
+            Assert.AreEqual("Armed Scout", scoutDesign.Name);
+            scoutDesign.Update();
+            Assert.IsTrue(scoutDesign.Weapons.Count > 0, "The starting scout should be armed");
+        }
+
+        /// <Summary>
+        /// Packet Physics starts with "two shielded scouts" (p 20-8), not one plain scout like
+        /// most other PRTs.
+        /// </Summary>
+        [Test]
+        public void GeneratePlayerAssets_PacketPhysics_GetsTwoShieldedScouts()
+        {
+            EmpireData empire = GenerateSinglePlayerEmpire("PP");
+
+            List<Fleet> scoutFleets = empire.OwnedFleets.Values.Where(f => f.Name.StartsWith("Scout #")).ToList();
+            Assert.AreEqual(2, scoutFleets.Count, "Packet Physics should start with two scouts");
+
+            foreach (Fleet fleet in scoutFleets)
+            {
+                ShipDesign design = fleet.Composition.Values.First().Design;
+                Assert.AreEqual("Shielded Scout", design.Name);
+                design.Update();
+                Assert.Greater(design.Shield, 0, "Packet Physics' starting scouts should be shielded");
+            }
+        }
+
+        /// <Summary>
+        /// Jack Of All Trades starts with "two scouts, one colony ship, one medium freighter,
+        /// one mini miner, one destroyer" (p 20-10) - the biggest and most varied starting fleet
+        /// of any PRT.
+        /// </Summary>
+        [Test]
+        public void GeneratePlayerAssets_JackOfAllTrades_GetsTheFullVariedFleet()
+        {
+            EmpireData empire = GenerateSinglePlayerEmpire("JOAT");
+
+            List<string> fleetNames = empire.OwnedFleets.Values.Select(f => f.Name).ToList();
+            Assert.AreEqual(2, fleetNames.Count(name => name.StartsWith("Scout #")), "Two scouts");
+            Assert.AreEqual(1, fleetNames.Count(name => name.StartsWith("Santa Maria #")), "One colony ship");
+            Assert.AreEqual(1, fleetNames.Count(name => name.StartsWith("Medium Freighter #")), "One medium freighter");
+            Assert.AreEqual(1, fleetNames.Count(name => name.StartsWith("Mini Miner #")), "One mini miner");
+            Assert.AreEqual(1, fleetNames.Count(name => name.StartsWith("Destroyer #")), "One destroyer");
+        }
+
+        /// <Summary>
+        /// Claim Adjuster starts with "one ship outfitted with Orbital Adjusters" (Player's
+        /// Guide, "Claim Adjusters and Terraforming Other Players' Planets from Orbit", pp
+        /// 6-20/6-21) alongside the usual scout and colony ship - and the Orbital Adjuster
+        /// component it carries needs Biotechnology 6, which Gameinitializer.ProcessPrimaryTraits
+        /// already grants CA before this fleet is ever built.
+        /// </Summary>
+        [Test]
+        public void GeneratePlayerAssets_ClaimAdjuster_GetsAnOrbitalAdjusterShip()
+        {
+            EmpireData empire = GenerateSinglePlayerEmpire("CA");
+
+            Fleet adjusterFleet = empire.OwnedFleets.Values.Single(f => f.Name == "Orbital Adjuster #1");
+            ShipDesign design = adjusterFleet.Composition.Values.First().Design;
+            design.Update();
+
+            Assert.IsTrue(design.Summary.Properties.ContainsKey("Orbital Adjuster"),
+                "Claim Adjuster's bonus ship should actually carry an Orbital Adjuster");
+        }
+
+        /// <Summary>
+        /// Space Demolition starts with "two mine layers (one standard, one speed trap)" (p
+        /// 20-7) alongside the usual scout and colony ship.
+        /// </Summary>
+        [Test]
+        public void GeneratePlayerAssets_SpaceDemolition_GetsTwoMineLayers()
+        {
+            EmpireData empire = GenerateSinglePlayerEmpire("SD");
+
+            Fleet standardLayer = empire.OwnedFleets.Values.Single(f => f.Name == "Mine Layer #1");
+            Fleet speedTrapLayer = empire.OwnedFleets.Values.Single(f => f.Name == "Speed Trap #1");
+
+            ShipDesign standardDesign = standardLayer.Composition.Values.First().Design;
+            ShipDesign speedTrapDesign = speedTrapLayer.Composition.Values.First().Design;
+            standardDesign.Update();
+            speedTrapDesign.Update();
+
+            Assert.Greater(standardDesign.StandardMines.LayerRate, 0, "The standard mine layer should actually lay mines");
+            Assert.Greater(speedTrapDesign.SpeedBumbMines.LayerRate, 0, "The speed trap layer should actually lay speed-bump mines");
+        }
+
+        /// <Summary>
+        /// Interstellar Traveler starts with "one destroyer" and "one privateer" (p 20-9)
+        /// alongside the usual scout and colony ship (and its own two-Stargate-planet bonus,
+        /// already covered by GeneratePlayerAssets_PacketPhysicsAndInterstellarTraveler_GetSecondPlanet
+        /// above).
+        /// </Summary>
+        [Test]
+        public void GeneratePlayerAssets_InterstellarTraveler_GetsADestroyerAndAPrivateer()
+        {
+            EmpireData empire = GenerateSinglePlayerEmpire("IT");
+
+            Fleet destroyerFleet = empire.OwnedFleets.Values.Single(f => f.Name == "Destroyer #1");
+            Fleet privateerFleet = empire.OwnedFleets.Values.Single(f => f.Name == "Privateer #1");
+
+            ShipDesign destroyerDesign = destroyerFleet.Composition.Values.First().Design;
+            ShipDesign privateerDesign = privateerFleet.Composition.Values.First().Design;
+            destroyerDesign.Update();
+            privateerDesign.Update();
+
+            Assert.IsTrue(destroyerDesign.Weapons.Count > 0, "The starting destroyer should be armed");
+            Assert.Greater(privateerDesign.Shield, 0, "The starting privateer should be shielded");
+        }
+
+        /// <Summary>
+        /// Super Stealth, Inner Strength and Alternate Reality all start with just the
+        /// universal one scout + one colony ship + one starbase, per the Player's Guide (pp
+        /// 20-4, 20-6, 20-9/20-10 - none of them list any bonus starting ship) - confirming the
+        /// new per-PRT fleet logic doesn't accidentally grant these three anything extra.
+        /// </Summary>
+        [TestCase("SS")]
+        [TestCase("IS")]
+        [TestCase("AR")]
+        public void GeneratePlayerAssets_PrtsWithNoFleetBonus_GetOnlyTheUniversalStartingFleet(string primaryTraitCode)
+        {
+            EmpireData empire = GenerateSinglePlayerEmpire(primaryTraitCode);
+
+            Assert.AreEqual(3, empire.OwnedFleets.Count, "Just one scout, one colony ship and one starbase");
+            Assert.IsTrue(empire.OwnedFleets.Values.Any(f => f.Name == "Scout #1"));
+            Assert.IsTrue(empire.OwnedFleets.Values.Any(f => f.Name == "Santa Maria #1"));
+        }
     }
 }
 

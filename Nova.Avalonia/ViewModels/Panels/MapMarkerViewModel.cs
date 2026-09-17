@@ -44,12 +44,15 @@ public abstract class MapMarkerViewModel : ViewModelBase
         Y = y;
         Color = color;
         Selectable = selectable;
-        // A tap while "add waypoint" mode is armed (see SelectionService.ArmWaypointTarget) is
-        // consumed as the waypoint's destination instead of changing the selection - keeps the
-        // fleet whose orders are being edited selected throughout the arm-then-tap gesture.
+        // A tap while "add waypoint" or "measure distance" mode is armed (see
+        // SelectionService.ArmWaypointTarget/ArmMeasureTarget) is consumed by whichever one's
+        // active instead of changing the selection - keeps the fleet whose orders are being
+        // edited (or whatever the distance is being measured from) selected throughout the
+        // arm-then-tap gesture. The two are mutually exclusive (arming one cancels the other),
+        // so at most one of these ever actually consumes a given tap.
         SelectCommand = new RelayCommand(() =>
         {
-            if (!selection.TryConsumeWaypointTarget(selectable))
+            if (!selection.TryConsumeWaypointTarget(selectable) && !selection.TryConsumeMeasureTarget(selectable))
             {
                 selection.Selected = selectable;
             }
