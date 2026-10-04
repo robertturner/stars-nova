@@ -158,23 +158,31 @@ namespace Nova.Ai
         public const int MacintiMaxShipped = 20000;
         public const int MacintiKilotonsPerPacket = 100;
 
-        /// <summary>
-        /// "within about 160 ly": read as a squared distance of at most 160² = 25,600 (the spec
-        /// gives no exact squared constant here - Ambiguity, see report).
-        /// </summary>
-        public const double MacintiRangeSquared = 160.0 * 160.0;
+        /// <summary>The squared range of personality 5's bulk-packet target: below 91,204 (under
+        /// 302 ly), 32-bit dx² + dy² (ai-opponent-behavior.md §12, personality 5, bulk packets).</summary>
+        public const double MacintiRangeSquared = 91204.0;
+
+        /// <summary>The speed field personality 5's bulk packets are set to: warp 11.</summary>
+        public const int MacintiPacketWarp = 11;
+
+        /// <summary>The kT the target-selection starts from: a candidate replaces the best only
+        /// with strictly less, so ties keep the earlier (shuffled-order) planet.</summary>
+        public const int MacintiTargetStart = 100000;
 
         /// <summary>
-        /// The mineral personality 5 ships and how much: the first of Ironium, Boranium,
-        /// Germanium (Ambiguity: the spec names no order when several qualify) held above
-        /// 5,000 kT; a fifth of that stock, at most 20,000 kT. False when no mineral qualifies.
+        /// The mineral personality 5 ships and how much: a starting mineral is drawn uniformly,
+        /// then the minerals are tried from it in the cycle Ironium → Boranium → Germanium →
+        /// Ironium, and the first with more than 5,000 kT of stock is shipped. The amount is a
+        /// fifth of that stock, at most 20,000 kT. False when no mineral qualifies.
         /// </summary>
-        public static bool MacintiShipment(Resources stock, out PacketMineral mineral, out int amount)
+        public static bool MacintiShipment(Resources stock, Random random, out PacketMineral mineral, out int amount)
         {
             int[] held = { stock.Ironium, stock.Boranium, stock.Germanium };
             PacketMineral[] minerals = { PacketMineral.Ironium, PacketMineral.Boranium, PacketMineral.Germanium };
-            for (int index = 0; index < 3; index++)
+            int start = random.Next(3);
+            for (int step = 0; step < 3; step++)
             {
+                int index = (start + step) % 3;
                 if (held[index] > MacintiStockAbove)
                 {
                     mineral = minerals[index];

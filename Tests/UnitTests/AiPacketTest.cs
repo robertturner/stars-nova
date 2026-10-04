@@ -281,14 +281,28 @@ namespace Nova.Tests.UnitTests
         [Test]
         public void MacintiShipment_AFifthOfTheStock_AtMost20000()
         {
-            Assert.IsTrue(AiPacketRules.MacintiShipment(new Resources(4000, 60000, 6000, 0), out PacketMineral mineral, out int amount));
+            // Draw Ironium first, cycle past it (4,000 is not above 5,000) to Boranium.
+            Assert.IsTrue(AiPacketRules.MacintiShipment(new Resources(4000, 60000, 6000, 0), new ScriptedRandom(0), out PacketMineral mineral, out int amount));
             Assert.AreEqual(PacketMineral.Boranium, mineral);
             Assert.AreEqual(12000, amount);
             Assert.AreEqual(120, AiPacketRules.MacintiPacketCount(amount));
 
-            AiPacketRules.MacintiShipment(new Resources(200000, 0, 0, 0), out mineral, out amount);
+            AiPacketRules.MacintiShipment(new Resources(200000, 0, 0, 0), new ScriptedRandom(0), out mineral, out amount);
             Assert.AreEqual(20000, amount);
-            Assert.IsFalse(AiPacketRules.MacintiShipment(new Resources(5000, 5000, 5000, 0), out mineral, out amount), "more than 5,000 kT");
+            Assert.IsFalse(AiPacketRules.MacintiShipment(new Resources(5000, 5000, 5000, 0), new ScriptedRandom(0), out mineral, out amount), "more than 5,000 kT");
+        }
+
+        [Test]
+        public void MacintiShipment_StartsFromTheDrawnMineral_AndWraps()
+        {
+            // Drawn Germanium: 6,000 is above the line, so it is chosen even though Boranium is larger.
+            Assert.IsTrue(AiPacketRules.MacintiShipment(new Resources(0, 60000, 6000, 0), new ScriptedRandom(2), out PacketMineral mineral, out int amount));
+            Assert.AreEqual(PacketMineral.Germanium, mineral);
+            Assert.AreEqual(1200, amount);
+
+            // Drawn Boranium (below the line) wraps to Germanium.
+            Assert.IsTrue(AiPacketRules.MacintiShipment(new Resources(0, 100, 6000, 0), new ScriptedRandom(1), out mineral, out amount));
+            Assert.AreEqual(PacketMineral.Germanium, mineral);
         }
 
         // ================================================================ §6 shared advisor
@@ -356,13 +370,15 @@ namespace Nova.Tests.UnitTests
             GiveStarbase(richer, StarbaseDesign(10));
             Star noDriver = AddOwnedStar("Slow", 120, 100, 1000, new Resources(0, 0, 0, 0));
             GiveStarbase(noDriver, StarbaseDesign(9));
-            Star far = AddOwnedStar("Far", 100, 261, 1000, new Resources(0, 0, 0, 0));
+            // Beyond the 91,204 squared range (310 ly), so it is not a candidate.
+            Star far = AddOwnedStar("Far", 100, 410, 1000, new Resources(0, 0, 0, 0));
             GiveStarbase(far, StarbaseDesign(10));
 
-            ScriptedRandom random = new ScriptedRandom(0);
+            // The 1-in-4 roll then the mineral draw: Ironium first, cycling to Boranium (60,000).
+            ScriptedRandom random = new ScriptedRandom(0, 0);
             new AiPacketAdvisor().RunMacintiPlanetPassPackets(PlanetAi(source, AiCategory.Macinti, random), 121, random);
 
-            Assert.AreEqual("Poor", source.PacketDestination, "least Boranium among warp-10 planets within 160 ly");
+            Assert.AreEqual("Poor", source.PacketDestination, "least Boranium among warp-10 planets within 302 ly");
             Assert.AreEqual(120, Count(source, PacketMineral.Boranium), "12,000 kT / 100");
         }
 

@@ -261,22 +261,19 @@ namespace Nova.Ai
         // ================================================================ §12 personality 5
 
         /// <summary>
-        /// Personality 5's planet-pass packets (§12): after year 120, one time in four, a planet
-        /// whose best driver is warp 10+ and whose stored population exceeds 10,000 units ships a
-        /// fifth (at most 20,000 kT) of a mineral it holds above 5,000 kT, as amount ÷ 100
-        /// packets, to the own planet with a warp-10+ driver within about 160 ly that holds least
-        /// of that mineral, which must hold less than the amount. Readings (see report): the
-        /// roll is drawn before the planet tests; the packets go to the bottom of the queue; the
-        /// chosen speed is left as it was.
+        /// Personality 5's planet-pass bulk packets (§12): the tests run first - year counter
+        /// above 120, best driver warp 10+, stored population above 10,000 units - and then a
+        /// 1-in-4 roll. A queue that already holds a packet item abandons the step. A starting
+        /// mineral is drawn uniformly, then the minerals are tried from it in the cycle Ironium →
+        /// Boranium → Germanium → Ironium; the first above 5,000 kT is shipped as a fifth of that
+        /// stock (at most 20,000 kT), amount ÷ 100 packets, to the own warp-10+ planet within
+        /// 91,204 squared (under 302 ly) that holds least of it (the source itself is a candidate;
+        /// ties keep the earlier planet), which must hold less than the amount. The speed field is
+        /// set to warp 11 and the packets go to the bottom of the queue.
         /// </summary>
         public void RunMacintiPlanetPassPackets(DefaultPlanetAI planet, int year, Random random)
         {
             if (planet == null || year <= AiPacketRules.MacintiAfterYear)
-            {
-                return;
-            }
-
-            if (random.Next(AiPacketRules.MacintiRollSides) != 0)
             {
                 return;
             }
@@ -288,18 +285,28 @@ namespace Nova.Ai
                 return;
             }
 
-            if (!AiPacketRules.MacintiShipment(star.ResourcesOnHand ?? new Resources(), out PacketMineral mineral, out int amount))
+            if (random.Next(AiPacketRules.MacintiRollSides) != 0)
+            {
+                return;
+            }
+
+            if (planet.HasPacketItemQueued())
+            {
+                return;
+            }
+
+            if (!AiPacketRules.MacintiShipment(star.ResourcesOnHand ?? new Resources(), random, out PacketMineral mineral, out int amount))
             {
                 return;
             }
 
             Star target = null;
-            int least = int.MaxValue;
+            int least = AiPacketRules.MacintiTargetStart;
             foreach (Star other in planet.Empire.OwnedStars.Values)
             {
-                if (other == null || other.Name == star.Name || other.Owner != planet.Empire.Id || other.Position == null
+                if (other == null || other.Owner != planet.Empire.Id || other.Position == null
                     || MineralPacketRules.BestDriverWarp(other.Starbase) < AiPacketRules.MacintiMinimumDriverWarp
-                    || PointUtilities.DistanceSquare(star.Position, other.Position) > AiPacketRules.MacintiRangeSquared)
+                    || PointUtilities.DistanceSquare(star.Position, other.Position) >= AiPacketRules.MacintiRangeSquared)
                 {
                     continue;
                 }
@@ -312,7 +319,7 @@ namespace Nova.Ai
                 }
             }
 
-            if (target == null || least >= amount || !planet.SetPacketDestination(target.Name, star.PacketWarp))
+            if (target == null || least >= amount || !planet.SetPacketDestination(target.Name, AiPacketRules.MacintiPacketWarp))
             {
                 return;
             }
