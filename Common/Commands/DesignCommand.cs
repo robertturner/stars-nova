@@ -112,8 +112,21 @@ namespace Nova.Common.Commands
         
         
         
+        /// <summary>The design-name limit: the record's name field is 32 bytes, 31 characters and
+        /// a terminator (save-turn-file-format.md section 3; the designer's own edit box is limited
+        /// to 31, and a host record whose stored length exceeds 32 fails). NOT enforced in
+        /// <see cref="IsValid"/> yet: the AI design builder names designs longer than this (e.g.
+        /// "Medium Freighter [colonizer] T2105"), so rejecting them would break the AI. Once the
+        /// builder truncates its names, add the length test to the Add branch.</summary>
+        public const int MaxDesignNameLength = 31;
+
         public bool IsValid(EmpireData empire)
-        {           
+        {
+            if (empire == null)
+            {
+                return false;
+            }
+
             switch (Mode)
             {
                 case CommandMode.Add:
@@ -138,6 +151,40 @@ namespace Nova.Common.Commands
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// True when the empire already holds the cap of designs of the incoming design's kind
+        /// (16 hull designs or 10 starbase designs, save-turn-file-format.md section 3). NOT
+        /// enforced in <see cref="IsValid"/> yet: the AI design planner still adds a new design
+        /// each turn instead of reusing a slot (reported bug SIM-2), so enforcing the cap here
+        /// would reject legitimate AI role designs. Once the planner manages slots, call this from
+        /// the Add branch.
+        /// </summary>
+        public static bool IsAtDesignCap(EmpireData empire, ShipDesign design)
+        {
+            if (empire == null || design == null)
+            {
+                return false;
+            }
+
+            bool starbase = design.Type == ItemType.Starbase;
+            int cap = starbase ? Global.MaxStarbaseDesignsAmount : Global.MaxDesignsAmount;
+
+            int count = 0;
+            foreach (ShipDesign existing in empire.Designs.Values)
+            {
+                if ((existing.Type == ItemType.Starbase) == starbase)
+                {
+                    count++;
+                    if (count >= cap)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         /// <summary>The name of Alternate Reality's design slot 0 (ServerState StarterColony).</summary>

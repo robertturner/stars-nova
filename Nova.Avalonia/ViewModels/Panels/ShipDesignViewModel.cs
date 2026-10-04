@@ -129,7 +129,15 @@ public partial class ShipDesignViewModel : Tool
     public string DesignName
     {
         get => designName;
-        set => SetProperty(ref designName, value);
+        set
+        {
+            // The design-name edit box is limited to 31 characters (save-turn-file-format.md
+            // section 3), so a pasted or over-long value is cut to the record's field.
+            string limited = value != null && value.Length > DesignCommand.MaxDesignNameLength
+                ? value.Substring(0, DesignCommand.MaxDesignNameLength)
+                : value;
+            SetProperty(ref designName, limited);
+        }
     }
 
     private string costSummary = "";

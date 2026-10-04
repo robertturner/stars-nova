@@ -192,5 +192,41 @@ namespace Nova.Tests.UnitTests
 
             Assert.IsTrue(new DesignCommand(CommandMode.Delete, station.Key).IsValid(empire));
         }
+
+        // ---- design caps and name length (save-turn-file-format.md section 3) ----
+
+        private static ShipDesign NumberedDesign(EmpireData empire, ItemType type, string name)
+        {
+            ShipDesign design = new ShipDesign(empire.GetNextDesignKey()) { Type = type, Name = name };
+            design.Blueprint = new Component();
+            design.Blueprint.Properties.Add("Hull", new Hull { Modules = new List<HullModule>() });
+            return design;
+        }
+
+        [Test]
+        public void DesignCaps_AreAvailableButNotEnforcedYet()
+        {
+            // The caps are known to the command but not enforced while the AI design planner
+            // still adds a design every turn (SIM-2); this pins the helper's boundary.
+            EmpireData empire = Empire("JOAT");
+            for (int i = 0; i < Global.MaxDesignsAmount; i++)
+            {
+                ShipDesign design = NumberedDesign(empire, ItemType.Ship, "S" + i);
+                Assert.IsFalse(DesignCommand.IsAtDesignCap(empire, design), "under the cap at " + i);
+                empire.Designs.Add(design.Key, design);
+            }
+
+            Assert.IsTrue(
+                DesignCommand.IsAtDesignCap(empire, NumberedDesign(empire, ItemType.Ship, "One too many")),
+                "at the 16-design cap");
+        }
+
+        [Test]
+        public void ADesignNameLimit_IsThirtyOneCharacters()
+        {
+            // Defined by the design record (save-turn-file-format.md section 3); the UI truncates
+            // to it, while server-side enforcement waits on the AI names (see DesignCommand).
+            Assert.AreEqual(31, DesignCommand.MaxDesignNameLength);
+        }
     }
 }

@@ -3,6 +3,7 @@ using Avalonia.Headless.NUnit;
 using Nova.Avalonia.ViewModels;
 using Nova.Avalonia.ViewModels.Panels;
 using Nova.Client;
+using Nova.Common.Commands;
 using NUnit.Framework;
 
 namespace Nova.Avalonia.Tests;
@@ -59,5 +60,16 @@ public class ShipDesignViewModelTests
 
         Assert.That(viewModel.SelectedDesignDetails, Is.Not.Null);
         Assert.That(viewModel.SelectedDesignDetails!.Title, Is.EqualTo(row.Name));
+    }
+
+    [AvaloniaTest]
+    public void DesignName_IsLimitedToThirtyOneCharacters()
+    {
+        ShipDesignViewModel viewModel = Open(out _);
+
+        viewModel.DesignName = new string('X', 40);
+
+        Assert.That(viewModel.DesignName.Length, Is.EqualTo(DesignCommand.MaxDesignNameLength));
+        Assert.That(DesignCommand.MaxDesignNameLength, Is.EqualTo(31));
     }
 }

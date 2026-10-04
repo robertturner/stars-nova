@@ -91,7 +91,7 @@ items. The headline numbers above predate this update; the per-file tables below
 - new-game §3 **second planet's own state** (#8) and **Simplified setup / written defaults** (#9):
   `StarMapInitialiser` and `NewGameSetup.SimplifiedPlayerCountTable` / `ApplySimplifiedDefaults` / `ResetToDefaults`.
 
-**Landed (each with a unit test; main suite 3065/3065, `Nova.Avalonia.Tests` 104 passed / 1 skipped):**
+**Landed (each with a unit test; main suite 3067/3067, `Nova.Avalonia.Tests` 105 passed / 1 skipped):**
 
 | Report item | Fix |
 |---|---|
@@ -106,12 +106,14 @@ items. The headline numbers above predate this update; the per-file tables below
 | (not a spec row) golden test-isolation leak | `SimulationEnvironment` resets the process-wide `AllComponents` cache inside and after its private root, so a prior test's component load can no longer change the golden hashes |
 | #47 battle-plan deletion | fleets on the deleted plan move to the plan **just above** it (`BattlePlanRules.PlanAbove`), not the first plan |
 | #32 scanner data | Robber Baron Scanner penetrating is 120 (was 110); the three non-scanner parts scan per unit (Mega Poly Shell 80/40, Multi Contained Munition 150/75, Langston Shell 50/25) and feed the design's fourth-power scanner sum |
+| #31 design caps / name limit (partial) | the design-name box truncates to 31 characters (`DesignCommand.MaxDesignNameLength`); `DesignCommand.IsAtDesignCap` (16 ship / 10 starbase) is available. Server-side enforcement of the cap or the name length is **deferred**: the AI design builder still adds a design each turn (SIM-2) and names designs over 31 characters (e.g. "Medium Freighter [colonizer] T2105"), so enforcing either changes every AI game and the goldens. |
 | (TODO-FEATURES #1) Ship Design tab | a single tap on a design shows its details straight away, including cargo capacity and the full summary figures (`Nova.Client.DesignDetails`) |
 
 **Still open** from the overturns table / "What's next": #1 (minefield/wormhole detection masks and the r/4 rule), #2 (wormhole lifecycle),
 #3's remaining ram-scoop-fuel-gain-skip and message-recipient swap, #10 production templates, #11 catalog 10l, #13/#15 packet terraforming and
-remote mining, #17 Transfer Fleet, #18-#24 combat/damage, #26-#29 turn order / Trader / packets / victory, #30 score visibility, #31 design caps,
-#33-#41 AI, #42 planet route, and the rest of #44-#51 client work.
+remote mining, #17 Transfer Fleet, #18-#24 combat/damage, #26-#29 turn order / Trader / packets / victory, #30 score visibility, #31's
+server-side cap/name enforcement (blocked on the AI design planner's slot management and name lengths), #33-#41 AI, #42 planet route, and the
+rest of #44-#51 client work.
 
 ## Where spec-11 overturns earlier work
 
