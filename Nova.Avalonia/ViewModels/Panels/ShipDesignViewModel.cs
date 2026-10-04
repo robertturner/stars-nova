@@ -33,6 +33,46 @@ public partial class ShipDesignViewModel : Tool
         private set => SetProperty(ref ownedDesigns, value);
     }
 
+    private DesignDetailsViewModel? selectedDesignDetails;
+
+    /// <summary>The details of the design last tapped in "My Designs" (TODO-FEATURES #1). Null
+    /// until a row is tapped; the view binds its details panel to this.</summary>
+    public DesignDetailsViewModel? SelectedDesignDetails
+    {
+        get => selectedDesignDetails;
+        private set
+        {
+            if (SetProperty(ref selectedDesignDetails, value))
+            {
+                OnPropertyChanged(nameof(HasSelectedDesignDetails));
+            }
+        }
+    }
+
+    public bool HasSelectedDesignDetails => selectedDesignDetails != null;
+
+    private OwnedDesignRowViewModel? selectedDesignRow;
+
+    /// <summary>The "My Designs" row last tapped. Set by the ListBox's own single-tap selection;
+    /// selecting one shows its details straight away.</summary>
+    public OwnedDesignRowViewModel? SelectedDesignRow
+    {
+        get => selectedDesignRow;
+        set
+        {
+            if (SetProperty(ref selectedDesignRow, value))
+            {
+                ShowDesign(value?.Design);
+            }
+        }
+    }
+
+    /// <summary>Single tap on an owned design shows its details.</summary>
+    public void ShowDesign(ShipDesign? design)
+    {
+        SelectedDesignDetails = design == null ? null : new DesignDetailsViewModel(design);
+    }
+
     public IReadOnlyList<HullOptionViewModel> HullOptions { get; }
 
     /// <summary>Press-and-hold on a "My Designs" row shows its full component layout here - same
@@ -674,7 +714,7 @@ public partial class ShipDesignViewModel : Tool
     private void RebuildOwnedDesigns()
     {
         OwnedDesigns = clientState.EmpireState.Designs.Values
-            .Select(design => new OwnedDesignRowViewModel(design, CountDesignUsage(design.Key), () => DeleteDesign(design)))
+            .Select(design => new OwnedDesignRowViewModel(design, CountDesignUsage(design.Key), () => DeleteDesign(design), () => ShowDesign(design)))
             .OrderBy(row => row.Name)
             .ToList();
     }

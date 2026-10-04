@@ -4,6 +4,7 @@
              xmlns:views="using:Nova.Avalonia.Views.Panels"
              xmlns:input="using:Avalonia.Input"
              xmlns:conv="using:Avalonia.Data.Converters"
+             xmlns:client="using:Nova.Client"
              x:Class="Nova.Avalonia.Views.Panels.ShipDesignView"
              x:DataType="panels:ShipDesignViewModel">
     <UserControl.Styles>
@@ -144,9 +145,9 @@
         <StackPanel Spacing="4">
             <TextBlock Text="My Designs" FontWeight="Bold" Opacity="0.8" />
             <!-- A ListBox, not a plain ItemsControl - matches the Navigator's own Fleets list,
-                 a confirmed-working shape. SelectedItem is deliberately left unbound, since this
-                 list has no selection concept of its own, only Delete/hold-to-inspect. -->
-            <ListBox ItemsSource="{Binding OwnedDesigns}">
+                 a confirmed-working shape. A single tap selects a row and shows its details
+                 (TODO-FEATURES #1); press-and-hold still opens the full component layout. -->
+            <ListBox ItemsSource="{Binding OwnedDesigns}" SelectedItem="{Binding SelectedDesignRow}">
                 <ListBox.ItemTemplate>
                     <DataTemplate x:DataType="panels:OwnedDesignRowViewModel">
                         <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
@@ -174,6 +175,27 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+
+            <!-- Single-tap design details (TODO-FEATURES #1): cargo capacity and the rest of the
+                 original design screen's summary figures, from Nova.Client.DesignDetails. -->
+            <Border IsVisible="{Binding HasSelectedDesignDetails}" Margin="0,6,0,0">
+                <Border Background="#22101018" BorderBrush="#33ffffff" BorderThickness="1" CornerRadius="4"
+                        Padding="8" DataContext="{Binding SelectedDesignDetails}" x:DataType="panels:DesignDetailsViewModel">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="{Binding Title}" FontWeight="Bold" />
+                        <ItemsControl ItemsSource="{Binding Stats}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="client:DesignStat">
+                                    <Grid ColumnDefinitions="140,*">
+                                        <TextBlock Grid.Column="0" Text="{Binding Label}" Opacity="0.7" TextWrapping="Wrap" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </Border>
 
             <TextBlock Text="Create Design" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
 

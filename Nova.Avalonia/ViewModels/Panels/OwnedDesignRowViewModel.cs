@@ -18,11 +18,15 @@ public class OwnedDesignRowViewModel
 
     public IRelayCommand DeleteCommand { get; }
 
-    public OwnedDesignRowViewModel(ShipDesign design, int quantityInUse, System.Action onDelete)
+    /// <summary>A single tap on the row shows this design's details (TODO-FEATURES #1).</summary>
+    public IRelayCommand SelectCommand { get; }
+
+    public OwnedDesignRowViewModel(ShipDesign design, int quantityInUse, System.Action onDelete, System.Action onSelect)
     {
         Design = design;
         CostSummary = ResourceFormat.Cost(design.Cost);
         QuantityInUse = quantityInUse;
         DeleteCommand = new RelayCommand(onDelete);
+        SelectCommand = new RelayCommand(onSelect);
     }
 }
