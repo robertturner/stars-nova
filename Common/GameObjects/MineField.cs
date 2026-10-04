@@ -32,13 +32,68 @@
 namespace Nova.Common
 {
     using System;
+    using System.Collections.Generic;
+    using System.Linq;
     using System.Xml;
+
+    /// <summary>
+    /// The three minefield types (the field record's type byte at +0xc: 0 Standard, 1 Heavy,
+    /// 2 Speed Bump). behavior-specs-10/fleet-movement-scanning-cargo.md section 5, "Minefield
+    /// rules, code-confirmed".
+    /// </summary>
+    public enum MinefieldType
+    {
+        Standard = 0,
+        Heavy = 1,
+        SpeedBump = 2
+    }
 
     [Serializable]
     public class Minefield : Mappable
     {
+        /// <summary>Safe warp per type, before the racial allowance (raw table +0xeb2): 4/6/5.</summary>
+        public static readonly int[] SafeWarpByType = { 4, 6, 5 };
+
+        /// <summary>Hit chance per light-year per warp above safe, out of 1,000 (+0xeb8): 3/10/35.</summary>
+        public static readonly int[] HitRatePerMilleByType = { 3, 10, 35 };
+
+        /// <summary>Damage per ship, ordinary fleet (+0xea6): 100/500/0.</summary>
+        public static readonly int[] DamagePerShipByType = { 100, 500, 0 };
+
+        /// <summary>Damage per ship, "scoop" fleet (an engine burning no fuel at warp 4): 125/600/0.</summary>
+        public static readonly int[] ScoopDamagePerShipByType = { 125, 600, 0 };
+
+        /// <summary>Fleet minimum damage, ordinary fleet (+0xe9a): 500/2000/0.</summary>
+        public static readonly int[] FleetMinimumByType = { 500, 2000, 0 };
+
+        /// <summary>Fleet minimum damage, scoop fleet: 600/2500/0.</summary>
+        public static readonly int[] ScoopFleetMinimumByType = { 600, 2500, 0 };
+
         public int NumberOfMines;
         public int SafeSpeed = 4;
+
+        /// <summary>
+        /// The field's type; Standard unless saved otherwise. Named FieldType because the
+        /// inherited Item.Type is the object's ItemType.
+        /// </summary>
+        public MinefieldType FieldType = MinefieldType.Standard;
+
+        /// <summary>
+        /// The owner's "detonate" flag (behavior-specs-10/turn-generation-engine.md §3, step 18;
+        /// fleet-movement-scanning-cargo.md §5 "Detonation"): while it is set, the yearly
+        /// minefield pass damages every fleet inside the field once (no roll, no stop) and the
+        /// field's decay rate rises by 25 percentage points. Space Demolition's ability; the
+        /// order that sets it is not part of this class.
+        /// </summary>
+        public bool Detonate;
+
+        /// <summary>
+        /// Empire ids that have been shown this field by striking it (the field "becomes visible
+        /// to the fleet's race", fleet-movement-scanning-cargo.md §5 "The field"). The owner
+        /// always sees its own field and is not listed.
+        /// </summary>
+        public HashSet<int> VisibleTo = new HashSet<int>();
+
         private static int keyId; // TODO (priority 5) Minefield key will be shared amonst all minefields. Lacks a non-static unique id.
 
         /// <summary>
@@ -60,6 +115,12 @@ namespace Nova.Common
             }
         }
 
+        /// <summary>True when the empire owns the field or has been shown it (<see cref="VisibleTo"/>).</summary>
+        public bool IsVisibleTo(int empireId)
+        {
+            return empireId == Owner || (VisibleTo != null && VisibleTo.Contains(empireId));
+        }
+
         /// <summary>
         /// Generate an XmlElement representation of the Minefield for saving to file.
         /// </summary>
@@ -73,7 +134,20 @@ namespace Nova.Common
 
             Global.SaveData(xmldoc, xmlelMinefield, "NumberOfMines", NumberOfMines.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Global.SaveData(xmldoc, xmlelMinefield, "SafeSpeed", SafeSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            Global.SaveData(xmldoc, xmlelMinefield, "keyId", keyId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Global.SaveData(xmldoc, xmlelMinefield, "MinefieldType", FieldType.ToString());
+            // "keyId" is no longer written: it was a process-wide static counter of every Minefield
+            // ever constructed (never read by game logic), so the saved text depended on process
+            // history rather than on the game - fatal to repeatable saves. Old files that still
+            // carry it load as before.
+            if (Detonate)
+            {
+                Global.SaveData(xmldoc, xmlelMinefield, "Detonate", "true");
+            }
+
+            if (VisibleTo != null && VisibleTo.Count > 0)
+            {
+                Global.SaveData(xmldoc, xmlelMinefield, "VisibleTo", string.Join(",", VisibleTo.OrderBy(id => id)));
+            }
 
             return xmlelMinefield;
         }
@@ -90,7 +164,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (subnode.Name.ToLower())
+                    switch (subnode.Name.ToLowerInvariant())
                     {
                         case "numberofmines":
                             NumberOfMines = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -100,8 +174,24 @@ namespace Nova.Common
                             SafeSpeed = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                             break;
 
+                        case "minefieldtype":
+                            FieldType = (MinefieldType)Enum.Parse(typeof(MinefieldType), ((XmlText)subnode.FirstChild).Value, true);
+                            break;
+
                         case "keyid":
                             keyId = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
+                            break;
+
+                        case "detonate":
+                            Detonate = bool.Parse(((XmlText)subnode.FirstChild).Value);
+                            break;
+
+                        case "visibleto":
+                            foreach (string id in ((XmlText)subnode.FirstChild).Value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                VisibleTo.Add(int.Parse(id, System.Globalization.CultureInfo.InvariantCulture));
+                            }
+
                             break;
                     }
                 }

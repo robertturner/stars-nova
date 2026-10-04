@@ -51,6 +51,23 @@ namespace Nova.Common
         }
 
         /// <summary>
+        /// The planet's coverage against invading troops (normalized, 1.0 = 100%): the same
+        /// value <see cref="ComputeDefenseCoverage"/> leaves in <see cref="InvasionCoverage"/>,
+        /// but returned rather than written to the shared statics, so turn generation does not
+        /// race with a UI thread computing another planet's coverage in the same process.
+        /// </summary>
+        public static double InvasionCoverageOf(Star star)
+        {
+            if (star.DefenseType == "None")
+            {
+                return 0;
+            }
+
+            double baseLevel = DefenseTypes[star.DefenseType];
+            return (1.0 - Math.Pow(1.0 - baseLevel, star.Defenses)) * 0.75;
+        }
+
+        /// <summary>
         /// Determine the Defenses of a planet. Note: results are normalized so that
         /// 100% = 1.0.
         /// </summary>

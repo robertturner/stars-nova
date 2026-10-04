@@ -100,53 +100,59 @@ namespace Nova.Common.Waypoints
                 return false;
             }
             
+            // behavior-specs-10/fleet-movement-scanning-cargo.md §4, "Colonist unload outcomes,
+            // complete table" (Unload task column, FUN_10b0_3f3a :75200-75218). The tests run in
+            // the handler's order: unowned planet (85), then the Alternate Reality trait (86), then
+            // the starbase (309). Every refusal leaves the colonists ABOARD. Diplomatic relations
+            // are never consulted: unloading onto a friend's planet is an invasion like any other.
             if (star.Owner == Global.Nobody)
             {
-                // This star has not been colonised. Can't invade.
+                // Message 85: the planet is uninhabited - nobody colonises by unloading.
                 message.Text += star.Name + " but it is not colonised. You must send a ship with a colony module and orders to colonise to take this system.";
                 return false;
             }
-            
-            PlayerRelation relation = sender.EmpireReports[star.Owner].Relation;
-            
-            switch (relation)
-            {
-                case PlayerRelation.Friend:
-                case PlayerRelation.Neutral:
-                    {
-                        message.Text += star.Name + " but the " + sender.EmpireReports[star.Owner].RaceName + " are not our enemies. Order has been cancelled.";
-                        return false;
-                    }
-                case PlayerRelation.Enemy:
-                    {
-                        // continue with the invasion
-                        break;
-                    }
-                default:
-                    {
-                        Report.Error("An unrecognised relationship \"" + relation + "\" was encountered. Invasion of " + star.Name + " has been cancelled.");
-                        break;
-                    }
 
+            // Message 86: an Alternate Reality race may not unload colonists onto any planet that
+            // is not its own. Refused at the handler, so the colonists stay aboard (only the
+            // Transfer-dialog route, which this port does not model, destroys them - message 87).
+            // Tested before the starbase.
+            if (sender.Race != null && sender.Race.HasTrait("AR"))
+            {
+                message.Text += star.Name + " but our colonists cannot live on a planet. The colonists remain aboard.";
+                return false;
             }
 
-            // check for starbase
+            // Message 309: the planet has a starbase; the colonists stay aboard.
             if (star.Starbase != null)
             {
                 message.Text += star.Name + " but the starbase at " + star.Name + " would kill all invading troops. Order has been cancelled.";
                 return false;
             }
 
-            return true;          
+            // Valid: the invasion itself reports the outcome, so drop the unfinished
+            // "has waypoint orders to invade" stub.
+            Messages.Remove(message);
+            return true;
         }
         
         public bool Perform(Fleet fleet, Mappable target, EmpireData sender, EmpireData receiver)
         {
-            Star star = (Star)target;
-            
+            return Invade(fleet, (Star)target, sender, receiver, fleet.Cargo.ColonistsInKilotons);
+        }
+
+        /// <summary>
+        /// Lands <paramref name="troopKilotons"/> of the fleet's colonists (clamped to what it
+        /// carries) on another race's planet: the invasion of the colonist unload outcome table
+        /// (strength 110%, 165% War Monger, against the population, doubled for an Inner Strength
+        /// defender). Used by this task and by an Unload cargo task at another race's planet.
+        /// </summary>
+        public bool Invade(Fleet fleet, Star star, EmpireData sender, EmpireData receiver, int troopKilotons)
+        {
+            troopKilotons = Math.Max(0, Math.Min(troopKilotons, fleet.Cargo.ColonistsInKilotons));
+
             // The troops are now committed to take the star or die trying
-            int troops = fleet.Cargo.ColonistNumbers; 
-            fleet.Cargo.ColonistsInKilotons = 0; 
+            int troops = troopKilotons * Global.ColonistsPerKiloton;
+            fleet.Cargo.ColonistsInKilotons -= troopKilotons;
 
             // Set up the message recipients before the star (potentially) changes hands.
             Message wolfMessage = new Message();
@@ -154,9 +160,9 @@ namespace Nova.Common.Waypoints
             Message lambMessage = new Message();
             lambMessage.Audience = star.Owner;
 
-            // Take into account the Defenses
-            Defenses.ComputeDefenseCoverage(star);
-            int troopsOnGround = (int)(troops * (1.0 - Defenses.InvasionCoverage));
+            // Take into account the Defenses (computed locally, not via Defenses' shared statics,
+            // which a UI thread may be overwriting for another planet at the same moment).
+            int troopsOnGround = (int)(troops * (1.0 - Defenses.InvasionCoverageOf(star)));
 
             // Apply defender and attacker bonuses
             double attackerBonus = 1.1;
@@ -207,7 +213,16 @@ namespace Nova.Common.Waypoints
                 
                 receiver.OwnedStars.Remove(star);
                 star.Owner = fleet.Owner;
+                // The surviving population is the invader's (as ColonizationResolver does for a
+                // colonisation); without this the captured planet kept growing and producing as
+                // the defender's race until the next reload relinked ThisRace (found by Nova.Sim).
+                star.ThisRace = sender.Race;
+                star.EnergyTechLevel = sender.ResearchLevels[TechLevel.ResearchField.Energy];
                 sender.OwnedStars.Add(star);
+
+                // The captor's default production template becomes the planet's queue
+                // (production-queue.md 10f: "a colonisation or invasion succeeds").
+                ProductionTemplateSet.ApplyDefault(star, sender);
 
                 // See ColoniseTask.Perform's own comment - same defensive
                 // ContainsKey-or-Add pattern for the equivalent "took a star this empire never

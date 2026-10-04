@@ -1,4 +1,6 @@
 using CommunityToolkit.Mvvm.Input;
+using Nova.Client;
+using Nova.Common;
 using Nova.Common.Waypoints;
 
 namespace Nova.Avalonia.ViewModels.Panels;
@@ -28,7 +30,18 @@ public class FleetWaypointRowViewModel : ViewModelBase
 
     public int Warp { get; }
 
+    /// <summary>"Stargate" for the dedicated "use Stargate" speed (Global.StargateWarpFactor),
+    /// otherwise "warp N" - the row's own equivalent of the original game's 11-position speed
+    /// dial, whose last stop reads as a word rather than a number.</summary>
+    public string WarpDisplay => Warp == Global.StargateWarpFactor ? "Stargate" : $"warp {Warp}";
+
     public string Task { get; }
+
+    /// <summary>"chasing &lt;fleet&gt;" when this waypoint pursues a fleet (see
+    /// Nova.Client.WaypointOrders.TargetNote), otherwise empty.</summary>
+    public string TargetNote { get; }
+
+    public bool HasTargetNote => !string.IsNullOrEmpty(TargetNote);
 
     /// <summary>Estimated fuel (mg) remaining once the fleet reaches this waypoint, matching
     /// FleetDetail.DisplayLegDetails's own "leg fuel"/"total route fuel" calculation in the
@@ -53,6 +66,15 @@ public class FleetWaypointRowViewModel : ViewModelBase
 
     public string YearsUntilArrivalDisplay => $"{YearsUntilArrival:0.0} yr" + (YearsUntilArrival == 1.0 ? "" : "s");
 
+    /// <summary>Set only for a Stargate-speed leg whose route isn't a safe jump - either no
+    /// Stargate at one end (or the other star is unknown), or the distance is beyond the sending
+    /// gate's rated safe range (still jumpable up to 5x with overgating damage, or outright
+    /// refused beyond that - see TurnGenerator.TryStargateJump). Null for an ordinary warp leg,
+    /// or a Stargate leg with nothing to warn about.</summary>
+    public string? StargateWarningText { get; }
+
+    public bool HasStargateWarning => StargateWarningText != null;
+
     public IRelayCommand DeleteCommand { get; }
 
     public IRelayCommand MoveUpCommand { get; }
@@ -69,14 +91,16 @@ public class FleetWaypointRowViewModel : ViewModelBase
         set => SetProperty(ref isSelected, value);
     }
 
-    public FleetWaypointRowViewModel(int index, Waypoint waypoint, double fuelUponArrival, double yearsUntilArrival, System.Action onDelete, System.Action? onMoveUp, System.Action? onMoveDown, System.Action onSelect)
+    public FleetWaypointRowViewModel(int index, Waypoint waypoint, double fuelUponArrival, double yearsUntilArrival, string? stargateWarningText, System.Action onDelete, System.Action? onMoveUp, System.Action? onMoveDown, System.Action onSelect)
     {
         Index = index;
         Destination = waypoint.Destination;
         Warp = waypoint.WarpFactor;
-        Task = waypoint.Task?.Name ?? "None";
+        Task = WaypointOrders.TaskDisplay(waypoint.Task);
+        TargetNote = WaypointOrders.TargetNote(waypoint);
         FuelUponArrival = fuelUponArrival;
         YearsUntilArrival = yearsUntilArrival;
+        StargateWarningText = stargateWarningText;
         DeleteCommand = new RelayCommand(onDelete);
         MoveUpCommand = new RelayCommand(onMoveUp ?? (() => { }), () => onMoveUp != null);
         MoveDownCommand = new RelayCommand(onMoveDown ?? (() => { }), () => onMoveDown != null);

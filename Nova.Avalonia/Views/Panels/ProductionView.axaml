@@ -91,10 +91,31 @@
             <!-- docs/behavior-specs-4/production-queue.md §9: "Factories (Auto Build) Up to 10" -
                  Quantity above plays the "Up to N" role; this just flags the order so it never
                  blocks the queue in a year it can't be afforded. -->
-            <CheckBox Content="Auto Build" IsChecked="{Binding AutoBuildOnAdd}"
+            <CheckBox Content="Auto Build" IsChecked="{Binding AutoBuildOnAdd}" IsEnabled="{Binding CanToggleAutoBuildOnAdd}"
                       ToolTip.Tip="Skipped (not blocking) in a year this order can't be afforded, instead of halting everything queued after it" />
 
+            <!-- An auto terraform order is Min Terraform (only while the planet is uninhabitable
+                 or shrinking) or Max Terraform (up to the terraform limit) - production-queue.md
+                 section 6; TerraformProductionUnit.MinimumOnly. -->
+            <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding ShowTerraformAutoChoice}">
+                <TextBlock Grid.Column="0" Text="Terraform" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox Grid.Column="1" ItemsSource="{Binding TerraformAutoChoices}" SelectedIndex="{Binding TerraformAutoChoiceIndex}"
+                          HorizontalAlignment="Stretch"
+                          ToolTip.Tip="Min Terraform works only while the planet is uninhabitable or its population is falling; Max Terraform keeps improving it" />
+            </Grid>
+
             <Button Content="Add to Queue" Command="{Binding AddToQueueCommand}" HorizontalAlignment="Left" />
+
+            <!-- One of the four saved production templates (edited in Production Templates),
+                 applied in one action - see ProductionViewModel.Templates.cs. -->
+            <TextBlock Text="Production template" FontWeight="Bold" Opacity="0.8" Margin="0,12,0,0" />
+            <ComboBox ItemsSource="{Binding TemplateSlotNames}" SelectedIndex="{Binding SelectedTemplateSlot}" HorizontalAlignment="Stretch" />
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <Button Content="Replace Queue" Command="{Binding ReplaceWithTemplateCommand}"
+                        ToolTip.Tip="Clear this planet's queue and fill it from the template" />
+                <Button Content="Append" Command="{Binding AppendTemplateCommand}"
+                        ToolTip.Tip="Add the template's entries after this planet's current queue" />
+            </StackPanel>
         </StackPanel>
     </StackPanel>
     </ScrollViewer>

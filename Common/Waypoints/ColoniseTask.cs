@@ -1,4 +1,4 @@
-﻿#region Copyright Notice
+#region Copyright Notice
 // ============================================================================
 // Copyright (C) 2008 Ken Reed
 // Copyright (C) 2009-2012 The Stars-Nova Project
@@ -24,26 +24,25 @@ namespace Nova.Common.Waypoints
 {
     using System;
     using System.Collections.Generic;
-    using System.Linq;
     using System.Xml;
-    
+
     using Nova.Common;
-    
+
     /// <summary>
     /// Performs Star Colonisation.
     /// </summary>
     public class ColoniseTask : IWaypointTask
     {
         private List<Message> messages = new List<Message>();
-        
+
         public List<Message> Messages
         {
             get
-            { 
+            {
                 return messages;
             }
         }
-        
+
         public string Name
         {
             get
@@ -51,11 +50,11 @@ namespace Nova.Common.Waypoints
                 return "Colonise";
             }
         }
-        
+
         public ColoniseTask()
         {
         }
-        
+
         /// <summary>
         /// Load: Read in a ColoniseTask from and XmlNode representation.
         /// </summary>
@@ -65,91 +64,105 @@ namespace Nova.Common.Waypoints
             if (node == null)
             {
                 return;
-            }    
+            }
         }
-        
+
+        /// <summary>
+        /// The Colonize cancellations (behavior-specs-9/fleet-movement-scanning-cargo.md §5,
+        /// "Colonize resolution, fleet side", step 1), each ending the order with no other
+        /// effect: the fleet is not at a planet (message 81); the planet has ANY owner, the
+        /// fleet's own race included (message 82); the fleet carries no colonists (message 83 -
+        /// one unit, 100 colonists, is enough); no ship carries a Colonization Module or an
+        /// Orbital Construction Module (message 84; both carry the "Colonizer" property).
+        /// </summary>
         public bool IsValid(Fleet fleet, Mappable target, EmpireData sender, EmpireData reciever)
         {
             Message message = new Message();
             Messages.Add(message);
-            
+
             message.Audience = fleet.Owner;
             message.Text = fleet.Name + " attempted to colonise ";
-            
+
             if (fleet.InOrbit == null || target == null || !(target is Star))
             {
                 message.Text += "something that is not a star.";
                 return false;
             }
-            
+
             Star star = (Star)target;
             message.Text += target.Name;
-            
-            if (star.Colonists != 0)
+
+            if (star.Owner != Global.Nobody)
             {
-                message.Text += " but it is already occupied.";
+                message.Text += " but it is already inhabited.";
                 return false;
             }
-            
+
             if (fleet.Cargo.ColonistsInKilotons == 0)
             {
                 message.Text += " but no colonists were on board.";
                 return false;
             }
-            
+
             if (fleet.CanColonize == false)
             {
                 message.Text += " but no ships with colonization module were present.";
                 return false;
             }
-            
+
             Messages.Clear();
-            return true;           
+            return true;
         }
-        
+
+        /// <summary>
+        /// Dismantles the whole colonizing fleet into the planet and registers its colonists as
+        /// a pending landing (behavior-specs-9/fleet-movement-scanning-cargo.md §5, "Colonize
+        /// resolution, fleet side", steps 2-4). This happens for EVERY colonizing fleet at the
+        /// task pass, contest losers included:
+        ///
+        /// - Minerals, credited at once and ADDED to the planet's surface stockpile: per mineral
+        ///   floor(3S/4) of the cost of every ship in the fleet (escorts and freighters
+        ///   included), plus the fleet's whole cargo of it. The fleet's fuel and the ships'
+        ///   resource cost are lost; Ultimate Recycling plays no part (its test is on the Scrap
+        ///   path only). A loser's minerals stay on the planet for the winner.
+        /// - Colonists go into the pending-landing ledger (Star.PendingColonizations), not onto
+        ///   the planet: ServerState/ColonizationResolver.cs settles the landing once every
+        ///   contender is known (Common can't reference ServerState). Every simultaneous attempt
+        ///   at the same star sees the same "still unowned" state via <see cref="IsValid"/>,
+        ///   since nothing here changes the planet's owner.
+        /// - The fleet is removed (its composition is cleared; the empty fleet is cleaned up).
+        /// </summary>
         public bool Perform(Fleet fleet, Mappable target, EmpireData sender, EmpireData reciever)
         {
             Star star = target as Star;
-            
-            Message message = new Message();            
-            message.Audience = fleet.Owner;            
-            message.Text = " You have colonised " + star.Name + ".";
-            Messages.Add(message);
 
-            star.ResourcesOnHand = fleet.Cargo.ToResource();
-            star.Colonists = fleet.Cargo.ColonistNumbers;
-            star.Owner = fleet.Owner;
-            star.ThisRace = sender.Race;
-            star.EnergyTechLevel = sender.ResearchLevels[TechLevel.ResearchField.Energy];
-            
-            fleet.TotalCost.Energy = 0;            
-            star.ResourcesOnHand += fleet.TotalCost * 0.75;
-            
+            star.PendingColonizations.Add(new ColonizationAttempt(fleet, sender));
+
+            Resources deposited = ScrapTask.SalvageMinerals(fleet, 3, 4);
+            star.ResourcesOnHand.Ironium += deposited.Ironium;
+            star.ResourcesOnHand.Boranium += deposited.Boranium;
+            star.ResourcesOnHand.Germanium += deposited.Germanium;
+
+            // Message 89, the same notice a scrapped fleet gives, quoting the total kilotons
+            // deposited (cargo included).
+            Messages.Add(new Message
+            {
+                Audience = fleet.Owner,
+                Text = fleet.Name + " has been dismantled at " + star.Name + " to found a colony, depositing "
+                    + deposited.Mass.ToString(System.Globalization.CultureInfo.InvariantCulture) + "kT of minerals."
+            });
+
+            fleet.Cargo.Clear();
+            fleet.FuelAvailable = 0;
             fleet.Composition.Clear();
-
-            sender.OwnedStars.Add(star);
-
-            // Every star should already have a StarReports placeholder for every empire from
-            // AssembleEmpireData at game creation (FirstStep.cs) - but colonizing one this empire
-            // never had a report for at all (rather than merely an unscanned ScanLevel.None one)
-            // shouldn't crash the whole turn generation over it. Matches the same
-            // ContainsKey-or-Add pattern ScanStep.AddStars already uses for the equivalent case.
-            if (sender.StarReports.ContainsKey(star.Name))
-            {
-                sender.StarReports[star.Name].Update(star, ScanLevel.Owned, sender.TurnYear);
-            }
-            else
-            {
-                sender.StarReports.Add(star.Name, star.GenerateReport(ScanLevel.Owned, sender.TurnYear));
-            }
 
             return true;
         }
-        
+
         public XmlElement ToXml(XmlDocument xmldoc)
         {
             XmlElement xmlelTask = xmldoc.CreateElement("ColoniseTask");
-            
+
             return xmlelTask;
         }
     }

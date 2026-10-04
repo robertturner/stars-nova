@@ -180,7 +180,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (mainNode.Name.ToLower())
+                    switch (mainNode.Name.ToLowerInvariant())
                     {
                         case "key":
                             key = long.Parse(mainNode.FirstChild.Value, System.Globalization.NumberStyles.HexNumber);

@@ -63,7 +63,9 @@ namespace Nova.Server.NewGame
         {
             get
             {
-                int index = this.randomGenerator.Next(0, this.starNamePool.Count - 1);
+                // Random.Next's upper bound is exclusive: Next(0, Count - 1) could never draw the
+                // last name in the pool until it was the only one left.
+                int index = this.randomGenerator.Next(0, this.starNamePool.Count);
                 string name = starNamePool[index];
 
                 this.starNamePool.RemoveAt(index);

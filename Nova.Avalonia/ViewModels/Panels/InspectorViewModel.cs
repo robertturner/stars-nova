@@ -21,7 +21,7 @@ namespace Nova.Avalonia.ViewModels.Panels;
 /// WinForms FleetDetail/StarMap.DrawFleet pattern of pushing an ICommand onto
 /// ClientData.Commands and immediately applying it locally for optimistic UI feedback.
 /// </summary>
-public class InspectorViewModel : Tool
+public partial class InspectorViewModel : Tool
 {
     private readonly ClientData clientState;
     private readonly SelectionService selection;
@@ -184,7 +184,11 @@ public class InspectorViewModel : Tool
 
         if (design != null && design.Summary.Properties.TryGetValue("Gate", out ComponentProperty gateProperty) && gateProperty is Gate gate)
         {
-            rowList.Add(new InspectorRow("  Stargate", $"{gate.SafeHullMass:0}/{gate.SafeRange:0}"));
+            // <= 0 means "Any" (no limit on that dimension) - see TurnGenerator.TryStargateJump's
+            // own comment on this convention, matching real components like "Gate 100/Any".
+            string massText = gate.SafeHullMass <= 0 ? "Any" : $"{gate.SafeHullMass:0}";
+            string rangeText = gate.SafeRange <= 0 ? "Any" : $"{gate.SafeRange:0}";
+            rowList.Add(new InspectorRow("  Stargate", $"{massText}/{rangeText}"));
         }
 
         if (design != null && design.Summary.Properties.TryGetValue("Mass Driver", out ComponentProperty driverProperty) && driverProperty is MassDriver driver)
@@ -226,24 +230,155 @@ public class InspectorViewModel : Tool
     /// own amount/resource picker (the dedicated Cargo tab) and isn't offered here; a PARTIAL
     /// merge (moving only some ships, not the whole fleet) likewise still needs the Split/Merge
     /// tab's own composition editor - this option only covers a full "merge everything" order.
+    /// "Patrol" carries two settings (speed and range), edited by the Patrol rows below the
+    /// picker - see NewPatrolSpeed/NewPatrolRangeIndex and their Selected* counterparts. The list
+    /// and the task builder live in Nova.Client.WaypointOrders so they are unit-tested.
     /// </summary>
-    public IReadOnlyList<string> TaskOptions { get; } =
-        new[] { "None", "Colonise", "Scrap", "Lay Mines", "Invade", "Merge With Fleet" };
+    public IReadOnlyList<string> TaskOptions => WaypointOrders.TaskOptions;
+
+    /// <summary>Patrol speed labels, index = setting ("Automatic" = the fleet's efficient warp, then Warp 1-10).</summary>
+    public IReadOnlyList<string> PatrolSpeedOptions => WaypointOrders.PatrolSpeedLabels;
+
+    /// <summary>Patrol range labels, index = stored range index (50 ly steps, 10 = 10,000 ly).</summary>
+    public IReadOnlyList<string> PatrolRangeOptions => WaypointOrders.PatrolRangeLabels;
+
+    private bool suppressRepeatOrdersChange;
+
+    private bool repeatOrders;
+
+    /// <summary>The selected fleet's Repeat Orders flag. Loaded from Fleet.RepeatOrders by
+    /// ShowFleet; a player toggle sends a RepeatOrdersCommand (queued for the .orders file and
+    /// applied locally, like every other fleet order here).</summary>
+    public bool RepeatOrders
+    {
+        get => repeatOrders;
+        set
+        {
+            if (SetProperty(ref repeatOrders, value) && !suppressRepeatOrdersChange)
+            {
+                ApplyRepeatOrders(value);
+            }
+        }
+    }
+
+    private int newPatrolSpeed;
+
+    /// <summary>Patrol speed for the waypoint about to be added (0 = automatic).</summary>
+    public int NewPatrolSpeed
+    {
+        get => newPatrolSpeed;
+        set
+        {
+            if (value >= 0) // a ComboBox reports -1 while it has no selection - not a setting
+            {
+                SetProperty(ref newPatrolSpeed, WaypointOrders.ClampPatrolSpeed(value));
+            }
+        }
+    }
+
+    private int newPatrolRangeIndex;
+
+    /// <summary>Patrol range index for the waypoint about to be added.</summary>
+    public int NewPatrolRangeIndex
+    {
+        get => newPatrolRangeIndex;
+        set
+        {
+            if (value >= 0)
+            {
+                SetProperty(ref newPatrolRangeIndex, WaypointOrders.ClampRangeIndex(value));
+            }
+        }
+    }
+
+    /// <summary>True when the waypoint about to be added is a Patrol order (shows its settings).</summary>
+    public bool IsNewWaypointPatrol => NewWaypointTask == WaypointOrders.PatrolOption;
+
+    private bool suppressPatrolSettingsChange;
+
+    private int selectedPatrolSpeed;
+
+    /// <summary>The selected waypoint's Patrol speed - applies immediately, like SelectedWaypointWarp.</summary>
+    public int SelectedPatrolSpeed
+    {
+        get => selectedPatrolSpeed;
+        set
+        {
+            if (value >= 0 && SetProperty(ref selectedPatrolSpeed, WaypointOrders.ClampPatrolSpeed(value)) && !suppressPatrolSettingsChange)
+            {
+                ApplySelectedPatrolSettings();
+            }
+        }
+    }
+
+    private int selectedPatrolRangeIndex;
+
+    /// <summary>The selected waypoint's Patrol range index - applies immediately.</summary>
+    public int SelectedPatrolRangeIndex
+    {
+        get => selectedPatrolRangeIndex;
+        set
+        {
+            if (value >= 0 && SetProperty(ref selectedPatrolRangeIndex, WaypointOrders.ClampRangeIndex(value)) && !suppressPatrolSettingsChange)
+            {
+                ApplySelectedPatrolSettings();
+            }
+        }
+    }
+
+    private bool isSelectedWaypointPatrol;
+
+    /// <summary>True when a waypoint row is selected and its task is Patrol (shows its settings).</summary>
+    public bool IsSelectedWaypointPatrol
+    {
+        get => isSelectedWaypointPatrol;
+        private set => SetProperty(ref isSelectedWaypointPatrol, value);
+    }
 
     private int newWaypointWarp = 6;
 
     public int NewWaypointWarp
     {
         get => newWaypointWarp;
-        set => SetProperty(ref newWaypointWarp, value);
+        set
+        {
+            if (SetProperty(ref newWaypointWarp, value))
+            {
+                newWaypointWarpManuallySet = true;
+                OnPropertyChanged(nameof(NewWaypointUseStargate));
+            }
+        }
     }
+
+    /// <summary>True when the "Add Waypoint" speed is set to the dedicated "use Stargate" value
+    /// (Global.StargateWarpFactor) rather than an ordinary warp number - a separate bool-shaped
+    /// view of NewWaypointWarp for a checkbox, mirroring the original game's 11th speed-dial
+    /// position. Toggling it off falls back to warp 6 (this control's own long-standing default)
+    /// rather than some remembered prior value, matching the simplicity of a single checkbox.</summary>
+    public bool NewWaypointUseStargate
+    {
+        get => NewWaypointWarp == Global.StargateWarpFactor;
+        set => NewWaypointWarp = value ? Global.StargateWarpFactor : 6;
+    }
+
+    /// <summary>Tracks whether the player has touched NewWaypointWarp/NewWaypointUseStargate
+    /// since "Add Waypoint" was last armed - see AddWaypoint's own comment for why this gates
+    /// the "default to Stargate when both ends are gated" behavior, and ArmMapWaypoint for where
+    /// it resets to false for the next tap.</summary>
+    private bool newWaypointWarpManuallySet;
 
     private string newWaypointTask = "None";
 
     public string NewWaypointTask
     {
         get => newWaypointTask;
-        set => SetProperty(ref newWaypointTask, value);
+        set
+        {
+            if (SetProperty(ref newWaypointTask, value))
+            {
+                OnPropertyChanged(nameof(IsNewWaypointPatrol));
+            }
+        }
     }
 
     // -1 = nothing selected. Tracks the real Fleet.Waypoints index (see FleetWaypointRowViewModel.
@@ -299,16 +434,35 @@ public class InspectorViewModel : Tool
         get => selectedWaypointWarp;
         set
         {
-            if (SetProperty(ref selectedWaypointWarp, value) && !suppressWaypointWarpChange)
+            bool changed = SetProperty(ref selectedWaypointWarp, value);
+            if (changed)
+            {
+                OnPropertyChanged(nameof(SelectedWaypointUseStargate));
+            }
+
+            if (changed && !suppressWaypointWarpChange)
             {
                 ApplySelectedWaypointWarp();
             }
         }
     }
 
+    /// <summary>Same bool-shaped checkbox view as <see cref="NewWaypointUseStargate"/>, for the
+    /// already-added waypoint currently selected below. Falls back to warp 6 when unchecked, same
+    /// as that property.</summary>
+    public bool SelectedWaypointUseStargate
+    {
+        get => SelectedWaypointWarp == Global.StargateWarpFactor;
+        set => SelectedWaypointWarp = value ? Global.StargateWarpFactor : 6;
+    }
+
     public IRelayCommand ArmMapWaypointCommand { get; }
 
     public IRelayCommand CancelMapWaypointCommand { get; }
+
+    /// <summary>Delete/Backspace on the fleet orders: deletes the selected waypoint and keeps the
+    /// selection on the previous one (behavior-specs-10/client-interface.md, ids 103/104).</summary>
+    public IRelayCommand DeleteSelectedWaypointCommand { get; }
 
     /// <summary>Mirrors SelectionService.IsAddingWaypoint - see OnSelectionChanged. The Star Map
     /// shows a "tap a planet" banner while this is true; the button here that arms it flips to a
@@ -341,10 +495,12 @@ public class InspectorViewModel : Tool
 
     private string newFleetName = "";
 
+    /// <summary>The ordinary rename surface: filtered on every keystroke, validated again on
+    /// accept (Nova.Client.RenameRules; client-ui-dialog-catalog.md "Rename surfaces").</summary>
     public string NewFleetName
     {
         get => newFleetName;
-        set => SetProperty(ref newFleetName, value);
+        set => SetProperty(ref newFleetName, RenameRules.LiveFilter(value));
     }
 
     public IRelayCommand SubmitRenameCommand { get; }
@@ -637,6 +793,7 @@ public class InspectorViewModel : Tool
             () => selectedStarbase != null && selectedStarbase.Composition.Count > 0);
         ArmMapWaypointCommand = new RelayCommand(ArmMapWaypoint, () => selectedFleet != null);
         CancelMapWaypointCommand = new RelayCommand(() => selection.CancelWaypointTarget());
+        DeleteSelectedWaypointCommand = new RelayCommand(DeleteSelectedWaypoint);
 
         selection.PropertyChanged += OnSelectionChanged;
         Refresh(selection.Selected);
@@ -668,6 +825,11 @@ public class InspectorViewModel : Tool
         }
 
         AddWaypointStatusMessage = "";
+        // Each arm/tap cycle is a fresh decision (SelectionService disarms itself after exactly
+        // one consumed tap - see ArmWaypointTarget) - reset so AddWaypoint's own "default to
+        // Stargate when both ends are gated" can apply again, unless the player deliberately
+        // changes the speed control before tapping the map this time.
+        newWaypointWarpManuallySet = false;
         selection.ArmWaypointTarget(AddWaypoint);
     }
 
@@ -734,6 +896,21 @@ public class InspectorViewModel : Tool
             OrbitingFleets = Array.Empty<OrbitingFleetRowViewModel>();
         }
 
+        if (selected is not Minefield)
+        {
+            ClearMinefieldDetails();
+        }
+
+        if (selected is not Fleet)
+        {
+            ClearFleetBattlePlan();
+        }
+
+        if (selected is not Star)
+        {
+            ClearPacketControls();
+        }
+
         switch (selected)
         {
             case Star star:
@@ -750,6 +927,9 @@ public class InspectorViewModel : Tool
                 break;
             case Minefield minefield:
                 ShowMinefield(minefield);
+                break;
+            case MineralPacket packet:
+                ShowPacket(packet);
                 break;
             default:
                 Kind = "";
@@ -929,9 +1109,16 @@ public class InspectorViewModel : Tool
             new InspectorRow("Mines", $"{star.Mines} / {star.GetOperableMines()}"),
             new InspectorRow("Factories", $"{star.Factories} / {star.GetOperableFactories()}"),
             new InspectorRow("Defenses", star.DefenseType),
+            // The planet's own scanner reach (client-ui-dialog-catalog.md "Planet inspector":
+            // scanner information in the planet details; the desktop also gets the scanner
+            // display % control, InspectorViewModel.Scanner.cs).
+            new InspectorRow("Scanner range", star.ScanRange > 0 ? $"{star.ScanRange} ly" : "None"),
         };
 
         AddStarbaseRows(rowList, star.Starbase);
+
+        // Packet destination and speed (mass-driver planets only) - InspectorViewModel.Packet.cs.
+        ShowPacketControls(rowList, star);
         Rows = rowList;
 
         OrbitingFleets = clientState.EmpireState.OwnedFleets.Values
@@ -976,16 +1163,9 @@ public class InspectorViewModel : Tool
         Kind = "Minefield";
         Name = string.IsNullOrEmpty(minefield.Name) ? $"Minefield #{minefield.Key:X}" : minefield.Name;
 
-        string owner = minefield.Owner == clientState.EmpireState.Id ? "You" : $"Empire #{minefield.Owner}";
-
-        Rows = new List<InspectorRow>
-        {
-            new InspectorRow("Owner", owner),
-            new InspectorRow("Position", minefield.Position.ToString()),
-            new InspectorRow("Radius", $"{minefield.Radius}"),
-            new InspectorRow("Number of mines", $"{minefield.NumberOfMines}"),
-            new InspectorRow("Safe speed", $"Warp {minefield.SafeSpeed}"),
-        };
+        // The rows depend on the display option, and an owned Space Demolition field offers
+        // the Detonate order - see InspectorViewModel.Minefield.cs.
+        ShowMinefieldDetails(minefield);
     }
 
     private void ShowFleet(Fleet fleet)
@@ -994,6 +1174,7 @@ public class InspectorViewModel : Tool
         Name = fleet.Name;
         selectedFleet = fleet;
         IsFleetSelected = true;
+        RefreshFleetBattlePlan(fleet);
         ArmMapWaypointCommand.NotifyCanExecuteChanged();
 
         // A genuine switch to a different fleet clears the waypoint selection (an index into
@@ -1031,7 +1212,7 @@ public class InspectorViewModel : Tool
         Waypoint current = fleet.Waypoints[0];
         rowList.Add(new InspectorRow("Waypoint", current.Destination));
         rowList.Add(new InspectorRow("Task", current.Task?.Name ?? "None"));
-        rowList.Add(new InspectorRow("Warp", fleet.Waypoints.Count > 1 ? $"{fleet.Waypoints[1].WarpFactor}" : "0"));
+        rowList.Add(new InspectorRow("Warp", fleet.Waypoints.Count > 1 ? WarpFactorDisplay(fleet.Waypoints[1].WarpFactor) : "0"));
 
         foreach ((string label, int amount) in new (string, int)[]
         {
@@ -1066,7 +1247,38 @@ public class InspectorViewModel : Tool
             bool canMoveDown = index < fleet.Waypoints.Count - 1;
 
             Waypoint waypoint = fleet.Waypoints[i];
-            if (waypoint.WarpFactor > 0)
+            string? stargateWarning = null;
+            if (waypoint.WarpFactor == Global.StargateWarpFactor)
+            {
+                // A Stargate jump consumes no fuel and takes no time - it either arrives this
+                // same turn or fails outright (TurnGenerator.TryStargateJump) - so nothing to add
+                // to the running fuel/time totals either way. Instead, warn here if the route
+                // looks unsafe: calling fleet.FuelConsumption(11, ...) below would be a bug
+                // anyway (Engine.FuelConsumption only has 10 entries, one per real warp speed).
+                string departureStarName = fleet.Waypoints[i - 1].Destination;
+                Gate? departureGate = GetStargateAt(departureStarName);
+                Gate? arrivalGate = GetStargateAt(waypoint.Destination);
+                if (departureGate == null || arrivalGate == null)
+                {
+                    stargateWarning = "No Stargate at both ends - this order will fail.";
+                }
+                // SafeRange <= 0 is a real "Any" range gate (e.g. "Gate 100/Any"/"Gate Any/Any"
+                // in components.xml), not a broken one - see TryStargateJump's own comment on
+                // this convention. No distance can ever be unsafe for one of those.
+                else if (departureGate.SafeRange > 0)
+                {
+                    double gateDistance = PointUtilities.Distance(previousPosition, waypoint.Position);
+                    if (gateDistance > departureGate.SafeRange * 5)
+                    {
+                        stargateWarning = "Beyond the Stargate's range even for overgating - this order will fail.";
+                    }
+                    else if (gateDistance > departureGate.SafeRange)
+                    {
+                        stargateWarning = "Beyond the Stargate's safe range - overgating will damage the fleet.";
+                    }
+                }
+            }
+            else if (waypoint.WarpFactor > 0)
             {
                 double distance = PointUtilities.Distance(previousPosition, waypoint.Position);
                 double time = distance / (waypoint.WarpFactor * waypoint.WarpFactor);
@@ -1080,6 +1292,7 @@ public class InspectorViewModel : Tool
                 waypoint,
                 runningFuel,
                 runningYears,
+                stargateWarning,
                 onDelete: () => DeleteWaypoint(index),
                 onMoveUp: canMoveUp ? () => MoveWaypoint(index, index - 1) : null,
                 onMoveDown: canMoveDown ? () => MoveWaypoint(index, index + 1) : null,
@@ -1091,6 +1304,10 @@ public class InspectorViewModel : Tool
         NewFleetName = fleet.Name;
         NewWaypointWarp = 6;
         NewWaypointTask = "None";
+
+        suppressRepeatOrdersChange = true;
+        RepeatOrders = fleet.RepeatOrders;
+        suppressRepeatOrdersChange = false;
 
         if (fleet.InOrbit is Star orbitStar)
         {
@@ -1126,7 +1343,7 @@ public class InspectorViewModel : Tool
         var rows = new List<SplitMergeRowViewModel>();
         foreach (KeyValuePair<long, ShipToken> entry in fleet.Composition)
         {
-            rows.Add(new SplitMergeRowViewModel(entry.Key, entry.Value.Design, entry.Value.Quantity));
+            rows.Add(new SplitMergeRowViewModel(entry.Key, entry.Value.Design, entry.Value.Quantity, entry.Value.Damage));
         }
 
         SplitMergeRows = rows;
@@ -1362,20 +1579,67 @@ public class InspectorViewModel : Tool
                 return;
             }
 
+            // Real Stars! has two genuinely distinct merge mechanisms (docs/behavior-specs-4/
+            // fleet-movement-scanning-cargo.md's own "Merge With Fleet [waypoint task] ...
+            // distinct from the immediate 'Merge Fleets' UI command ... which executes instantly
+            // rather than waiting for a turn to generate"): an instant UI action for two fleets
+            // already together (already ported - see ApplySplitMerge, the Split/Merge tab), and
+            // this queued waypoint task for rendezvousing with a fleet not there yet. Tapping a
+            // fleet/orbit that's already exactly where this fleet already is IS the first case,
+            // not the second - confirmed live as a real, reported bug: queuing it here instead
+            // of applying it meant the merge didn't actually happen until End Turn, and a
+            // "go somewhere" waypoint added to what the player believed was already the merged
+            // fleet only ever belonged to whichever of the two pre-merge fleets they'd selected -
+            // observed as "the merged fleet split again" the following turn once the deferred
+            // merge and the new movement order both finally ran, on two fleets instead of one.
+            if (selectedFleet.Position == targetFleet.Position)
+            {
+                MergeSelectedFleetInstantly(targetFleet);
+                return;
+            }
+
             task = new SplitMergeTask(new Dictionary<long, ShipToken>(), new Dictionary<long, ShipToken>(), targetFleet.Key);
         }
         else
         {
-            task = BuildTask(NewWaypointTask);
+            task = WaypointOrders.BuildTask(NewWaypointTask, NewPatrolSpeed, NewPatrolRangeIndex);
+        }
+
+        // Matches the original game's own behavior: if the star this leg departs FROM and the
+        // one it's headed to both have an operational Stargate right now, default this waypoint
+        // to the "use Stargate" speed rather than whatever ordinary warp was last set - unless
+        // the player has already deliberately touched the speed control since arming (see
+        // ArmMapWaypoint's own reset), in which case their explicit choice wins. This is only a
+        // DEFAULT: picking an ordinary speed afterward (SelectedWaypointWarp, once added) still
+        // works exactly as if no gate existed - see TurnGenerator.TryStargateJump.
+        // ShowFleet resets NewWaypointWarp back to its own neutral default (6) once this command
+        // applies (every ApplyCommand call re-runs it), so there's no UI control left to reflect
+        // this default back into afterward - it only needs to affect the waypoint actually being
+        // built right here.
+        int warpFactor = NewWaypointWarp;
+        if (!newWaypointWarpManuallySet)
+        {
+            string? departureStarName = ResolveDepartureStarName();
+            if (departureStarName != null && GetStargateAt(departureStarName) != null && GetStargateAt(destination) != null)
+            {
+                warpFactor = Global.StargateWarpFactor;
+            }
         }
 
         var waypoint = new Waypoint
         {
             Position = target.Position,
             Destination = destination,
-            WarpFactor = NewWaypointWarp,
+            WarpFactor = warpFactor,
             Task = task,
         };
+
+        // A fleet (own, or a foreign fleet report) tapped as the destination makes this a
+        // pursuit: target kind "fleet", that fleet's key, its current position - the host then
+        // re-aims the waypoint at the target after every movement step (behavior-specs-10/
+        // fleet-movement-scanning-cargo.md section 5, "Pursuit"). Stars, minefields, wormholes,
+        // starbases and the fleet itself stay fixed points. See WaypointOrders.AimAtTappedFleet.
+        WaypointOrders.AimAtTappedFleet(waypoint, target, selectedFleet.Key);
 
         // "In front of" the selected waypoint, per the user's own spec: the new one takes that
         // row's list position and everything from there on shifts one later - CommandMode.Insert
@@ -1390,6 +1654,96 @@ public class InspectorViewModel : Tool
         else
         {
             ApplyCommand(new WaypointCommand(CommandMode.Add, waypoint, selectedFleet.Key));
+        }
+    }
+
+    /// <summary>The star this NEXT leg departs from - whatever waypoint immediately precedes
+    /// where it's about to be inserted/appended (Waypoints[0], the current-position placeholder,
+    /// at minimum) - or null if that leg doesn't start from a named star at all (e.g. resuming
+    /// from a mid-flight deep-space stop). Used only for AddWaypoint's own Stargate-default
+    /// check.</summary>
+    private string? ResolveDepartureStarName()
+    {
+        if (selectedFleet == null)
+        {
+            return null;
+        }
+
+        int precedingIndex = HasSelectedWaypoint ? selectedWaypointIndex - 1 : selectedFleet.Waypoints.Count - 1;
+        if (precedingIndex < 0)
+        {
+            return null;
+        }
+
+        string name = selectedFleet.Waypoints[precedingIndex].Destination;
+        return name.StartsWith("Space at ") ? null : name;
+    }
+
+    /// <summary>"Stargate" for the dedicated "use Stargate" speed, otherwise the plain warp
+    /// number - see FleetWaypointRowViewModel.WarpDisplay, which this mirrors for the Overview
+    /// tab's own single-line "Warp" summary row.</summary>
+    private static string WarpFactorDisplay(int warpFactor)
+    {
+        return warpFactor == Global.StargateWarpFactor ? "Stargate" : warpFactor.ToString();
+    }
+
+    /// <summary>This empire's best knowledge of a named star's Stargate, if any - checks
+    /// OwnedStars (full data) first, falling back to StarReports (a scan report, whose Starbase
+    /// may be null or stale) for a star that isn't ours. Returns null for an unknown star name,
+    /// a star with no Starbase, or a Starbase with no Gate component.</summary>
+    private Gate? GetStargateAt(string starName)
+    {
+        if (clientState.EmpireState.OwnedStars.TryGetValue(starName, out Star ownStar))
+        {
+            return ownStar.GetStargate();
+        }
+
+        return clientState.EmpireState.StarReports.TryGetValue(starName, out StarIntel report)
+            ? Star.GetStargate(report.Starbase)
+            : null;
+    }
+
+    /// <summary>
+    /// The instant "these two fleets are already together, combine them now" merge - see
+    /// AddWaypoint's own comment for why this is a real, distinct case from the queued waypoint
+    /// task. Mirrors ApplySplitMerge's own instant-apply shape (still records a WaypointCommand
+    /// for the .orders file/audit trail, exactly like that method does, but performs the actual
+    /// SplitMergeTask right here instead of waiting for End Turn) without that method's
+    /// composition-editor/rename plumbing, which doesn't apply to a plain whole-fleet merge
+    /// triggered from a map tap.
+    /// </summary>
+    private void MergeSelectedFleetInstantly(Fleet targetFleet)
+    {
+        Fleet sourceFleet = selectedFleet!;
+        var task = new SplitMergeTask(new Dictionary<long, ShipToken>(), new Dictionary<long, ShipToken>(), targetFleet.Key);
+        var waypoint = new Waypoint(sourceFleet.Waypoints[0]);
+        waypoint.Task = task;
+        var command = new WaypointCommand(CommandMode.Add, waypoint, sourceFleet.Key, 0);
+
+        clientState.Commands.Push(command);
+        if (command.IsValid(clientState.EmpireState))
+        {
+            command.ApplyToState(clientState.EmpireState);
+
+            EmpireData empire = clientState.EmpireState;
+            task.Perform(sourceFleet, targetFleet, empire, empire);
+
+            UpdateFleetAfterSplitMerge(sourceFleet);
+            UpdateFleetAfterSplitMerge(targetFleet);
+        }
+
+        selection.NotifyMutated();
+
+        if (sourceFleet.Composition.Count == 0)
+        {
+            // Everything moved into targetFleet - show the survivor instead of a fleet that no
+            // longer exists.
+            selection.Selected = targetFleet;
+        }
+        else
+        {
+            ShowFleet(sourceFleet);
+            AddWaypointStatusMessage = task.Messages.Count > 0 ? task.Messages[^1].Text : "Merged.";
         }
     }
 
@@ -1436,6 +1790,17 @@ public class InspectorViewModel : Tool
             suppressWaypointWarpChange = true;
             SelectedWaypointWarp = selectedFleet.Waypoints[selectedWaypointIndex].WarpFactor;
             suppressWaypointWarpChange = false;
+
+            PatrolTask? patrol = selectedFleet.Waypoints[selectedWaypointIndex].Task as PatrolTask;
+            suppressPatrolSettingsChange = true;
+            SelectedPatrolSpeed = patrol?.Speed ?? 0;
+            SelectedPatrolRangeIndex = patrol?.RangeIndex ?? 0;
+            suppressPatrolSettingsChange = false;
+            IsSelectedWaypointPatrol = patrol != null;
+        }
+        else
+        {
+            IsSelectedWaypointPatrol = false;
         }
     }
 
@@ -1453,12 +1818,48 @@ public class InspectorViewModel : Tool
             return;
         }
 
+        // A task change starts Patrol with settings 0 (automatic speed, 50 ly) - the original's
+        // "Patrol and Transfer Fleet get settings 0" (fleet-movement-scanning-cargo.md section 5).
         Waypoint edited = CloneWaypointFully(selectedFleet.Waypoints[selectedWaypointIndex]);
-        edited.Task = BuildTask(SelectedWaypointTaskOption);
+        edited.Task = WaypointOrders.BuildTask(SelectedWaypointTaskOption);
         PushWaypointEdit(edited, selectedWaypointIndex);
 
         ShowFleet(selectedFleet);
         selection.NotifyMutated();
+    }
+
+    /// <summary>
+    /// Pushes the selected waypoint's new Patrol speed/range - the same clone-and-replace Edit as
+    /// ApplySelectedWaypointTask, with a fresh PatrolTask carrying the two settings.
+    /// </summary>
+    private void ApplySelectedPatrolSettings()
+    {
+        if (selectedFleet == null || !HasSelectedWaypoint
+            || selectedFleet.Waypoints[selectedWaypointIndex].Task is not PatrolTask)
+        {
+            return;
+        }
+
+        Waypoint edited = CloneWaypointFully(selectedFleet.Waypoints[selectedWaypointIndex]);
+        edited.Task = WaypointOrders.BuildPatrol(SelectedPatrolSpeed, SelectedPatrolRangeIndex);
+        PushWaypointEdit(edited, selectedWaypointIndex);
+
+        ShowFleet(selectedFleet);
+        selection.NotifyMutated();
+    }
+
+    /// <summary>
+    /// Sends the Repeat Orders toggle for the selected fleet (the original's order record type
+    /// 10) through the same queue-then-apply-locally path as every other fleet order.
+    /// </summary>
+    private void ApplyRepeatOrders(bool value)
+    {
+        if (selectedFleet == null)
+        {
+            return;
+        }
+
+        ApplyCommand(new RepeatOrdersCommand(selectedFleet.Key, value));
     }
 
     /// <summary>
@@ -1482,14 +1883,48 @@ public class InspectorViewModel : Tool
         selection.NotifyMutated();
     }
 
-    private void DeleteWaypoint(int index)
+    /// <summary>
+    /// Deletes waypoint <paramref name="index"/>. Deleting the selected waypoint keeps the
+    /// selection on the previous (or, with <paramref name="keepPrevious"/> false, the following)
+    /// waypoint, per behavior-specs-10/client-interface.md's command table (ids 103/104 and the
+    /// Delete key); deleting another row keeps the selected waypoint selected, at its shifted
+    /// index. See Nova.Client.WaypointSelection for the exact rule.
+    /// </summary>
+    private void DeleteWaypoint(int index, bool keepPrevious = true)
     {
         if (selectedFleet == null)
         {
             return;
         }
 
-        ApplyCommand(new WaypointCommand(CommandMode.Delete, selectedFleet.Key, index));
+        int countBefore = selectedFleet.Waypoints.Count;
+        int selectedBefore = selectedWaypointIndex;
+        Fleet fleet = selectedFleet;
+
+        var command = new WaypointCommand(CommandMode.Delete, fleet.Key, index);
+        clientState.Commands.Push(command);
+        if (command.IsValid(clientState.EmpireState))
+        {
+            command.ApplyToState(clientState.EmpireState);
+        }
+
+        if (fleet.Waypoints.Count < countBefore)
+        {
+            selectedWaypointIndex = WaypointSelection.AfterDelete(selectedBefore, index, fleet.Waypoints.Count, keepPrevious);
+        }
+
+        ShowFleet(fleet);
+        selection.NotifyMutated();
+    }
+
+    /// <summary>The Delete/Backspace key: deletes the selected waypoint, keeping the selection
+    /// on the previous one (see DeleteWaypoint).</summary>
+    private void DeleteSelectedWaypoint()
+    {
+        if (selectedFleet != null && selectedWaypointIndex >= 1 && selectedWaypointIndex < selectedFleet.Waypoints.Count)
+        {
+            DeleteWaypoint(selectedWaypointIndex, keepPrevious: true);
+        }
     }
 
     /// <summary>
@@ -1533,12 +1968,12 @@ public class InspectorViewModel : Tool
 
     private void SubmitRename()
     {
-        if (selectedFleet == null || string.IsNullOrWhiteSpace(NewFleetName))
+        if (selectedFleet == null || RenameRules.ValidateOnAccept(NewFleetName) != null)
         {
             return;
         }
 
-        ApplyCommand(new RenameFleetCommand(selectedFleet, NewFleetName));
+        ApplyCommand(new RenameFleetCommand(selectedFleet, RenameRules.Normalise(NewFleetName)));
     }
 
     /// <summary>
@@ -1788,17 +2223,5 @@ public class InspectorViewModel : Tool
 
         ShowFleet(selectedFleet!);
         selection.NotifyMutated();
-    }
-
-    private static IWaypointTask BuildTask(string taskName)
-    {
-        return taskName switch
-        {
-            "Colonise" => new ColoniseTask(),
-            "Scrap" => new ScrapTask(),
-            "Lay Mines" => new LayMinesTask(),
-            "Invade" => new InvadeTask(),
-            _ => new NoTask(),
-        };
     }
 }

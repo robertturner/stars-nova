@@ -73,7 +73,7 @@ namespace Nova.Common.DataStructures
             {
                 try
                 {
-                    switch (subnode.Name.ToLower())
+                    switch (subnode.Name.ToLowerInvariant())
                     {
                         case "type":
                             Type = ((XmlText)subnode.FirstChild).Value;

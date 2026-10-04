@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             x:Class="Nova.Avalonia.Views.Panels.TechnologyBrowserView"
+             x:DataType="panels:TechnologyBrowserViewModel">
+    <!-- The Technology Browser (F2) - see TechnologyBrowserViewModel. -->
+    <ScrollViewer>
+    <StackPanel Margin="8" Spacing="4">
+        <TextBlock Text="{Binding LevelsLine}" FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
+
+        <ComboBox ItemsSource="{Binding Categories}" SelectedIndex="{Binding CategoryIndex}" HorizontalAlignment="Stretch" Margin="0,4,0,0" />
+        <CheckBox Content="Show Only Available Technology" IsChecked="{Binding ShowOnlyAvailable}" />
+
+        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,4">
+            <Button Grid.Column="0" Content="Prev" Command="{Binding PreviousCommand}" />
+            <TextBlock Grid.Column="1" Text="{Binding PositionText}" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.7" />
+            <Button Grid.Column="2" Content="Next" Command="{Binding NextCommand}" />
+        </Grid>
+
+        <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="3" Padding="8" IsVisible="{Binding HasEntry}">
+            <StackPanel Spacing="3">
+                <TextBlock Text="{Binding EntryName}" FontSize="16" FontWeight="Bold" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding EntryCategory}" Opacity="0.7" />
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Grid.Column="0" Text="Cost" Opacity="0.7" Margin="0,0,8,0" />
+                    <TextBlock Grid.Column="1" Text="{Binding EntryCost}" TextWrapping="Wrap" />
+                </Grid>
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Grid.Column="0" Text="Mass" Opacity="0.7" Margin="0,0,8,0" />
+                    <TextBlock Grid.Column="1" Text="{Binding EntryMass}" />
+                </Grid>
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Grid.Column="0" Text="Requires" Opacity="0.7" Margin="0,0,8,0" />
+                    <TextBlock Grid.Column="1" Text="{Binding EntryRequirements}" TextWrapping="Wrap" />
+                </Grid>
+                <TextBlock Text="{Binding EntryStatus}" FontWeight="Bold" />
+                <TextBlock Text="{Binding EntryDescription}" TextWrapping="Wrap" Opacity="0.85" Margin="0,4,0,0" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+    </ScrollViewer>
+</UserControl>

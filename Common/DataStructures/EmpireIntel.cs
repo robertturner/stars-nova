@@ -48,6 +48,13 @@ namespace Nova.Common
             Id = empire.Id;
             RaceName = empire.Race.Name;
             Icon = empire.Race.Icon;
+
+            // behavior-specs-7/diplomacy-relations.md confirms a newly-met race's relation
+            // initializes to Neutral, not Enemy - Relation's own auto-property has no initializer,
+            // so it would otherwise silently default to Enemy (enum value 0), a latent trap for
+            // any caller that forgets to set it explicitly right after construction (as
+            // GameInitialiser.cs's own new-game path already does, redundantly with this now).
+            Relation = PlayerRelation.Neutral;
         }
         
         /// <summary>
@@ -60,7 +67,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (node.Name.ToLower())
+                    switch (node.Name.ToLowerInvariant())
                     {
                         case "empireintel":
                             node = node.FirstChild;

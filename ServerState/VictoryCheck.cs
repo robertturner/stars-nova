@@ -21,12 +21,12 @@
 #endregion
 
 namespace Nova.Server
-{ 
+{
     using System.Collections.Generic;
-        
+
     using Nova.Common;
     using Nova.Server;
-    
+
     /// <summary>
     /// Check for a victor (doesn't mean the end of a game, though).
     /// </summary>
@@ -35,7 +35,7 @@ namespace Nova.Server
         private readonly ServerData serverState;
         private readonly Scores Scores;
         private bool messageSent;
-        
+
         public VictoryCheck(ServerData serverState, Scores scores)
         {
             this.serverState = serverState;
@@ -47,6 +47,13 @@ namespace Nova.Server
         /// </summary>
         public void Victor()
         {
+            // One score pass per evaluation: every condition below reads this same record set,
+            // as the original's conditions all read the one per-race score buffer
+            // (behavior-specs-9/victory-conditions.md section 2).
+            List<ScoreRecord> allScores = Scores.GetScores();
+
+            CheckEliminations(allScores);
+
             // check for last man standing - doesn't matter the year
             List<ushort> remainingEmpires = new List<ushort>();
             foreach (Star star in serverState.AllStars.Values)
@@ -82,18 +89,24 @@ namespace Nova.Server
 
                 foreach (EmpireData empire in serverState.AllEmpires.Values)
                 {
+                    ScoreRecord record = FindRecord(allScores, empire.Id);
+                    if (record == null)
+                    {
+                        continue;
+                    }
+
                     int targetsMet = 0;
 
-                    targetsMet += OccupiedPlanets(empire.Id);
+                    targetsMet += OccupiedPlanets(record);
                     targetsMet += AttainedTechLevel(empire.Id);
-                    targetsMet += ScoreExceeded(empire.Id);
-                    targetsMet += ProductionCapacity(empire.Id);
-                    targetsMet += CapitalShips(empire.Id);
-                    targetsMet += HighestScore(empire.Id, gameTime);
-                    targetsMet += ExceedsSecondPlace(empire.Id);
+                    targetsMet += ScoreExceeded(record);
+                    targetsMet += ProductionCapacity(record);
+                    targetsMet += CapitalShips(record);
+                    targetsMet += HighestScore(record, allScores, gameTime);
+                    targetsMet += ExceedsSecondPlace(record, allScores);
 
                     if (messageSent == false &&
-                        targetsMet >= GameSettings.Data.TargetsToMeet)
+                        targetsMet >= ConditionsToMeet())
                     {
                         messageSent = true;
                         Message message = new Message();
@@ -108,11 +121,131 @@ namespace Nova.Server
         }
 
         /// <summary>
-        /// Check to see if the player owns the required percentage of planets.
+        /// Elimination (victory-conditions.md section 2, "Elimination flag"; the test itself is
+        /// client-ui-dialog-catalog.md's: Planets, Unarmed, Escort and Capital all zero). A race
+        /// newly meeting it has its persisted status bit set and every other race is told (message
+        /// 187). The "you alone are left" message 188 goes to the one race still standing when an
+        /// elimination leaves exactly one. The bit is raised once, so the notices are not repeated
+        /// on later turns. Message 188's exact wording and trigger are not given by the spec; the
+        /// text and the "sent when the elimination leaves a single survivor" rule are assumptions.
         /// </summary>
-        /// <param name="raceName">Name of the race to check.</param>
+        private void CheckEliminations(List<ScoreRecord> allScores)
+        {
+            bool anyNewlyEliminated = false;
+
+            foreach (EmpireData empire in serverState.AllEmpires.Values)
+            {
+                if (empire.Eliminated)
+                {
+                    continue;
+                }
+
+                ScoreRecord record = FindRecord(allScores, empire.Id);
+                if (record == null || !IsEliminated(record))
+                {
+                    continue;
+                }
+
+                empire.Eliminated = true;
+                anyNewlyEliminated = true;
+
+                foreach (EmpireData other in serverState.AllEmpires.Values)
+                {
+                    if (other.Id == empire.Id)
+                    {
+                        continue;
+                    }
+
+                    Message message = new Message();
+                    message.Audience = other.Id;
+                    message.Text = "All traces of the " + empire.Race.PluralName +
+                                   " have been eliminated from the galaxy.";
+                    serverState.AllMessages.Add(message);
+                }
+            }
+
+            if (!anyNewlyEliminated || serverState.AllEmpires.Count < 2)
+            {
+                return;
+            }
+
+            List<EmpireData> survivors = new List<EmpireData>();
+            foreach (EmpireData empire in serverState.AllEmpires.Values)
+            {
+                if (!empire.Eliminated)
+                {
+                    survivors.Add(empire);
+                }
+            }
+
+            if (survivors.Count == 1)
+            {
+                Message message = new Message();
+                message.Audience = survivors[0].Id;
+                message.Text = "All other races have been eliminated from the galaxy. The " +
+                               survivors[0].Race.PluralName + " alone remain.";
+                serverState.AllMessages.Add(message);
+            }
+        }
+
+        /// <summary>
+        /// The elimination test: no planets and no ships of any class.
+        /// </summary>
+        public static bool IsEliminated(ScoreRecord record)
+        {
+            return record.Planets == 0
+                && record.UnarmedShips == 0
+                && record.EscortShips == 0
+                && record.CapitalShips == 0;
+        }
+
+        /// <summary>
+        /// The derived "must meet N of the above" figure (victory-conditions.md section 1 table):
+        /// min(stored figure, number of enabled conditions), condition 3 (NumberOfFields) not
+        /// counted because it is not independently toggleable. The runtime compares against this
+        /// derived figure (section 2), so a stored figure above the enabled count no longer makes
+        /// victory unreachable. Held to at least 1 (the table's range is 1-7), so a game with no
+        /// condition enabled has no condition winner. The seven counted toggles include condition
+        /// 8, as Nova.Client.VictorySummary does (the spec's "among 1-7 excluding condition 3"
+        /// against its stated range 1-7 is ambiguous on this point).
+        /// </summary>
+        private static int ConditionsToMeet()
+        {
+            GameSettings settings = GameSettings.Data;
+            int enabled = 0;
+            foreach (EnabledValue condition in new[]
+            {
+                settings.PlanetsOwned, settings.TechLevels, settings.TotalScore, settings.SecondPlaceScore,
+                settings.ProductionCapacity, settings.CapitalShips, settings.HighestScore,
+            })
+            {
+                if (condition != null && condition.IsChecked)
+                {
+                    enabled++;
+                }
+            }
+
+            return System.Math.Max(1, System.Math.Min(settings.TargetsToMeet, enabled));
+        }
+
+        private static ScoreRecord FindRecord(List<ScoreRecord> allScores, int empireId)
+        {
+            foreach (ScoreRecord scoreDetail in allScores)
+            {
+                if (scoreDetail.EmpireId == empireId)
+                {
+                    return scoreDetail;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Condition 1: the player owns the required percentage of planets (the record's Planets
+        /// word).
+        /// </summary>
         /// <returns>Returns 1 if the required number of planets is occupied, otherwise 0.</returns>
-        private int OccupiedPlanets(int empireId)
+        private int OccupiedPlanets(ScoreRecord record)
         {
             // See if this option has been turned on
 
@@ -121,17 +254,12 @@ namespace Nova.Server
                 return 0;
             }
 
-            int starsOwned = 0;
-
-            foreach (Star star in serverState.AllStars.Values)
+            if (serverState.AllStars.Count == 0)
             {
-                if (star.Owner == empireId)
-                {
-                    starsOwned++;
-                }
+                return 0;
             }
 
-            int percentage = (starsOwned * 100)
+            int percentage = (record.Planets * 100)
                            / serverState.AllStars.Count;
 
             if (percentage >= GameSettings.Data.PlanetsOwned.NumericValue)
@@ -158,15 +286,11 @@ namespace Nova.Server
             }
 
             int targetLevel = GameSettings.Data.TechLevels.NumericValue;
+
+            // Condition 3 has no checkbox of its own (victory-conditions.md section 1): its
+            // field count always applies while condition 2 is enabled, so NumberOfFields'
+            // IsChecked flag is not read (it used to drop the requirement to one field).
             int numberOfFields = GameSettings.Data.NumberOfFields.NumericValue;
-
-            // See if a number of fields sub-option has been turned on.
-            // If it hasn't, just use one.
-
-            if (GameSettings.Data.NumberOfFields.IsChecked == false)
-            {
-                numberOfFields = 1;
-            }
 
             int highestFields = 0;
             TechLevel raceTechLevels = serverState.AllEmpires[empireId].ResearchLevels;
@@ -188,58 +312,37 @@ namespace Nova.Server
         }
 
         /// <summary>
-        /// Check to see if the player has exceeded the required score.
+        /// Condition 4: the player's Score is at least the required score.
         /// </summary>
-        /// <param name="raceName">Name of race to check.</param>
         /// <returns>Returns 1 if the required score has been met, otherwise 0.</returns>
-        private int ScoreExceeded(int empireId)
+        private int ScoreExceeded(ScoreRecord record)
         {
             if (GameSettings.Data.TotalScore.IsChecked == false)
             {
                 return 0;
             }
 
-            List<ScoreRecord> allScores = Scores.GetScores();
-
-        
-            foreach (ScoreRecord scoreDetail in allScores)
-            {
-                if (scoreDetail.EmpireId == empireId)
-                {
-                    if (scoreDetail.Score >= GameSettings.Data.TotalScore.NumericValue)
-                    {
-                        return 1;
-                    }
-                    break;
-                }
-            }
-            return 0;
+            return record.Score >= GameSettings.Data.TotalScore.NumericValue ? 1 : 0;
         }
 
         /// <summary>
-        /// Check to see if the player has exceeded the required production capacity (in
-        /// K resources).
+        /// Condition 6: production capacity of N thousand - the record's Resources figure (the
+        /// summed resource OUTPUT of every owned planet) divided by 1,000
+        /// (client-ui-dialog-catalog.md, "Score display"). Previously this summed each planet's
+        /// floor(leftover ResourcesOnHand / 1000), which both used the wrong figure and lost up
+        /// to 999 resources per planet to per-planet rounding.
         /// </summary>
-        /// <param name="raceName">Name of the race to check.</param>
         /// <returns>
         /// Returns 1 if the required production capacity has been met, otherwise 0.
         /// </returns>
-        private int ProductionCapacity(int empireId)
+        private int ProductionCapacity(ScoreRecord record)
         {
             if (GameSettings.Data.ProductionCapacity.IsChecked == false)
             {
                 return 0;
             }
 
-            int capacity = 0;
-
-            foreach (Star star in serverState.AllStars.Values)
-            {
-                if (star.Owner == empireId)
-                {
-                    capacity += (int)star.ResourcesOnHand.Energy / 1000;
-                }
-            }
+            int capacity = record.Resources / 1000;
 
             if (capacity >= GameSettings.Data.ProductionCapacity.NumericValue)
             {
@@ -250,43 +353,30 @@ namespace Nova.Server
         }
 
         /// <summary>
-        /// Check to see if the player has met the required number of capital ships.
+        /// Condition 7: the record's Capital ships count (design weapon rating 2,000 or more)
+        /// meets the required number.
         /// </summary>
-        /// <param name="raceName">Name of the race to check.</param>
         /// <returns>Returns 1 if the required number of capital ships has been met, otherwise 0.</returns>
-        private int CapitalShips(int empireId)
+        private int CapitalShips(ScoreRecord record)
         {
             if (GameSettings.Data.CapitalShips.IsChecked == false)
             {
                 return 0;
             }
 
-            List<ScoreRecord> allScores = Scores.GetScores();
-
-            foreach (ScoreRecord scoreDetail in allScores)
-            {
-                if (scoreDetail.EmpireId == empireId)
-                {
-                    if (scoreDetail.CapitalShips >=
-                        GameSettings.Data.CapitalShips.NumericValue)
-                    {
-                        return 1;
-                    }
-                    break;
-                }
-            }
-
-            return 0;
+            return record.CapitalShips >= GameSettings.Data.CapitalShips.NumericValue ? 1 : 0;
         }
 
         /// <summary>
-        /// Check to see if the player has the highest score after the specified number
-        /// of years.
+        /// Condition 8: the player is the SOLE leader ("a 'sole leader after N years'
+        /// comparison", victory-conditions.md section 2) after the specified number of years. A
+        /// race tied for the top score does not qualify. (The previous loop broke out after the
+        /// first record regardless of empire, so only whichever race happened to be listed first
+        /// could ever be credited with its own score.)
         /// </summary>
-        /// <param name="raceName">Name of the race to check.</param>
         /// <param name="years">Number of game years/turns that have passed.</param>
         /// <returns>Returns 1 if this race has the highest score, otherwise 0.</returns>
-        private int HighestScore(int empireId, int years)
+        private int HighestScore(ScoreRecord record, List<ScoreRecord> allScores, int years)
         {
             if (GameSettings.Data.HighestScore.IsChecked == false)
             {
@@ -298,21 +388,9 @@ namespace Nova.Server
                 return 0;
             }
 
-            List<ScoreRecord> allScores = Scores.GetScores();
-            int raceScore = 0;
-
             foreach (ScoreRecord scoreDetail in allScores)
             {
-                if (scoreDetail.EmpireId == empireId)
-                {
-                    raceScore = scoreDetail.Score;
-                }
-                break;
-            }
-
-            foreach (ScoreRecord scoreDetail in allScores)
-            {
-                if (scoreDetail.Score > raceScore)
+                if (scoreDetail.EmpireId != record.EmpireId && scoreDetail.Score >= record.Score)
                 {
                     return 0;
                 }
@@ -322,32 +400,26 @@ namespace Nova.Server
         }
 
         /// <summary>
-        /// Check to see if the player has exceeded the second place score by the
-        /// specified amount.
+        /// Condition 5: the player's score exceeds the second-place score by the specified
+        /// percentage. "Second place" is the best score among the OTHER races: ranks are shared
+        /// (1 + the number of races with a strictly higher score), so there may be no race with
+        /// Rank 2 at all (e.g. two tied leaders are both rank 1, the next race rank 3), and the
+        /// old "Rank == 2" lookup would then treat second place as scoring 0.
         /// </summary>
-        /// <param name="raceName">Name of the race to check.</param>
         /// <returns>Returns 1 if the second place score is exceeded by the required amount, 0 otherwise.</returns>
-        private int ExceedsSecondPlace(int empireId)
+        private int ExceedsSecondPlace(ScoreRecord record, List<ScoreRecord> allScores)
         {
             if (GameSettings.Data.SecondPlaceScore.IsChecked == false)
             {
                 return 0;
             }
 
-            List<ScoreRecord> allScores = Scores.GetScores();
-
-            // Get our score and the second place score.
-
-            int ourScore = 0;
+            int ourScore = record.Score;
             int secondPlaceScore = 0;
 
             foreach (ScoreRecord scoreDetail in allScores)
             {
-                if (scoreDetail.EmpireId == empireId)
-                {
-                    ourScore = scoreDetail.Score;
-                }
-                else if (scoreDetail.Rank == 2)
+                if (scoreDetail.EmpireId != record.EmpireId && scoreDetail.Score > secondPlaceScore)
                 {
                     secondPlaceScore = scoreDetail.Score;
                 }
@@ -357,9 +429,9 @@ namespace Nova.Server
             // percentage" - docs/behavior-specs-4/victory-conditions.md's condition 5), so the
             // default of 100 should require double the second-place score, not a flat
             // multiplication by 100 (which made this condition effectively unreachable).
-            secondPlaceScore = secondPlaceScore * (100 + GameSettings.Data.SecondPlaceScore.NumericValue) / 100;
+            long threshold = (long)secondPlaceScore * (100 + GameSettings.Data.SecondPlaceScore.NumericValue) / 100;
 
-            if (ourScore > secondPlaceScore)
+            if (ourScore > threshold)
             {
                 return 1;
             }

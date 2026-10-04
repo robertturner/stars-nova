@@ -16,15 +16,19 @@ public class SecondaryTraitOptionViewModel : ObservableObject
     private readonly Race race;
     private readonly TraitEntry entry;
     private readonly Action onChanged;
+    private readonly Func<string>? title;
 
-    public SecondaryTraitOptionViewModel(Race race, TraitEntry entry, Action onChanged)
+    /// <param name="title">An optional live label in place of the trait's own name (the
+    /// research checkbox reads "starts at tech level 3", or 4 for Jack of All Trades).</param>
+    public SecondaryTraitOptionViewModel(Race race, TraitEntry entry, Action onChanged, Func<string>? title = null)
     {
         this.race = race;
         this.entry = entry;
         this.onChanged = onChanged;
+        this.title = title;
     }
 
-    public string Title => entry.Name;
+    public string Title => title?.Invoke() ?? entry.Name;
 
     public string Description => entry.Description;
 
@@ -50,5 +54,13 @@ public class SecondaryTraitOptionViewModel : ObservableObject
             OnPropertyChanged();
             onChanged();
         }
+    }
+
+    /// <summary>Re-reads the checked state after the draft changed underneath (Race Designer
+    /// presets, Random, section revert).</summary>
+    public void Refresh()
+    {
+        OnPropertyChanged(nameof(IsSelected));
+        OnPropertyChanged(nameof(Title));
     }
 }

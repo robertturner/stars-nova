@@ -39,8 +39,6 @@ namespace Nova.Common
     /// </remarks>
     public static class PointUtilities
     {
-        private static readonly Random Random = new Random();
-
         /// <summary>
         /// Return a random position within a NovaRect. A border (which may be zero) is
         /// applied to the area where point positions will not be allocated. This
@@ -55,8 +53,10 @@ namespace Nova.Common
             int boxSize = box.Width;
             NovaPoint position = new NovaPoint(box.X, box.Y);
 
-            position.X += Random.Next(boxBorder, boxSize - boxBorder);
-            position.Y += Random.Next(boxBorder, boxSize - boxBorder);
+            // The ambient game stream (GameRandom), not a process-wide static Random.
+            Random random = GameRandom.Current;
+            position.X += random.Next(boxBorder, boxSize - boxBorder);
+            position.Y += random.Next(boxBorder, boxSize - boxBorder);
 
             return position;
         }

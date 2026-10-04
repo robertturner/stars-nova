@@ -21,22 +21,34 @@
 
 namespace Nova.Server
 {
+    using System;
+    using System.Linq;
+
     using Nova.Common;
+    using Nova.Common.DataStructures;
+    using Nova.Common.Waypoints;
 
     /// <summary>
-    /// Applies a fleet's Lay Mines waypoint task: adds this turn's worth of newly-laid mines
-    /// (Fleet.NumberOfMines) to an existing minefield of ours nearby, or starts a new one.
+    /// The Lay Mine Field handler (the original's FUN_10b0_3f3a task 6, dispatcher mode 3, after
+    /// movement): behavior-specs-10/turn-generation-engine.md section 3, "Mine laying, exact
+    /// rule", and fleet-movement-scanning-cargo.md section 5 (task 0 and task 6 rows).
     ///
-    /// This lives here rather than in Common/Waypoints/LayMinesTask.cs (where the equivalent logic
-    /// used to sit, commented out, behind a "TODO: Implement per empire minefields" note) because
-    /// that class has no way to reach ServerData.AllMinefields - Common has no dependency on
-    /// ServerState, so a waypoint task genuinely cannot look up or create a minefield itself. This
-    /// mirrors how Bombing.cs and CheckForMinefields.cs already live in this layer for the same
-    /// reason. TurnGenerator calls Lay() right after LayMinesTask.Perform() succeeds, in the same
-    /// place it already dispatches every other waypoint task's actual game-state effect.
+    /// This lives here rather than in Common/Waypoints/LayMinesTask.cs because that class has no
+    /// way to reach ServerData.AllMinefields (Common has no dependency on ServerState).
+    /// TurnGenerator.ProcessFleet calls <see cref="Process"/> once per fleet per year, after the
+    /// fleet's movement, with whether it moved.
     /// </summary>
     public class LayMines
     {
+        /// <summary>A field holding more than this many mines is never added to: a new field is started.</summary>
+        public const int MaxMinesBeforeNewField = 999999;
+
+        /// <summary>The special-object table holds at most this many entries of all kinds.</summary>
+        public const int MaxSpecialObjects = 4049;
+
+        /// <summary>Serial numbers available for minefields (511, as for every special-object type).</summary>
+        public const int MaxMinefieldSerials = 511;
+
         private readonly ServerData serverState;
 
         public LayMines(ServerData serverState)
@@ -45,36 +57,215 @@ namespace Nova.Server
         }
 
         /// <summary>
-        /// Lays this fleet's current mine-laying output at its present position. Only meaningful
-        /// once LayMinesTask.IsValid has already confirmed the fleet actually has mine-laying
-        /// capability - a fleet with none contributes nothing here.
+        /// One year of mine laying for a fleet, after movement.
+        /// - The fleet lays when its current waypoint's task is Lay Mine Field, or (Space
+        ///   Demolition only) when its current waypoint has no task and the next one's is Lay
+        ///   Mine Field (laying en route).
+        /// - A fleet that did not move lays its full total; a fleet that moved lays nothing unless
+        ///   its owner is Space Demolition, which lays half of each type, rounded down. So on the
+        ///   arrival turn a non-SD fleet lays nothing.
+        /// - A fleet with no mine-laying part has the order cancelled (message 191).
+        /// - The current waypoint's duration counter is read before laying: 0 is the last year
+        ///   (the task is cleared), 5 is never decremented, anything else is decremented.
         /// </summary>
-        /// <param name="fleet">The fleet executing a Lay Mines order this turn.</param>
-        public void Lay(Fleet fleet)
+        /// <param name="fleet">The fleet, after this year's movement.</param>
+        /// <param name="movedThisYear">Whether the fleet moved (or jumped) this year.</param>
+        public void Process(Fleet fleet, bool movedThisYear)
         {
-            int minesToLay = fleet.NumberOfMines;
-            if (minesToLay <= 0)
+            if (fleet == null || fleet.Waypoints.Count == 0 || fleet.Composition.Count == 0)
             {
                 return;
             }
 
-            // See if a minefield of ours already exists here (allowing the same position
-            // tolerance IsNear uses everywhere else a waypoint's exact placement can't be relied
-            // on) - if so, this turn's mines are added to it rather than starting a new field.
-            foreach (Minefield minefield in serverState.AllMinefields.Values)
+            Race race = null;
+            if (serverState.AllEmpires.TryGetValue(fleet.Owner, out EmpireData empire))
             {
-                if (minefield.Owner == fleet.Owner && PointUtilities.IsNear(fleet.Position, minefield.Position))
+                race = empire.Race;
+            }
+
+            bool spaceDemolition = race != null && race.HasTrait("SD");
+
+            Waypoint current = fleet.Waypoints[0];
+            LayMinesTask task = current.Task as LayMinesTask;
+            bool enRoute = task == null
+                && spaceDemolition
+                && fleet.Waypoints.Count >= 2
+                && current.Task is NoTask
+                && fleet.Waypoints[1].Task is LayMinesTask;
+
+            if (task == null && !enRoute)
+            {
+                return;
+            }
+
+            // A fleet that moved lays nothing unless it is Space Demolition (:75911-75914).
+            if (movedThisYear && !spaceDemolition)
+            {
+                return;
+            }
+
+            if (fleet.NumberOfMines == 0)
+            {
+                // En route, the order belongs to the next waypoint, and is cancelled (with the
+                // same message) when the fleet arrives there.
+                if (task != null)
                 {
-                    minefield.NumberOfMines += minesToLay;
-                    return;
+                    Message message = new Message();
+                    message.Audience = fleet.Owner;
+                    message.Type = "Minefield";
+                    message.Text = fleet.Name + " attempted to lay mines. The order has been canceled because no ship in the fleet has a mine laying pod.";
+                    serverState.AllMessages.Add(message);
+                    current.Task = new NoTask();
+                }
+
+                return;
+            }
+
+            if (task != null)
+            {
+                if (task.Duration == 0)
+                {
+                    current.Task = new NoTask();
+                }
+                else if (task.Duration != LayMinesTask.Indefinitely)
+                {
+                    task.Duration--;
                 }
             }
 
-            Minefield newField = new Minefield();
-            newField.Key = serverState.AllEmpires[fleet.Owner].GetNextMinefieldKey();
-            newField.Position = fleet.Position;
-            newField.NumberOfMines = minesToLay;
-            serverState.AllMinefields[newField.Key] = newField;
+            foreach (MinefieldType fieldType in Enum.GetValues(typeof(MinefieldType)))
+            {
+                int amount = fleet.MinesPerYear(fieldType);
+
+                // The halving is per field type, rounded down (:75941-75943).
+                if (movedThisYear)
+                {
+                    amount /= 2;
+                }
+
+                if (amount > 0)
+                {
+                    Lay(fleet, fieldType, amount);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Lays this fleet's full yearly output of every type at its present position, without
+        /// any of the order, movement or duration rules (see <see cref="Process"/>).
+        /// </summary>
+        public void Lay(Fleet fleet)
+        {
+            foreach (MinefieldType fieldType in Enum.GetValues(typeof(MinefieldType)))
+            {
+                int amount = fleet.MinesPerYear(fieldType);
+                if (amount > 0)
+                {
+                    Lay(fleet, fieldType, amount);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Adds <paramref name="amount"/> mines of one type at the fleet's position: to the
+        /// nearest existing field of the same owner and type whose circle covers the fleet
+        /// (squared distance at most the mine count), moving its centre to the mine-weighted
+        /// average of the old centre and the fleet's position (message 196); or, if there is none
+        /// or it already holds more than 999,999 mines, to a new field at the fleet (message 195).
+        /// </summary>
+        public Minefield Lay(Fleet fleet, MinefieldType fieldType, int amount)
+        {
+            if (amount <= 0)
+            {
+                return null;
+            }
+
+            Minefield nearest = null;
+            double nearestSquare = double.MaxValue;
+            foreach (Minefield minefield in serverState.AllMinefields.Values)
+            {
+                if (minefield.Owner != fleet.Owner || minefield.FieldType != fieldType)
+                {
+                    continue;
+                }
+
+                double square = PointUtilities.DistanceSquare(fleet.Position, minefield.Position);
+                if (square <= minefield.NumberOfMines && square < nearestSquare)
+                {
+                    nearest = minefield;
+                    nearestSquare = square;
+                }
+            }
+
+            Message message = new Message();
+            message.Audience = fleet.Owner;
+            message.Type = "Minefield";
+
+            if (nearest == null || nearest.NumberOfMines > MaxMinesBeforeNewField)
+            {
+                if (!CanCreateField(fleet.Owner))
+                {
+                    // Message 382: no field record could be created.
+                    message.Text = fleet.Name + " failed to lay mines this year due to technical difficulties.";
+                    serverState.AllMessages.Add(message);
+                    return null;
+                }
+
+                Minefield newField = new Minefield();
+                newField.Key = serverState.AllEmpires[fleet.Owner].GetNextMinefieldKey();
+                newField.Position = new NovaPoint(fleet.Position);
+                newField.NumberOfMines = amount;
+                newField.FieldType = fieldType;
+                newField.SafeSpeed = Minefield.SafeWarpByType[(int)fieldType];
+                serverState.AllMinefields[newField.Key] = newField;
+
+                message.Event = newField;
+                message.Text = fleet.Name + " has dispersed " + amount + " " + TypeLabel(fieldType) + " mines.";
+                serverState.AllMessages.Add(message);
+                return newField;
+            }
+
+            long oldMines = nearest.NumberOfMines;
+            long total = oldMines + amount;
+            nearest.Position = new NovaPoint(
+                (int)(((nearest.Position.X * oldMines) + ((long)fleet.Position.X * amount)) / total),
+                (int)(((nearest.Position.Y * oldMines) + ((long)fleet.Position.Y * amount)) / total));
+            nearest.NumberOfMines += amount;
+
+            message.Event = nearest;
+            message.Text = fleet.Name + " has increased a " + TypeLabel(fieldType) + " minefield by " + amount + " mines.";
+            serverState.AllMessages.Add(message);
+            return nearest;
+        }
+
+        /// <summary>
+        /// Whether a new field record can be created (turn-generation-engine.md section 3, "Where
+        /// the mines go"; the object-table limits of section 5a): creation fails once the
+        /// special-object table holds more than 4,049 entries of all kinds (here minefields plus
+        /// deep-space wreckage) or all 511 serial numbers for minefields are in use (counted per
+        /// owner here - the spec does not say whether the serials are per owner or per game).
+        /// </summary>
+        public bool CanCreateField(ushort owner)
+        {
+            if (serverState.AllMinefields.Count + serverState.AllDeepSpaceMinerals.Count >= MaxSpecialObjects)
+            {
+                return false;
+            }
+
+            return serverState.AllMinefields.Values.Count(field => field.Owner == owner) < MaxMinefieldSerials;
+        }
+
+        private static string TypeLabel(MinefieldType fieldType)
+        {
+            switch (fieldType)
+            {
+                case MinefieldType.Heavy:
+                    return "heavy";
+                case MinefieldType.SpeedBump:
+                    return "speed bump";
+                default:
+                    return "standard";
+            }
         }
     }
 }

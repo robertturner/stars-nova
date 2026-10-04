@@ -63,12 +63,29 @@ namespace Nova.Common
         public int          LastTurnSubmitted       = 0;
 
         /// <summary>
+        /// The race's "eliminated" status bit (bit 0 of its score-record header), raised once by
+        /// VictoryCheck when the race has no planets and no ships of any class, and persisted.
+        /// behavior-specs-9/victory-conditions.md section 2, "Elimination flag".
+        /// </summary>
+        public bool         Eliminated              = false;
+
+        /// <summary>
         /// Whether this empire has already picked up a traded tech level this turn (from
         /// scrapping, battle, or invasion — only one such gain is allowed per turn regardless of
         /// how many qualifying events occur). Reset at the start of each turn. See
         /// docs/behavior-specs/research-tech-tree.md §6.
         /// </summary>
         public bool         TechGainedThisTurn      = false;
+
+        /// <summary>
+        /// This empire's own random seed, for the decisions made on its behalf outside the
+        /// server: the in-process AI derives each turn's Random from it and the turn year
+        /// (DefaultAi), so an AI game is repeatable. Set by Gameinitializer from the game seed and
+        /// the empire id (GameRandom.DeriveSeed - a one-way hash, so the turn file reveals nothing
+        /// of the server's own streams). 0 (hand-built data, older saves) means none: the AI then
+        /// uses an unseeded Random as before. Persisted (and written to the empire's turn file).
+        /// </summary>
+        public int          RandomSeed              = 0;
 
         private Race        race                    = new Race(); // This empire's race.
         
@@ -80,6 +97,11 @@ namespace Nova.Common
         public TechLevel    ResearchLevels          = new TechLevel(); 
         public TechLevel    ResearchResources       = new TechLevel(); // current cumulative resources on technologies
         public TechLevel    ResearchTopics          = new TechLevel(); // order of researching
+
+        /// <summary>The Research dialog's "next field to research" setting
+        /// (research-tech-tree.md section 4): Research.NextFieldSame (stay, the default), a
+        /// TechLevel.ResearchField index, or Research.NextFieldLowest.</summary>
+        public int          ResearchNextField       = Research.NextFieldSame;
         
         public RaceComponents   AvailableComponents;
         public Dictionary<long, ShipDesign> Designs     = new Dictionary<long, ShipDesign>(); 
@@ -89,14 +111,52 @@ namespace Nova.Common
         
         public FleetList OwnedFleets = new FleetList();
         public Dictionary<long, FleetIntel> FleetReports  = new Dictionary<long, FleetIntel>();
-        
+
+        /// <summary>
+        /// Wormhole ends this empire has detected (last seen position and year). A wormhole with a
+        /// record here has been discovered once and is no longer cloaked to this empire.
+        /// Written by the server's ScanStep (behavior-specs-10/fleet-movement-scanning-cargo.md §3).
+        /// </summary>
+        public Dictionary<long, WormholeIntel> WormholeReports = new Dictionary<long, WormholeIntel>();
+
+        /// <summary>
+        /// Keys of the minefields this empire can see this year, recomputed by the server's
+        /// ScanStep: its own fields, fields that have shown themselves by striking its fleets
+        /// (Minefield.VisibleTo), and fields detected by its scanners. The turn file carries only
+        /// these fields (IntelWriter). See <see cref="CanSeeMinefield"/>.
+        /// </summary>
+        public HashSet<long> VisibleMinefields = new HashSet<long>();
+
+        /// <summary>
+        /// The mineral packets this empire sees this year (copies, keyed by packet key),
+        /// recomputed by the server's ScanStep: its own packets, every packet in flight for a
+        /// Packet Physics race (race-traits.md §2), and packets inside a scanner's normal range.
+        /// </summary>
+        public Dictionary<long, MineralPacket> MineralPacketReports = new Dictionary<long, MineralPacket>();
+
         // This is Fleet Limbo~
         // ??? What is this for?
         public List<Fleet> TemporaryFleets = new List<Fleet>();
+
+        /// <summary>
+        /// Names of the 12 special components (see SpecialComponentGrants) this empire has
+        /// already been randomly awarded via a won battle - behavior-specs-7/
+        /// ship-design-and-components.md §14a's "one-time, per-race, per-component random grant"
+        /// bitmask, tracked here as a set of names instead of raw bits so nothing outside
+        /// BattleEngine/RaceComponents needs to know the original's specific bit-to-component
+        /// mapping. A name in this set means the component is available to build (tech level
+        /// permitting) even though it isn't tied to any PRT/LRT; permanent once granted, so this
+        /// persists across turns/saves like OwnedStars/StarReports do.
+        /// </summary>
+        public HashSet<string> GrantedSpecialComponents = new HashSet<string>();
         
         public Dictionary<ushort, EmpireIntel>  EmpireReports   = new Dictionary<ushort, EmpireIntel>();
         
         public Dictionary<string, BattlePlan>   BattlePlans     = new Dictionary<string, BattlePlan>();
+
+        /// <summary>The four saved production templates and the default one copied into new or
+        /// captured colonies (production-queue.md sections 9 and 10f; ProductionTemplateCommand).</summary>
+        public ProductionTemplateSet ProductionTemplates = new ProductionTemplateSet();
         
         public List<BattleReport> BattleReports = new List<BattleReport>();
         
@@ -143,12 +203,42 @@ namespace Nova.Common
         }
         
         /// <summary>
-        /// Gets the next available Fleet Key from the internal FleetCounter.
+        /// Fleet ids handed out by <see cref="GetNextFleetKey"/> that are not yet in use by an
+        /// owned (or pending) fleet, so two keys issued before either fleet is added never
+        /// collide. Not saved: once a fleet with the id exists, the fleet list tracks it.
+        /// </summary>
+        private readonly HashSet<uint> fleetIdsIssued = new HashSet<uint>();
+
+        /// <summary>
+        /// Gets the key for a new fleet: the smallest fleet id this empire is not using
+        /// (behavior-specs-10/fleet-movement-scanning-cargo.md §4, "Fleet lifecycle": creating a
+        /// fleet finds the smallest unused id for that owner, so ids freed by destroyed, merged or
+        /// scrapped fleets are reused). FleetCounter is kept as the highest id issued.
         /// </summary>
         public long GetNextFleetKey()
         {
-            ++fleetCounter;
-            return (long)fleetCounter | ((long)empireId << 32);
+            HashSet<uint> inUse = new HashSet<uint>();
+            foreach (long key in OwnedFleets.Keys)
+            {
+                inUse.Add(key.Id());
+            }
+
+            foreach (Fleet pending in TemporaryFleets)
+            {
+                inUse.Add(pending.Id);
+            }
+
+            fleetIdsIssued.RemoveWhere(inUse.Contains);
+
+            uint id = 1;
+            while (inUse.Contains(id) || fleetIdsIssued.Contains(id))
+            {
+                id++;
+            }
+
+            fleetIdsIssued.Add(id);
+            fleetCounter = Math.Max(fleetCounter, id);
+            return (long)id | ((long)empireId << 32);
         }
 
         /// <summary>
@@ -167,6 +257,112 @@ namespace Nova.Common
         /// <summary>
         /// Gets the next available Key for the empire.
         /// </summary>
+        /// <summary>
+        /// Puts this empire's collections into the order (and transient state) a save and reload
+        /// would give them - see CanonicalOrder. Called by the server at the end of every
+        /// generation, so a game kept in memory continues exactly like a reloaded one.
+        /// </summary>
+        public void CompactCollections()
+        {
+            CanonicalOrder.Compact(Designs);
+            CanonicalOrder.Compact(OwnedStars);
+            CanonicalOrder.Compact(StarReports);
+            CanonicalOrder.Compact(OwnedFleets);
+
+            // A report with no ships is not saved (ToXml), so it is gone after a reload too.
+            List<long> emptyReports = new List<long>();
+            foreach (KeyValuePair<long, FleetIntel> entry in FleetReports)
+            {
+                if (entry.Value.Composition == null || entry.Value.Composition.Count == 0)
+                {
+                    emptyReports.Add(entry.Key);
+                }
+            }
+
+            foreach (long key in emptyReports)
+            {
+                FleetReports.Remove(key);
+            }
+
+            CanonicalOrder.Compact(FleetReports);
+            CanonicalOrder.Compact(WormholeReports);
+            CanonicalOrder.CompactSorted(VisibleMinefields);
+            CanonicalOrder.Compact(MineralPacketReports);
+            CanonicalOrder.Compact(GrantedSpecialComponents);
+            CanonicalOrder.Compact(EmpireReports);
+            foreach (EmpireIntel report in EmpireReports.Values)
+            {
+                CanonicalOrder.Compact(report.Designs);
+            }
+
+            CanonicalOrder.Compact(BattlePlans);
+            CanonicalOrder.Compact(AvailableComponents);
+
+            // Designs are re-linked as loading does (fresh master parts, figures recomputed for
+            // the current race and tech), and ships point at the empire's own design objects.
+            AllComponents allComponents = new AllComponents();
+            foreach (ShipDesign design in Designs.Values)
+            {
+                LinkDesign(design, allComponents);
+            }
+
+            foreach (Fleet fleet in OwnedFleets.Values)
+            {
+                CanonicalOrder.Compact(fleet.Composition);
+                foreach (ShipToken token in fleet.Composition.Values)
+                {
+                    if (token.Design != null && Designs.TryGetValue(token.Design.Key, out ShipDesign own))
+                    {
+                        token.Design = own;
+                    }
+                }
+            }
+
+            // Not saved: a reloaded empire starts with none outstanding.
+            fleetIdsIssued.Clear();
+        }
+
+        /// <summary>
+        /// Links one of this empire's designs the way loading a save does: every module's part
+        /// becomes a fresh copy of the master component (AllComponents), and the design's
+        /// figures are recomputed for this race and tech. The server also does this to a design
+        /// arriving in an order (TurnGenerator.ParseCommands), so it never runs on the component
+        /// data the client sent and a game kept in memory computes exactly what a reloaded one
+        /// does.
+        /// </summary>
+        public void LinkDesign(ShipDesign design, AllComponents allComponents)
+        {
+            if (design?.Hull?.Modules == null)
+            {
+                return;
+            }
+
+            foreach (HullModule module in design.Hull.Modules)
+            {
+                if (module.AllocatedComponent != null && module.AllocatedComponent.Name != null)
+                {
+                    module.AllocatedComponent = allComponents.Fetch(module.AllocatedComponent.Name);
+                }
+            }
+
+            design.Update(Race, ResearchLevels);
+        }
+
+        /// <summary>
+        /// Records a design key this empire now uses that was issued elsewhere (a design added
+        /// by an order: the client numbered it from its own copy of the counter), so the counter
+        /// stays at the highest id in use - exactly what loading a save re-derives
+        /// (LinkReferences). Without it a server kept in memory issued lower ids than a reloaded
+        /// one, and could even re-issue an id already in use.
+        /// </summary>
+        public void TrackDesignKey(long designKey)
+        {
+            if (designKey.Id() > designCounter)
+            {
+                designCounter = designKey.Id();
+            }
+        }
+
         public long GetNextDesignKey()
         {
             ++designCounter;
@@ -210,7 +406,7 @@ namespace Nova.Common
             {
                 try
                 {
-                switch (mainNode.Name.ToLower())
+                switch (mainNode.Name.ToLowerInvariant())
                 {
                     case "id":
                         empireId = ushort.Parse(mainNode.FirstChild.Value, System.Globalization.NumberStyles.HexNumber);
@@ -239,7 +435,15 @@ namespace Nova.Common
                     case "lastturnsubmitted":
                         LastTurnSubmitted = int.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
                         break;
-                        
+
+                    case "eliminated":
+                        Eliminated = bool.Parse(mainNode.FirstChild.Value);
+                        break;
+
+                    case "randomseed":
+                        RandomSeed = int.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
+                        break;
+
                     case "race":
                         race = new Race();
                         Race.LoadRaceFromXml(mainNode);
@@ -254,8 +458,22 @@ namespace Nova.Common
                         ResearchResources = new TechLevel(subNode);
                         subNode = mainNode.SelectSingleNode("Topics");
                         ResearchTopics = new TechLevel(subNode);
+                        subNode = mainNode.SelectSingleNode("NextField");
+                        if (subNode != null && subNode.FirstChild != null)
+                        {
+                            ResearchNextField = int.Parse(subNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
+                        }
                         break;
                         
+                    case "grantedspecialcomponents":
+                        subNode = mainNode.FirstChild;
+                        while (subNode != null)
+                        {
+                            GrantedSpecialComponents.Add(subNode.FirstChild.Value);
+                            subNode = subNode.NextSibling;
+                        }
+                        break;
+
                     case "starreports":
                         subNode = mainNode.FirstChild;
                         while (subNode != null)
@@ -285,7 +503,37 @@ namespace Nova.Common
                             subNode = subNode.NextSibling;
                         }
                         break;
-                        
+
+                    case "wormholereports":
+                        subNode = mainNode.FirstChild;
+                        while (subNode != null)
+                        {
+                            WormholeIntel wormholeReport = new WormholeIntel(subNode);
+                            WormholeReports[wormholeReport.Key] = wormholeReport;
+                            subNode = subNode.NextSibling;
+                        }
+                        break;
+
+                    case "mineralpacketreports":
+                        subNode = mainNode.FirstChild;
+                        while (subNode != null)
+                        {
+                            MineralPacket packetReport = new MineralPacket(subNode);
+                            MineralPacketReports[packetReport.Key] = packetReport;
+                            subNode = subNode.NextSibling;
+                        }
+                        break;
+
+                    case "visibleminefields":
+                        if (mainNode.FirstChild != null)
+                        {
+                            foreach (string minefieldKey in mainNode.FirstChild.Value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                VisibleMinefields.Add(long.Parse(minefieldKey, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture));
+                            }
+                        }
+                        break;
+
                     case "ownedfleets":
                         subNode = mainNode.FirstChild;
                         while (subNode != null)
@@ -309,7 +557,11 @@ namespace Nova.Common
                     case "battleplan":
                         BattlePlan plan = new BattlePlan(mainNode);
                         BattlePlans[plan.Name] = plan;
-                        break; 
+                        break;
+
+                    case "productiontemplates":
+                        ProductionTemplates = ProductionTemplateSet.FromXml(mainNode);
+                        break;
                         
                     case "availablecomponents":
                         subNode = mainNode.FirstChild;
@@ -392,14 +644,27 @@ namespace Nova.Common
             Global.SaveData(xmldoc, xmlelEmpireData, "TurnYear", TurnYear.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Global.SaveData(xmldoc, xmlelEmpireData, "TurnSubmitted", TurnSubmitted.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Global.SaveData(xmldoc, xmlelEmpireData, "LastTurnSubmitted", LastTurnSubmitted.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            
+            if (Eliminated)
+            {
+                Global.SaveData(xmldoc, xmlelEmpireData, "Eliminated", "True");
+            }
+
+            if (RandomSeed != 0)
+            {
+                Global.SaveData(xmldoc, xmlelEmpireData, "RandomSeed", RandomSeed.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
             xmlelEmpireData.AppendChild(race.ToXml(xmldoc));
             
             XmlElement xmlelResearch = xmldoc.CreateElement("Research");
             Global.SaveData(xmldoc, xmlelResearch, "Budget", ResearchBudget.ToString(System.Globalization.CultureInfo.InvariantCulture));            
             xmlelResearch.AppendChild(ResearchLevels.ToXml(xmldoc, "AttainedLevels"));
             xmlelResearch.AppendChild(ResearchResources.ToXml(xmldoc, "SpentResources"));
-            xmlelResearch.AppendChild(ResearchTopics.ToXml(xmldoc, "Topics"));            
+            xmlelResearch.AppendChild(ResearchTopics.ToXml(xmldoc, "Topics"));
+            if (ResearchNextField != Research.NextFieldSame)
+            {
+                Global.SaveData(xmldoc, xmlelResearch, "NextField", ResearchNextField.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
             xmlelEmpireData.AppendChild(xmlelResearch);
             
             // Available Components
@@ -409,7 +674,14 @@ namespace Nova.Common
                 xmlelAvaiableComponents.AppendChild(component.ToXml(xmldoc));
             }
             xmlelEmpireData.AppendChild(xmlelAvaiableComponents);
-            
+
+            XmlElement xmlelGrantedSpecialComponents = xmldoc.CreateElement("GrantedSpecialComponents");
+            foreach (string name in GrantedSpecialComponents)
+            {
+                Global.SaveData(xmldoc, xmlelGrantedSpecialComponents, "Name", name);
+            }
+            xmlelEmpireData.AppendChild(xmlelGrantedSpecialComponents);
+
             // Own Designs
             XmlElement xmlelDesigns = xmldoc.CreateElement("Designs");
             foreach (ShipDesign design in Designs.Values)
@@ -449,7 +721,32 @@ namespace Nova.Common
                 }
             }
             xmlelEmpireData.AppendChild(xmlelFleetReports);
-            
+
+            if (WormholeReports.Count > 0)
+            {
+                XmlElement xmlelWormholeReports = xmldoc.CreateElement("WormholeReports");
+                foreach (WormholeIntel wormholeReport in WormholeReports.Values)
+                {
+                    xmlelWormholeReports.AppendChild(wormholeReport.ToXml(xmldoc));
+                }
+                xmlelEmpireData.AppendChild(xmlelWormholeReports);
+            }
+
+            if (MineralPacketReports.Count > 0)
+            {
+                XmlElement xmlelPacketReports = xmldoc.CreateElement("MineralPacketReports");
+                foreach (MineralPacket packetReport in MineralPacketReports.Values)
+                {
+                    xmlelPacketReports.AppendChild(packetReport.ToXml(xmldoc));
+                }
+                xmlelEmpireData.AppendChild(xmlelPacketReports);
+            }
+
+            if (VisibleMinefields.Count > 0)
+            {
+                Global.SaveData(xmldoc, xmlelEmpireData, "VisibleMinefields", string.Join(",", VisibleMinefields.OrderBy(minefieldKey => minefieldKey).Select(minefieldKey => minefieldKey.ToString("X"))));
+            }
+
             XmlElement xmlelOnedFleets = xmldoc.CreateElement("OwnedFleets");            
             foreach (Fleet fleet in OwnedFleets.Values)
             {
@@ -468,7 +765,9 @@ namespace Nova.Common
             {
                 xmlelEmpireData.AppendChild(BattlePlans[key].ToXml(xmldoc));
             }
-            
+
+            xmlelEmpireData.AppendChild(ProductionTemplates.ToXml(xmldoc));
+
             // Battles 
             if (BattleReports.Count > 0)
             {
@@ -491,7 +790,8 @@ namespace Nova.Common
             ResearchLevels          = new TechLevel();
             ResearchResources       = new TechLevel();
             ResearchTopics          = new TechLevel();
-            
+            ResearchNextField       = Research.NextFieldSame;
+
             AvailableComponents     = new RaceComponents();
             Designs                 = new Dictionary<long, ShipDesign>();
             
@@ -499,11 +799,16 @@ namespace Nova.Common
             StarReports.Clear();
             OwnedFleets.Clear();
             FleetReports.Clear();
+            WormholeReports.Clear();
+            VisibleMinefields.Clear();
+            MineralPacketReports.Clear();
+            GrantedSpecialComponents.Clear();
             
             EmpireReports.Clear();
             
             BattlePlans.Clear();
             BattleReports.Clear();
+            ProductionTemplates = new ProductionTemplateSet();
         }
         
         
@@ -605,7 +910,22 @@ namespace Nova.Common
         {
             return OwnedFleets.Values.Select(fleet => fleet as Mappable).Concat(OwnedStars.Values.Select(star => star as Mappable));
         }
-        
+
+        /// <summary>
+        /// True when this empire may be shown the minefield: it owns it, the field has shown
+        /// itself by striking one of its fleets (Minefield.VisibleTo), or the server's ScanStep
+        /// detected it this year (<see cref="VisibleMinefields"/>).
+        /// </summary>
+        public bool CanSeeMinefield(Minefield minefield)
+        {
+            if (minefield == null)
+            {
+                return false;
+            }
+
+            return minefield.IsVisibleTo(Id) || VisibleMinefields.Contains(minefield.Key);
+        }
+
         
         /// <summary>
         /// When state is loaded from file, objects may contain references to other objects.
@@ -619,23 +939,18 @@ namespace Nova.Common
         private void LinkReferences()
         {
             AllComponents allComponents = new AllComponents();
-            
+
             // HullModule reference to a component
             foreach (ShipDesign design in Designs.Values)
             {
-                foreach (HullModule module in design.Hull.Modules)
-                {
-                    if (module.AllocatedComponent != null && module.AllocatedComponent.Name != null)
-                    {
-                        module.AllocatedComponent = allComponents.Fetch(module.AllocatedComponent.Name);
-                    }
-                }
-                
-                design.Update(Race);
+                LinkDesign(design, allComponents);
 
-                if (design.Id >= designCounter)
+                // designCounter is the LAST id issued (GetNextDesignKey pre-increments), so it
+                // only has to reach the highest loaded id; "+ 1" here bumped it on every first
+                // load, so a reloaded save no longer re-saved identically and one id was skipped.
+                if (design.Id > designCounter)
                 {
-                    designCounter = design.Id + 1;
+                    designCounter = design.Id;
                 }
             }
             

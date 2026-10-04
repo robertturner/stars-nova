@@ -39,8 +39,6 @@ namespace Nova.Common
     /// </remarks>
     public static class TechTrading
     {
-        private static readonly Random Rand = new Random();
-
         /// <summary>
         /// The highest tech level required by any component (including the hull itself) across
         /// every ship in the fleet, per field — the "source" tech profile a receiving empire's
@@ -92,7 +90,11 @@ namespace Nova.Common
                 return null;
             }
 
-            if (Rand.Next(2) != 0)
+            // The ambient game stream (GameRandom: the running battle/fleet step's seeded stream
+            // on the server), not a process-wide static Random.
+            Random random = GameRandom.Current;
+
+            if (random.Next(2) != 0)
             {
                 return null;
             }
@@ -106,9 +108,9 @@ namespace Nova.Common
                 }
             }
 
-            foreach (TechLevel.ResearchField field in advantagedFields.OrderBy(f => Rand.Next()))
+            foreach (TechLevel.ResearchField field in advantagedFields.OrderBy(f => random.Next()))
             {
-                if (Rand.Next(2) == 0)
+                if (random.Next(2) == 0)
                 {
                     receiver.ResearchLevels[field]++;
                     receiver.TechGainedThisTurn = true;

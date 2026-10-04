@@ -1,7 +1,10 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using Nova.Client;
+using Nova.Client.Shell;
 
 namespace Nova.Avalonia.ViewModels;
 
@@ -20,6 +23,19 @@ public abstract class GameShellViewModelBase : ViewModelBase
     public IAsyncRelayCommand SubmitTurnCommand { get; }
 
     public IRelayCommand ShowAboutCommand { get; }
+
+    /// <summary>View > Race (F8; client-interface.md commands 156/157): "copies the player's own
+    /// race and opens the same wizard view-only" - the host shows RaceDesignerView(race,
+    /// isEditable: false), which works on its own copy (RaceViewRequested).</summary>
+    public IRelayCommand ViewRaceCommand { get; }
+
+    /// <summary>Raised by <see cref="ViewRaceCommand"/> with the player's race; how it is shown
+    /// differs per host (a window on the desktop, a swapped-in screen on Android).</summary>
+    public event Action<Nova.Common.Race>? RaceViewRequested;
+
+    /// <summary>Report > Dump to Text File: writes the Planets / Universe / Fleets plain-text
+    /// export (Nova.Client.ReportExport) into the game folder; the parameter names the kind.</summary>
+    public IRelayCommand<string> ExportReportCommand { get; }
 
     /// <summary>
     /// Raised when the user asks to see the About screen - kept as an event rather than
@@ -59,12 +75,72 @@ public abstract class GameShellViewModelBase : ViewModelBase
         private set => SetProperty(ref hasStatusMessage, value);
     }
 
+    // Whether the orders changed since they were last written (shutdown confirmation, autosave).
+    private readonly UnsavedChangesTracker unsavedChanges = new UnsavedChangesTracker();
+
+    /// <summary>True when the pending orders changed since they were last saved or submitted.</summary>
+    public bool HasUnsavedChanges => unsavedChanges.IsDirty(clientState.Commands.Cast<object>());
+
+    /// <summary>Writes the client state (orders) to disk and records it as saved.</summary>
+    public void SaveOrders()
+    {
+        clientState.Save();
+        MarkOrdersSaved();
+    }
+
+    protected void MarkOrdersSaved()
+    {
+        unsavedChanges.MarkSaved(clientState.Commands.Cast<object>());
+    }
+
+    /// <summary>
+    /// The progress dialog of long-running actions (client-ui-dialog-catalog.md "Progress and
+    /// failure feedback", via Nova.Client.Shell.ProgressSurface: created once, updated, torn
+    /// down; a failure shows its own explanation and a Close button instead of the gauge).
+    /// End Turn reports its stages here (TurnProgressStages).
+    /// </summary>
+    public ProgressSurface Progress { get; } = new ProgressSurface();
+
+    public bool IsProgressVisible => Progress.Exists;
+
+    public bool IsProgressRunning => Progress.Exists && !Progress.HasFailed;
+
+    public string ProgressCaption => Progress.Caption;
+
+    public int ProgressPercent => Progress.Percent;
+
+    public bool HasProgressFailed => Progress.HasFailed;
+
+    public string ProgressFailureMessage => Progress.FailureMessage ?? "";
+
+    /// <summary>Closes the failure surface (the only follow-up it offers).</summary>
+    public IRelayCommand CloseProgressCommand { get; }
+
+    private void OnProgressChanged()
+    {
+        OnPropertyChanged(nameof(IsProgressVisible));
+        OnPropertyChanged(nameof(IsProgressRunning));
+        OnPropertyChanged(nameof(ProgressCaption));
+        OnPropertyChanged(nameof(ProgressPercent));
+        OnPropertyChanged(nameof(HasProgressFailed));
+        OnPropertyChanged(nameof(ProgressFailureMessage));
+    }
+
     protected GameShellViewModelBase(ClientData clientState)
     {
         this.clientState = clientState;
+        MarkOrdersSaved();
+        Progress.Created += OnProgressChanged;
+        Progress.Updated += OnProgressChanged;
+        Progress.Destroyed += OnProgressChanged;
+        CloseProgressCommand = new RelayCommand(() => Progress.End());
 
         SubmitTurnCommand = new AsyncRelayCommand(SubmitTurnAsync, () => !isSubmitting);
         ShowAboutCommand = new RelayCommand(() => AboutRequested?.Invoke());
+        ViewRaceCommand = new RelayCommand(
+            () => RaceViewRequested?.Invoke(clientState.EmpireState.Race),
+            () => clientState.EmpireState?.Race != null);
+        ExportReportCommand = new RelayCommand<string>(ExportReport);
 
         // Each AI computes its own orders from its own intel for the CURRENT turn, entirely
         // independently of what the human decides here - so there's no reason to wait until
@@ -73,29 +149,73 @@ public abstract class GameShellViewModelBase : ViewModelBase
         _ = TurnHost.RunPendingAiTurnsAsync(clientState.GameFolder);
     }
 
+    /// <summary>Writes one of the plain-text exports (client-ui-dialog-catalog.md "Reports":
+    /// no file prompt, no confirmation) and reports where it went.</summary>
+    protected void ExportReport(string? kind)
+    {
+        if (!Enum.TryParse(kind, true, out ReportExport.Kind exportKind))
+        {
+            return;
+        }
+
+        try
+        {
+            string path = ReportExport.Write(clientState.EmpireState, exportKind, clientState.GameFolder);
+            StatusMessage = $"Wrote {path}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Export failed: {ex.Message}";
+        }
+    }
+
+    // The End Turn stage last shown; stage reports posted from the background thread that
+    // arrive late (after a later stage or after teardown) are ignored.
+    private int lastTurnStage = -1;
+
+    private void ReportTurnStage(int stage)
+    {
+        if (!isSubmitting || stage <= lastTurnStage || stage < 0 || stage >= TurnProgressStages.Count)
+        {
+            return;
+        }
+
+        lastTurnStage = stage;
+        Progress.Report(TurnProgressStages.Captions[stage], stage, TurnProgressStages.Count);
+    }
+
     private async Task SubmitTurnAsync()
     {
         isSubmitting = true;
+        lastTurnStage = -1;
         SubmitTurnCommand.NotifyCanExecuteChanged();
         StatusMessage = "Submitting turn...";
 
         try
         {
-            bool advanced = await TurnHost.SubmitAndTryAdvanceTurnAsync(clientState);
+            ReportTurnStage(TurnProgressStages.SavingOrders);
+            bool advanced = await TurnHost.SubmitAndTryAdvanceTurnAsync(
+                clientState,
+                stage => Dispatcher.UIThread.Post(() => ReportTurnStage(stage)));
+            MarkOrdersSaved();
             if (advanced)
             {
+                ReportTurnStage(TurnProgressStages.LoadingNewTurn);
                 ClientData freshState = await Task.Run(
                     () => GameSession.Load(clientState.GameFolder, clientState.EmpireState.Race.Name));
+                Progress.End();
                 TurnAdvanced?.Invoke(freshState);
             }
             else
             {
+                Progress.End();
                 StatusMessage = $"Turn submitted ({clientState.Commands.Count} order(s)) - waiting for other players.";
             }
         }
         catch (Exception ex)
         {
             StatusMessage = $"Submit failed: {ex.Message}";
+            Progress.Fail($"The turn could not be submitted: {ex.Message}");
         }
         finally
         {

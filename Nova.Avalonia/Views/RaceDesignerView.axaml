@@ -17,15 +17,35 @@
              ComboBox is a control already proven to work reliably via touch elsewhere on
              this exact screen. Sits at the very top, above every page, so every page below
              gets the full remaining content area to itself. -->
-        <StackPanel Grid.Row="1" Spacing="2" Margin="0,0,0,8">
-            <TextBlock Text="Section" />
-            <ComboBox ItemsSource="{Binding PageLabels}" SelectedItem="{Binding SelectedPageLabel}"
-                      HorizontalAlignment="Stretch" />
-        </StackPanel>
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+            <StackPanel Grid.Column="0" Spacing="2">
+                <TextBlock Text="Section" />
+                <ComboBox ItemsSource="{Binding PageLabels}" SelectedItem="{Binding SelectedPageLabel}"
+                          HorizontalAlignment="Stretch" />
+            </StackPanel>
+            <!-- race-designer-ui-and-availability.md: help can be requested from any stage and
+                 never changes the draft. -->
+            <Button Grid.Column="1" Content="Help" Command="{Binding HelpCommand}" VerticalAlignment="Bottom" Margin="8,0,0,0" />
+        </Grid>
 
+        <!-- Every page's content (not its ScrollViewer, which must stay scrollable) is disabled
+             in a non-editable context, so the stored values stay visible but cannot change. -->
         <Grid Grid.Row="2">
+            <Grid IsVisible="{Binding !IsHelpVisible}">
             <ScrollViewer IsVisible="{Binding ShowIdentityPage}">
-                <StackPanel Spacing="8">
+                <StackPanel Spacing="8" IsEnabled="{Binding IsEditable}">
+                    <!-- The eight Identity-stage archetypes: six presets, Random and Custom. -->
+                    <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Start from" />
+                            <Grid ColumnDefinitions="*,Auto">
+                                <ComboBox Grid.Column="0" ItemsSource="{Binding PresetOptions}" SelectedItem="{Binding SelectedPreset}"
+                                          HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1" Content="Apply" Command="{Binding ApplyPresetCommand}" Margin="8,0,0,0" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Label stacked above its own full-width field, not side-by-side in
                          shared Grid columns - two label+field pairs squeezed into one row
                          overlapped on a narrow phone screen (confirmed live: the tail of
@@ -85,7 +105,7 @@
             </ScrollViewer>
 
             <ScrollViewer IsVisible="{Binding ShowTraitsPage}">
-                <ItemsControl ItemsSource="{Binding SecondaryTraitOptions}">
+                <ItemsControl ItemsSource="{Binding SecondaryTraitOptions}" IsEnabled="{Binding IsEditable}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <CheckBox Content="{Binding Title}" IsChecked="{Binding IsSelected}"
@@ -97,68 +117,53 @@
 
             <ScrollViewer IsVisible="{Binding ShowEnvironmentPage}">
                 <StackPanel Spacing="10">
-                    <controls:EnvironmentToleranceEditor DataContext="{Binding GravityTolerance}" />
-                    <controls:EnvironmentToleranceEditor DataContext="{Binding TemperatureTolerance}" />
-                    <controls:EnvironmentToleranceEditor DataContext="{Binding RadiationTolerance}" />
+                    <StackPanel Spacing="10" IsEnabled="{Binding IsEditable}">
+                        <controls:EnvironmentToleranceEditor DataContext="{Binding GravityTolerance}" />
+                        <controls:EnvironmentToleranceEditor DataContext="{Binding TemperatureTolerance}" />
+                        <controls:EnvironmentToleranceEditor DataContext="{Binding RadiationTolerance}" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="Maximum colonist growth per year (%)" VerticalAlignment="Center" />
+                            <NumericUpDown Grid.Column="1" Value="{Binding GrowthRate}" Minimum="1" Maximum="20" FormatString="0" Width="120" />
+                        </Grid>
+                    </StackPanel>
                     <TextBlock Margin="0,4">
                         <Run Text="Estimated compatible worlds:" /><Run Text="{Binding WorldAvailabilityPercent, StringFormat={}{0:F0}%}" />
                     </TextBlock>
                 </StackPanel>
             </ScrollViewer>
 
+            <!-- The seven economic stepper rows: 1 per click, 3 with Shift, auto-repeat while
+                 held. Rows 2-7 lock for an Alternate Reality race. -->
             <ScrollViewer IsVisible="{Binding ShowProductionPage}">
                 <StackPanel Spacing="10">
                     <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Grid.Column="0" Text="Colonists required to generate one resource each year" VerticalAlignment="Center" />
-                            <NumericUpDown Grid.Column="1" Value="{Binding ColonistsPerResource}" Minimum="700" Maximum="2500" Increment="100" FormatString="0" Width="120" />
-                        </Grid>
+                        <controls:RaceDesignerStepper DataContext="{Binding ColonistsRow}" />
                     </Border>
                     <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
                         <StackPanel Spacing="6">
                             <TextBlock Text="Factories" FontWeight="Bold" />
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Resources produced by each set of 10 factories" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding FactoryProduction}" Minimum="5" Maximum="15" FormatString="0" Width="120" />
-                            </Grid>
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Resources required to build each factory" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding FactoryBuildCost}" Minimum="5" Maximum="25" FormatString="0" Width="120" />
-                            </Grid>
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Factories that can be operated by 10k colonists" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding OperableFactories}" Minimum="5" Maximum="25" FormatString="0" Width="120" />
-                            </Grid>
+                            <controls:RaceDesignerStepper DataContext="{Binding FactoryOutputRow}" />
+                            <controls:RaceDesignerStepper DataContext="{Binding FactoryCostRow}" />
+                            <controls:RaceDesignerStepper DataContext="{Binding FactoriesOperatedRow}" />
                             <CheckBox Content="{Binding CheapFactoriesTrait.Title}" IsChecked="{Binding CheapFactoriesTrait.IsSelected}"
-                                      ToolTip.Tip="{Binding CheapFactoriesTrait.Description}" />
+                                      ToolTip.Tip="{Binding CheapFactoriesTrait.Description}" IsEnabled="{Binding IsEditable}" />
                         </StackPanel>
                     </Border>
                     <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
                         <StackPanel Spacing="6">
                             <TextBlock Text="Mines" FontWeight="Bold" />
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Mineral production (kT) per set of 10 mines" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding MineProductionRate}" Minimum="5" Maximum="25" FormatString="0" Width="120" />
-                            </Grid>
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Number of resources required to build a mine" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding MineBuildCost}" Minimum="2" Maximum="15" FormatString="0" Width="120" />
-                            </Grid>
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Mines that can be operated by 10k colonists" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding OperableMines}" Minimum="5" Maximum="25" FormatString="0" Width="120" />
-                            </Grid>
+                            <controls:RaceDesignerStepper DataContext="{Binding MineOutputRow}" />
+                            <controls:RaceDesignerStepper DataContext="{Binding MineCostRow}" />
+                            <controls:RaceDesignerStepper DataContext="{Binding MinesOperatedRow}" />
                         </StackPanel>
                     </Border>
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Grid.Column="0" Text="Maximum colonist growth per year (%)" VerticalAlignment="Center" />
-                        <NumericUpDown Grid.Column="1" Value="{Binding GrowthRate}" Minimum="1" Maximum="20" FormatString="0" Width="120" />
-                    </Grid>
+                    <TextBlock Text="An Alternate Reality race has no factories or mines: only its income divisor can be set."
+                               TextWrapping="Wrap" Opacity="0.7" IsVisible="{Binding IsAlternateReality}" />
                 </StackPanel>
             </ScrollViewer>
 
             <ScrollViewer IsVisible="{Binding ShowResearchPage}">
-                <StackPanel Spacing="10">
+                <StackPanel Spacing="10" IsEnabled="{Binding IsEditable}">
                     <controls:ResearchCostSelector DataContext="{Binding Biotechnology}" />
                     <controls:ResearchCostSelector DataContext="{Binding Electronics}" />
                     <controls:ResearchCostSelector DataContext="{Binding Energy}" />
@@ -172,9 +177,22 @@
 
             <StackPanel Spacing="10" IsVisible="{Binding ShowLeftoverPointsPage}">
                 <TextBlock Text="Spend up to 50 leftover advantage points on:" />
-                <ComboBox ItemsSource="{Binding LeftoverPointTargetOptions}"
+                <ComboBox ItemsSource="{Binding LeftoverPointTargetOptions}" IsEnabled="{Binding IsEditable}"
                           SelectedItem="{Binding LeftoverPointTarget}" HorizontalAlignment="Stretch" />
             </StackPanel>
+
+            </Grid>
+
+            <!-- Help panel, shown in place of the section: informational only. -->
+            <Border IsVisible="{Binding IsHelpVisible}" BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <TextBlock Grid.Row="0" Text="{Binding HelpTitle}" FontWeight="Bold" TextWrapping="Wrap" Margin="0,0,0,6" />
+                    <ScrollViewer Grid.Row="1">
+                        <SelectableTextBlock Text="{Binding HelpText}" TextWrapping="Wrap" />
+                    </ScrollViewer>
+                    <Button Grid.Row="2" Content="Close help" Command="{Binding CloseHelpCommand}" HorizontalAlignment="Stretch" Margin="0,6,0,0" />
+                </Grid>
+            </Border>
         </Grid>
 
         <StackPanel Grid.Row="3" Spacing="6" Margin="0,8,0,0">
@@ -187,10 +205,12 @@
                 </TextBlock>
             </Grid>
             <TextBlock Text="{Binding StatusMessage}" Opacity="0.7" TextWrapping="Wrap" />
+            <Button Content="Undo changes to this section" Command="{Binding RevertSectionCommand}" HorizontalAlignment="Stretch"
+                    IsVisible="{Binding IsEditable}" />
             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
-                <Button Grid.Column="0" Content="Load..." Click="LoadButton_Click" HorizontalAlignment="Stretch" />
-                <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelCommand}" HorizontalAlignment="Stretch" />
-                <Button Grid.Column="2" Content="Save" Command="{Binding SaveCommand}" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="0" Content="Load..." Click="LoadButton_Click" HorizontalAlignment="Stretch" IsVisible="{Binding IsEditable}" />
+                <Button Grid.Column="1" Content="{Binding CancelLabel}" Command="{Binding CancelCommand}" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="2" Content="Save" Command="{Binding SaveCommand}" HorizontalAlignment="Stretch" IsVisible="{Binding IsEditable}" />
             </Grid>
         </StackPanel>
     </Grid>

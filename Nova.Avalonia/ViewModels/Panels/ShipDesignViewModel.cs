@@ -20,7 +20,7 @@ namespace Nova.Avalonia.ViewModels.Panels;
 /// grep - a built design is add-only + delete, matching classic Stars! rules: you make a new
 /// design instead of editing an old one), so this panel only supports Add and Delete too.
 /// </summary>
-public class ShipDesignViewModel : Tool
+public partial class ShipDesignViewModel : Tool
 {
     private readonly ClientData clientState;
     private readonly SelectionService selection;
@@ -566,15 +566,14 @@ public class ShipDesignViewModel : Tool
     }
 
     /// <summary>
-    /// Ports HullGrid.Grid_DragEnter's compatibility checks to plain data logic (no
-    /// drag-and-drop needed): a slot's ComponentType string names what fits there, with a few
-    /// special cases (a "Weapon" slot also accepts Beam Weapons/Torpedoes; "General Purpose"
-    /// accepts anything except Engines; a component with a "Hull Affinity" property only fits
-    /// the hull(s) it's flagged for; "Transport Ships Only" components refuse to sit alongside
-    /// an allocated weapon anywhere on the hull). That last check only looks at how the other
-    /// slots are allocated *right now* (when this hull was selected) rather than staying live
-    /// as the user fills in other slots afterward - a simplification given how rarely this
-    /// specific interaction comes up.
+    /// The slot-category rule lives in Nova.Client.SlotCompatibility (behavior-specs-10/
+    /// ship-design-and-components.md §4/§15e: a slot's ComponentType names the families its
+    /// allowed-category mask admits - "Armor Scanner Elect Mech" admits electrical and
+    /// mechanical parts too, a "General Purpose" slot admits the eight ship-mountable families
+    /// and nothing else - plus the Hull Affinity and "Transport Ships Only" rules). That last
+    /// check only looks at how the other slots are allocated *right now* (when this hull was
+    /// selected) rather than staying live as the user fills in other slots afterward - a
+    /// simplification given how rarely this specific interaction comes up.
     /// </summary>
     private List<ComponentOptionViewModel> BuildOptionsForSlot(HullModule slot, List<HullModule> allModulesOnHull, string hullName)
     {
@@ -593,44 +592,7 @@ public class ShipDesignViewModel : Tool
 
     private static bool IsCompatible(Component component, HullModule slot, string hullName, IEnumerable<HullModule> allModulesOnHull)
     {
-        if (component.Properties.ContainsKey("Hull"))
-        {
-            return false; // hulls themselves never go in a slot
-        }
-
-        bool baseTypeMatches = slot.ComponentType.Contains(component.Type.ToDescription())
-            || (slot.ComponentType.Contains("Weapon") && (component.Type == ItemType.BeamWeapons || component.Type == ItemType.Torpedoes))
-            || slot.ComponentType == "General Purpose";
-
-        if (!baseTypeMatches)
-        {
-            return false;
-        }
-
-        if (slot.ComponentType == "General Purpose" && component.Type == ItemType.Engine)
-        {
-            return false;
-        }
-
-        if (component.Properties.TryGetValue("Hull Affinity", out ComponentProperty? affinityProperty)
-            && affinityProperty is HullAffinity affinity
-            && affinity.Value != hullName)
-        {
-            return false;
-        }
-
-        if (component.Properties.ContainsKey("Transport Ships Only"))
-        {
-            foreach (HullModule otherSlot in allModulesOnHull)
-            {
-                if (otherSlot.AllocatedComponent != null && otherSlot.AllocatedComponent.Properties.ContainsKey("Weapon"))
-                {
-                    return false;
-                }
-            }
-        }
-
-        return true;
+        return SlotCompatibility.Accepts(component, slot, hullName, allModulesOnHull);
     }
 
     private void RefreshStats()
@@ -653,7 +615,7 @@ public class ShipDesignViewModel : Tool
         // ShipDesignDialog.cs itself does, apparently only because it doesn't have a real
         // ShipDesign yet at that point in its own flow - not a constraint we have here).
         var preview = new ShipDesign(0) { Blueprint = currentHullComponent };
-        preview.Update(clientState.EmpireState.Race);
+        preview.Update(clientState.EmpireState.Race, clientState.EmpireState.ResearchLevels);
 
         CostSummary = ResourceFormat.Cost(preview.Cost);
         MassValue = preview.Mass;
@@ -685,7 +647,7 @@ public class ShipDesignViewModel : Tool
             // ShipDesignDialog.UpdateHullFields's own lookup.
             Icon = AllShipIcons.Data.GetIconBySource(currentHullComponent.ImageFile),
         };
-        design.Update(clientState.EmpireState.Race);
+        design.Update(clientState.EmpireState.Race, clientState.EmpireState.ResearchLevels);
         design.Type = hull.IsStarbase ? ItemType.Starbase : ItemType.Ship;
 
         if (!hull.IsStarbase && design.Engine == null)

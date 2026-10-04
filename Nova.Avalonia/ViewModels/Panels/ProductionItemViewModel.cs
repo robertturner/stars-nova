@@ -37,7 +37,13 @@ public class ProductionItemViewModel : ViewModelBase
     public int Quantity
     {
         get => quantity;
-        private set => SetProperty(ref quantity, value);
+        private set
+        {
+            if (SetProperty(ref quantity, value))
+            {
+                OnPropertyChanged(nameof(ProgressSummary));
+            }
+        }
     }
 
     private bool isAutoBuild;
@@ -109,7 +115,35 @@ public class ProductionItemViewModel : ViewModelBase
 
     public string YearsToFinishDisplay => YearsToFinish >= 100 ? "100+ yrs" : $"{YearsToFinish} yr{(YearsToFinish == 1 ? "" : "s")}";
 
-    public string ProgressSummary => $"{PercentCompleteDisplay} done · {YearsToFinishDisplay}";
+    /// <summary>
+    /// A Gray row's generic "100% done · 0 yrs" reads as if something finished, when what
+    /// actually happened is the auto-build order's own target was already met and there's
+    /// nothing left to do - confirmed live as a real, repeated point of confusion (docs/
+    /// behavior-specs-4/production-queue.md §9's own "Up to N"/"never overshoot" wording, cited
+    /// to the original Player's Guide, is the actual intended mechanic here - not a bug to fix,
+    /// but a status that needed to say what it means instead of relying on a hover tooltip,
+    /// which touch devices don't have anyway). Spells out the fix directly instead.
+    /// </summary>
+    public string ProgressSummary => QueueColor == ProductionQueueColor.Gray
+        ? $"Target reached ({Quantity}) - raise the quantity to build more"
+        : $"{PercentCompleteDisplay} done · {YearsToFinishDisplay}";
+
+    private ProductionQueueColor color;
+
+    /// <summary>The raw color enum behind <see cref="TextColor"/> and <see cref="ProgressSummary"/>
+    /// - kept alongside the resolved Brush since ProgressSummary's own wording depends on
+    /// specifically the Gray case, not just "some color or other".</summary>
+    public ProductionQueueColor QueueColor
+    {
+        get => color;
+        private set
+        {
+            if (SetProperty(ref color, value))
+            {
+                OnPropertyChanged(nameof(ProgressSummary));
+            }
+        }
+    }
 
     private IBrush textColor = Brushes.White;
 
@@ -174,12 +208,13 @@ public class ProductionItemViewModel : ViewModelBase
     /// full rebuild anyway.</summary>
     public void Update(ProductionOrder order, ProductionCompletionEstimate estimate)
     {
-        Name = order.Name;
+        Name = Nova.Client.ProductionCaptions.Of(order);
         Quantity = order.Quantity;
         IsAutoBuild = order.IsAutoBuild;
         CostSummary = ResourceFormat.Cost(order.Unit.Cost);
         PercentComplete = estimate.PercentComplete;
         YearsToFinish = estimate.YearsToFinish;
+        QueueColor = estimate.Color;
         TextColor = ToBrush(estimate.Color);
     }
 }

@@ -66,7 +66,7 @@ namespace Nova.Common.DataStructures
             {
                 try
                 {
-                    switch (subnode.Name.ToLower())
+                    switch (subnode.Name.ToLowerInvariant())
                     {
                         case "root":
                             subnode = subnode.FirstChild;

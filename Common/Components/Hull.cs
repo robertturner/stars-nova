@@ -183,31 +183,31 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "fuelcapacity")
+                    if (subnode.Name.ToLowerInvariant() == "fuelcapacity")
                     {
                         FuelCapacity = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    else if (subnode.Name.ToLower() == "dockcapacity")
+                    else if (subnode.Name.ToLowerInvariant() == "dockcapacity")
                     {
                         DockCapacity = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    else if (subnode.Name.ToLower() == "basecargo")
+                    else if (subnode.Name.ToLowerInvariant() == "basecargo")
                     {
                         BaseCargo = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    else if (subnode.Name.ToLower() == "armaxpop")
+                    else if (subnode.Name.ToLowerInvariant() == "armaxpop")
                     {
                         ARMaxPop = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    else if (subnode.Name.ToLower() == "armorstrength")
+                    else if (subnode.Name.ToLowerInvariant() == "armorstrength")
                     {
                         ArmorStrength = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    else if (subnode.Name.ToLower() == "battleinitiative")
+                    else if (subnode.Name.ToLowerInvariant() == "battleinitiative")
                     {
                         BattleInitiative = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    else if (subnode.Name.ToLower() == "module")
+                    else if (subnode.Name.ToLowerInvariant() == "module")
                     {
                         HullModule module = new HullModule(subnode);
                         Modules.Add(module);

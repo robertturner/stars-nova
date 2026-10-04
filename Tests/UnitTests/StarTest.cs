@@ -173,11 +173,12 @@ namespace Nova.Tests.UnitTests
             // run the growth calculation
             int growth = star.CalculateGrowth(race);
 
-            // docs/behavior-specs-4/population-growth.md Example 3: population plateaus at
-            // capacity rather than declining further past it - no source was found for a
-            // population-loss mechanic purely from exceeding capacity on an otherwise-positive
-            // -habitability world, unlike the previously-asserted -30000 here.
-            Assert.AreEqual(0, growth);
+            // behavior-specs-7/population-growth.md supersedes the earlier "plateaus at capacity"
+            // finding (docs/behavior-specs-4/population-growth.md's Example 3): a decompiled
+            // trace of the crowding block confirms population past capacity+10 actually DECLINES.
+            // At 150% of a 1,000,000 capacity: capPct1000=1500, n=max(99-150,-300)=-51,
+            // growth = 1,500,000 * -51 / 2500 = -30,600.
+            Assert.AreEqual(-30600, growth);
         }
 
         [Test]
@@ -196,8 +197,29 @@ namespace Nova.Tests.UnitTests
             // run the growth calculation
             int growth = star.CalculateGrowth(race);
 
-            // docs/behavior-specs-4/population-growth.md Example 3: population plateaus at
-            // capacity rather than declining further past it - see OvercrowdedPopGrowth above.
+            // 500% of a 1,000,000 capacity is past the decline formula's -300 clamp (reached
+            // around 4x capacity) - see OvercrowdedPopGrowth above. At the clamp, the decline is
+            // a flat -12% of population per turn: -0.12 * 5,000,000 = -600,000.
+            Assert.AreEqual(-600000, growth);
+        }
+
+        /// <summary>Covers the newly-confirmed "flat zero growth" window from behavior-specs-7/
+        /// population-growth.md: population sitting anywhere from exactly at capacity up to 9
+        /// colonists over it still produces no change at all - only capacity+10 or more triggers
+        /// the decline formula (see OvercrowdedPopGrowth).</summary>
+        [Test]
+        public void AtCapacityPlusNine_StillProducesZeroGrowth()
+        {
+            star.Colonists = 1000009;
+            star.Gravity = 50;
+            star.Radiation = 50;
+            star.Temperature = 50;
+
+            race.GrowthRate = 10;
+            race.Traits.SetPrimary("SS");
+
+            int growth = star.CalculateGrowth(race);
+
             Assert.AreEqual(0, growth);
         }
 

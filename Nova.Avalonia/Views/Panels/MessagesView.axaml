@@ -3,18 +3,69 @@
              xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
              x:Class="Nova.Avalonia.Views.Panels.MessagesView"
              x:DataType="panels:MessagesViewModel">
-    <ScrollViewer>
-        <ItemsControl ItemsSource="{Binding Messages}" Margin="8">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="panels:MessageItemViewModel">
-                    <Border BorderBrush="#333" BorderThickness="0,0,0,1" Padding="0,6">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Type}" FontSize="10" Opacity="0.5" />
-                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
-    </ScrollViewer>
+    <!-- "+" flips the current message type's filter, "-" toggles hide/show filtered messages
+         (behavior-specs-10/client-ui-dialog-catalog.md, Messages). -->
+    <UserControl.KeyBindings>
+        <KeyBinding Gesture="OemPlus" Command="{Binding ToggleFilterCommand}" />
+        <KeyBinding Gesture="Add" Command="{Binding ToggleFilterCommand}" />
+        <KeyBinding Gesture="OemMinus" Command="{Binding ToggleShowFilteredCommand}" />
+        <KeyBinding Gesture="Subtract" Command="{Binding ToggleShowFilteredCommand}" />
+    </UserControl.KeyBindings>
+    <DockPanel>
+        <!-- Current-message header: position, Previous/Next, the filter tick/cross for this
+             message's type, and the magnifier (only while some type present this turn is
+             filtered). -->
+        <Border DockPanel.Dock="Top" BorderBrush="#333" BorderThickness="0,0,0,1" Padding="8,4">
+            <StackPanel Spacing="2">
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                    <Button Grid.Column="0" Content="&#9664; Prev" Command="{Binding PreviousCommand}" Padding="6,2" />
+                    <Button Grid.Column="1" Content="Next &#9654;" Command="{Binding NextCommand}" Padding="6,2" Margin="4,0,0,0" />
+                    <TextBlock Grid.Column="2" Text="{Binding PositionText}" VerticalAlignment="Center" Margin="8,0" FontSize="12" Opacity="0.7" />
+                    <Button Grid.Column="3" Command="{Binding ToggleFilterCommand}" Padding="6,2"
+                            ToolTip.Tip="Show or hide messages of this type (+)">
+                        <Panel>
+                            <TextBlock Text="&#10004; shown" Foreground="DodgerBlue" IsVisible="{Binding IsCurrentTypeShown}" />
+                            <TextBlock Text="&#10008; filtered" Foreground="Red" IsVisible="{Binding IsCurrentTypeFiltered}" />
+                        </Panel>
+                    </Button>
+                    <ToggleButton Grid.Column="4" Content="&#128269;" Margin="4,0,0,0" Padding="6,2"
+                                  IsChecked="{Binding ShowFiltered, Mode=OneWay}"
+                                  Command="{Binding ToggleShowFilteredCommand}"
+                                  IsVisible="{Binding IsMagnifierVisible}"
+                                  ToolTip.Tip="Switch between hiding and showing filtered messages (-)" />
+                </Grid>
+                <TextBlock Text="{Binding FilterSummary}" FontSize="10" Opacity="0.6" IsVisible="{Binding HasFilterSummary}" />
+            </StackPanel>
+        </Border>
+        <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding VisibleMessages}" Margin="8">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="panels:MessageItemViewModel">
+                        <!-- Tapping a row makes it the current message; a battle message also
+                             opens that battle (see MessageItemViewModel.ReplayCommand). -->
+                        <Button Command="{Binding ReplayCommand}" Background="Transparent" BorderThickness="0"
+                                Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                Opacity="{Binding RowOpacity}">
+                            <Border BorderBrush="#333" BorderThickness="0,0,0,1" Padding="4,6"
+                                    Classes.selected="{Binding IsSelected}">
+                                <Border.Styles>
+                                    <Style Selector="Border.selected">
+                                        <Setter Property="Background" Value="#302080FF" />
+                                    </Style>
+                                </Border.Styles>
+                                <StackPanel>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="{Binding Type}" FontSize="10" Opacity="0.5" />
+                                        <TextBlock Grid.Column="1" Text="{Binding GotoHint}" FontSize="10"
+                                                   Foreground="DodgerBlue" IsVisible="{Binding HasGotoHint}" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
 </UserControl>

@@ -124,7 +124,7 @@ namespace Nova.Common.Waypoints
                 {
                     subNode = mainNode.FirstChild;
                     
-                    switch (mainNode.Name.ToLower())
+                    switch (mainNode.Name.ToLowerInvariant())
                     {                            
                         case "rightkey":
                             OtherFleetKey = long.Parse(subNode.Value, System.Globalization.NumberStyles.HexNumber);
@@ -258,12 +258,13 @@ namespace Nova.Common.Waypoints
         }
 
 
-        /// <summary>Shared by every SplitMergeTask instance - matches this codebase's own
-        /// convention for unseeded gameplay randomness (see e.g. PointUtilities.Random,
-        /// TechTrading.Rand): not test-seedable, so tests covering this exercise only the
-        /// deterministic full-fuel path and the shape/bounds of the probabilistic one, not an
-        /// exact roll.</summary>
-        private static readonly Random random = new Random();
+        /// <summary>The stranding roll's source: the ambient game stream (GameRandom.Current - the
+        /// server installs a seeded per-fleet stream while fleets move and act, so the roll is
+        /// repeatable from the game seed), not a process-wide static Random.</summary>
+        private static Random random
+        {
+            get { return GameRandom.Current; }
+        }
 
         /// <summary>
         /// Used to merge fleets. Much cruder than ReassignShips, but requires

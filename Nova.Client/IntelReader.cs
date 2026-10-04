@@ -170,6 +170,12 @@ namespace Nova.Client
                         }
                         break;
 
+                    case ProductionNoticeTypes.Production:
+                    case ProductionNoticeTypes.QueueEmpty:
+                    case ProductionNoticeTypes.OrdersCompleted:
+                        // Keep the planet name (the notice's subject) for MessageRouting.
+                        break;
+
                     default:
                         message.Event = null;
                         break;

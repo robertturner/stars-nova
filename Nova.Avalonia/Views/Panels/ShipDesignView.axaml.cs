@@ -13,6 +13,11 @@ public partial class ShipDesignView : UserControl
     public ShipDesignView()
     {
         InitializeComponent();
+
+        // The component-category browser (Prev/Next) is a windowed-UI surface; the touch port
+        // keeps the plain scrolling palette.
+        ComponentBrowserStrip.IsVisible =
+            global::Avalonia.Application.Current?.ApplicationLifetime is global::Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
     }
 
     // Avalonia's built-in press-and-hold gesture (InputElement.Holding, enabled per-Button via

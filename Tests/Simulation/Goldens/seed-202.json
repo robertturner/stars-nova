@@ -1,0 +1,10 @@
+{
+  "Seed": 202,
+  "Config": "seed 202, Tiny/Normal, 12 turns, accelerated off, players [Cybertrons/Standard, Turindrones/Standard]",
+  "Turns": 12,
+  "Hashes": {
+    "4": "f1eb269e9d5ba19ff55062ed",
+    "8": "360298c76934a0d6d7bb2a27",
+    "12": "3c93143412d4abb47510e424"
+  }
+}

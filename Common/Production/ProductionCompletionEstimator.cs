@@ -123,11 +123,16 @@ namespace Nova.Common
                 ProductionOrder order = star.ManufacturingQueue.Queue[i];
                 IProductionUnit unit = order.Unit;
 
-                // An auto-build order (Factories/Mines/Defenses) already at or above its own "up
-                // to N" target has nothing left to build right now at all - distinct from an
-                // ordinary item that simply hasn't started yet.
+                // An auto-build order (Factories/Mines/Defenses) with no room left under the
+                // operable cap has nothing to buy right now at all - distinct from an ordinary
+                // item that simply hasn't started yet. "Up to N" is a per-turn maximum, not a
+                // total (behavior-specs-8/production-queue.md section 10h), so merely having N or
+                // more built does NOT make the entry idle - only the operable clamp does
+                // (ProductionOrder.Process).
                 int? currentCount = order.IsAutoBuild ? unit.CurrentCount(star) : null;
-                bool autoBuildAlreadySatisfied = currentCount.HasValue && currentCount.Value >= order.Quantity;
+                int? supportable = order.IsAutoBuild ? unit.SupportableCount(star) : null;
+                bool autoBuildAlreadySatisfied = currentCount.HasValue && supportable.HasValue
+                    && currentCount.Value >= supportable.Value;
 
                 if (autoBuildAlreadySatisfied)
                 {
@@ -244,16 +249,15 @@ namespace Nova.Common
                 simulated.UpdateResources();
                 simulated.UpdatePopulation(race);
 
-                var completed = new List<ProductionOrder>();
-                foreach (ProductionOrder queued in simulated.ManufacturingQueue.Queue)
+                // The same queue walk the turn's Manufacture step applies (ProductionQueue.
+                // ProcessYear), so an auto Mineral Alchemy entry's position rule and shortfall
+                // conversion (AlchemyShortfallConversion), the build-cap deletions and the
+                // part-paid alchemy entries are simulated exactly as the real turn does them.
+                simulated.ManufacturingQueue.ProcessYear(simulated, entry =>
                 {
-                    if (queued.IsBlocking(simulated))
-                    {
-                        break;
-                    }
-
-                    Resources remainingBefore = new Resources(queued.Unit.RemainingCost);
-                    int done = queued.Process(simulated);
+                    ProductionOrder queued = entry.Order;
+                    int done = entry.Done;
+                    Resources remainingBefore = entry.RemainingCostBefore;
 
                     if (targets.TryGetValue(queued, out int index))
                     {
@@ -266,7 +270,7 @@ namespace Nova.Common
                         // multi-unit manual batch (e.g. "Factory x100") only truly finishes once
                         // its full Quantity is consumed, matching the doc's own "fully complete
                         // production" wording (not e.g. year 1 for a 500-unit order, just because
-                        // year 1 happened to complete a couple of them). A persistent auto-build
+                        // year 1 happened to complete a couple of them). A standing auto-build
                         // order (Factories/Mines/Defenses "up to N") never reaches Quantity 0 at
                         // all (see ProductionOrder.Process's own comment) - for those, completing
                         // even one unit IS the meaningful "finish" event, since there's no whole
@@ -278,21 +282,7 @@ namespace Nova.Common
                             finishes[index] = year;
                         }
                     }
-
-                    // Matches Manufacture.Items' own cleanup exactly - an auto-build order for a
-                    // persistent-count unit (Factories/Mines/Defenses) never reaches Quantity 0
-                    // (see ProductionOrder.Process's own comment), so it's never removed here
-                    // either, same as the real engine.
-                    if (queued.Quantity == 0)
-                    {
-                        completed.Add(queued);
-                    }
-                }
-
-                foreach (ProductionOrder done in completed)
-                {
-                    simulated.ManufacturingQueue.Queue.Remove(done);
-                }
+                });
 
                 bool allFinished = true;
                 foreach (int index in queueIndexes)

@@ -74,7 +74,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (subnode.Name.ToLower())
+                    switch (subnode.Name.ToLowerInvariant())
                     {
                         case "empire":
                             EmpireId = int.Parse(subnode.FirstChild.Value, System.Globalization.NumberStyles.HexNumber);

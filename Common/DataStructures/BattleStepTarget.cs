@@ -60,7 +60,7 @@ namespace Nova.Common.DataStructures
             {
                 try
                 {
-                    switch (subnode.Name.ToLower())
+                    switch (subnode.Name.ToLowerInvariant())
                     {
                         case "stackkey":
                             StackKey = long.Parse(subnode.FirstChild.Value, System.Globalization.NumberStyles.HexNumber);

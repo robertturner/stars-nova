@@ -234,6 +234,44 @@ namespace Nova.Tests.IntegrationTests
             CollectionAssert.AreNotEqual(Fingerprint(first), Fingerprint(second));
         }
 
+        /// <summary>
+        /// Ordinary-planet mineral concentrations end up in 1-119 (behavior-specs-10/
+        /// new-game-setup.md section 3) and, per behavior-specs-11 section 3's correction,
+        /// ordinary planets start with NO surface minerals: the per-planet loop zeroes the
+        /// stocks and only the home-world template is given a tonnage. (The earlier reading
+        /// "concentration x 0-9 + 10 per planet" is superseded.)
+        /// </summary>
+        [Test]
+        public void GenerateStars_ConcentrationsIn1To119_AndNoSurfaceMinerals()
+        {
+            GameSettings.Data.MapHeight = 400;
+            GameSettings.Data.MapWidth = 400;
+            GameSettings.Data.StarDensity = 60;
+            GameSettings.Data.StarSeparation = 10;
+            GameSettings.Data.StarUniformity = 60;
+
+            ServerData serverState = BuildServerState(4);
+            new StarMapinitializer(serverState, new Random(999)).GenerateStars();
+
+            Assert.Greater(serverState.AllStars.Count, 0, "Generation produced no stars - test setup is broken.");
+
+            foreach (Star star in serverState.AllStars.Values)
+            {
+                // behavior-specs-10/new-game-setup.md section 3: 31-119 is only the first step -
+                // the low-concentration roll then replaces some minerals with 1-30 (and the
+                // high-radiation raise never goes past 98), so the final range is 1-119.
+                foreach (int concentration in new[] { star.MineralConcentration.Boranium, star.MineralConcentration.Ironium, star.MineralConcentration.Germanium })
+                {
+                    Assert.That(concentration, Is.InRange(1, 119),
+                        "Ordinary-planet concentration must fall in the confirmed 1-119 range.");
+                }
+
+                Assert.AreEqual(0, star.ResourcesOnHand.Boranium, "ordinary planets start with no surface minerals");
+                Assert.AreEqual(0, star.ResourcesOnHand.Ironium);
+                Assert.AreEqual(0, star.ResourcesOnHand.Germanium);
+            }
+        }
+
         /// ----------------------------------------------------------------------------
         /// <Summary>
         /// Test rectangular map generation.
@@ -301,8 +339,10 @@ namespace Nova.Tests.IntegrationTests
         {
             ServerData serverState = new ServerData();
 
-            GameSettings.Data.MapHeight = 400;
-            GameSettings.Data.MapWidth = 400;
+            // A Small galaxy: the second home planet needs a galaxy-size index of at least 1
+            // (behavior-specs-10/new-game-setup.md section 5a).
+            GameSettings.Data.MapHeight = 800;
+            GameSettings.Data.MapWidth = 800;
             GameSettings.Data.StarDensity = 60;
             GameSettings.Data.StarSeparation = 10;
             GameSettings.Data.StarUniformity = 60;
@@ -397,8 +437,9 @@ namespace Nova.Tests.IntegrationTests
         {
             ServerData serverState = new ServerData();
 
-            GameSettings.Data.MapHeight = 400;
-            GameSettings.Data.MapWidth = 400;
+            // Small, not Tiny - see GeneratePlayerAssets_PacketPhysicsAndInterstellarTraveler_GetSecondPlanet.
+            GameSettings.Data.MapHeight = 800;
+            GameSettings.Data.MapWidth = 800;
             GameSettings.Data.StarDensity = 60;
             GameSettings.Data.StarSeparation = 10;
             GameSettings.Data.StarUniformity = 60;

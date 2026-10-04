@@ -44,7 +44,9 @@ namespace Nova.Server
         /// </summary>
         public int TotalInitiative
         {
-            get { return SourceStack.Token.Design.Initiative + Weapon.Initiative; }
+            // The slot's bracket is the token initiative plus the weapon's own, capped at 63
+            // (behavior-specs-10/combat-resolution.md §5, FUN_10f0_4326).
+            get { return Math.Min(ShipDesign.MaxInitiative, SourceStack.Token.Design.Initiative + Weapon.Initiative); }
         }
 
         /// <summary>

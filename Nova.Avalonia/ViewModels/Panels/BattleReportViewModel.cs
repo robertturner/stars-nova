@@ -56,6 +56,20 @@ public class BattleReportViewModel : Tool
     }
 
     /// <summary>
+    /// Selects the row for a specific BattleReport - used when a Messages panel battle message
+    /// is tapped (see NovaDockFactory.CreateLayout's MessagesViewModel.BattleReplayRequested
+    /// subscription) so the player lands directly on that battle's step log instead of having
+    /// to find it by hand in the list. Reference equality is enough here since a message's
+    /// Event and this panel's Battles are both ultimately resolved from the same
+    /// clientState.EmpireState.BattleReports list (see Nova.Client.IntelReader.
+    /// LinkIntelReferences).
+    /// </summary>
+    public void SelectBattle(BattleReport report)
+    {
+        SelectedBattle = Battles.FirstOrDefault(row => ReferenceEquals(row.Report, report));
+    }
+
+    /// <summary>
     /// One line per BattleStep, mirroring what BattleViewer's "Next Step" button reveals -
     /// movement, target acquisition, weapons fire (against shields or armor), and destruction -
     /// identifying each stack by its design name and quantity rather than by icon position.

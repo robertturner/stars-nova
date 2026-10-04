@@ -24,8 +24,10 @@
 // ===========================================================================
 // This class defines a property to represent a Mass Driver.
 // A mass driver has a maximum warp value (int), but mass drivers do not
-// add linearly. Two mass drivers of the same value can opperate at one higher
-// warp speed.
+// add linearly. The design's launch rating is the best driver's warp, plus one
+// if that best rating appears in two different slots (behavior-specs-10/
+// production-queue.md section 10b, FUN_1048_5138). Several drivers stacked in
+// ONE slot do not add anything.
 // ===========================================================================
 #endregion
 
@@ -37,7 +39,18 @@ namespace Nova.Common.Components
     [Serializable]
     public class MassDriver : ComponentProperty
     {
+        /// <summary>
+        /// The summarised launch rating: for a single component (or one slot) the driver's warp;
+        /// for a design summary the best warp, plus one when that best warp is in two or more
+        /// different slots.
+        /// </summary>
         public int Value = 0;
+
+        // The best single-driver warp seen and how many different slots carry it. These let a
+        // design summary combine slots in any order without double counting the +1 bonus
+        // (e.g. slots 7, 7, 8 -> 8, not 9). Not serialised: a loaded property is one driver/slot.
+        private int bestWarp = 0;
+        private int slotsAtBest = 0;
 
         #region Construction
 
@@ -55,6 +68,8 @@ namespace Nova.Common.Components
         public MassDriver(MassDriver existing)
         {
             this.Value = existing.Value;
+            this.bestWarp = existing.BestWarp;
+            this.slotsAtBest = existing.SlotsAtBest;
         }
 
         /// <summary>
@@ -64,6 +79,26 @@ namespace Nova.Common.Components
         public MassDriver(int existing)
         {
             this.Value = existing;
+        }
+
+        /// <summary>The best single-driver warp combined into this property.</summary>
+        public int BestWarp
+        {
+            get { return slotsAtBest > 0 ? bestWarp : Value; }
+        }
+
+        /// <summary>How many different slots carry <see cref="BestWarp"/> (1 for a single driver/slot).</summary>
+        public int SlotsAtBest
+        {
+            get { return slotsAtBest > 0 ? slotsAtBest : (Value > 0 ? 1 : 0); }
+        }
+
+        private static MassDriver FromSlots(int best, int slots)
+        {
+            MassDriver result = new MassDriver(slots >= 2 ? best + 1 : best);
+            result.bestWarp = best;
+            result.slotsAtBest = slots;
+            return result;
         }
 
         #endregion
@@ -89,7 +124,10 @@ namespace Nova.Common.Components
         /// <param name="op2"></param>
         public override void Add(ComponentProperty op2)
         {
-            Value = (this + (MassDriver)op2).Value;
+            MassDriver sum = this + (MassDriver)op2;
+            Value = sum.Value;
+            bestWarp = sum.bestWarp;
+            slotsAtBest = sum.slotsAtBest;
         }
 
         /// <summary>
@@ -98,7 +136,7 @@ namespace Nova.Common.Components
         /// <param name="scalar"></param>
         public override void Scale(int scalar)
         {
-            Value = (this * scalar).Value;
+            // Unchanged: a slot's rating does not depend on how many drivers it holds.
         }
 
         /// <summary>
@@ -107,35 +145,37 @@ namespace Nova.Common.Components
         /// <param name="op1">LHS operand.</param>
         /// <param name="op2">RHS operand.</param>
         /// <returns>
-        /// A <see cref="MassDriver"/> representing the sum of two mass drivers. 
-        /// This is the best of the two or one warp higher if the same.
+        /// A <see cref="MassDriver"/> representing the combination of two (sets of) slots:
+        /// the best warp, plus one when that best warp is in two or more different slots.
         /// </returns>
         public static MassDriver operator +(MassDriver op1, MassDriver op2)
         {
-            if (op1.Value == op2.Value)
+            int best1 = op1.BestWarp;
+            int best2 = op2.BestWarp;
+            if (best1 <= 0 && best2 <= 0)
             {
-                return new MassDriver(op1.Value + 1);
+                return new MassDriver(0);
             }
-            else
+
+            if (best1 == best2)
             {
-                return new MassDriver(Math.Max(op1.Value, op2.Value));
+                return FromSlots(best1, op1.SlotsAtBest + op2.SlotsAtBest);
             }
+
+            return best1 > best2 ? FromSlots(best1, op1.SlotsAtBest) : FromSlots(best2, op2.SlotsAtBest);
         }
 
         /// <summary>
         /// Operator* to scale (multiply) properties in the ship design.
-        /// Mass Driver doesn't scale.
+        /// Mass Driver doesn't scale: several drivers in ONE slot count as that slot's single
+        /// rating (production-queue.md section 10b - the +1 is only for two different slots).
         /// </summary>
         /// <param name="op1">The <see cref="MassDriver"/> to scale.</param>
-        /// <param name="scalar">The number of mass drivers in the stack.</param>
-        /// <returns>A mass driver representing the stack. +1 warp speed if more than one.</returns>
+        /// <param name="scalar">The number of mass drivers in the stack (slot).</param>
+        /// <returns>A copy of the mass driver: the slot's rating is unchanged.</returns>
         public static MassDriver operator *(MassDriver op1, int scalar)
         {
-            if (scalar >= 1)
-            {
-                return new MassDriver(op1.Value + 1);
-            }
-            return new MassDriver(op1.Value);
+            return new MassDriver(op1);
         }
 
         #endregion
@@ -155,7 +195,7 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "value")
+                    if (subnode.Name.ToLowerInvariant() == "value")
                     {
                         Value = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }

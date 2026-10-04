@@ -266,6 +266,29 @@ namespace Nova.Common
         }
 
         /// <summary>
+        /// What a partial purchase of <paramref name="fraction"/> of <paramref name="cost"/>
+        /// pays: each component rounded down (production-queue.md 10k: "the purchase then pays
+        /// exactly the rounded-down amounts"; the tiny epsilon only absorbs floating-point error,
+        /// so 3 x (1 - 2/3) still pays 1) and never more than <paramref name="onHand"/>. The
+        /// rounded-up operator above could spend one kT more than the planet had (found by
+        /// Nova.Sim: stockpiles of -1 kT).
+        /// </summary>
+        public static Resources PartialPayment(Resources cost, double fraction, Resources onHand)
+        {
+            int Pay(int component, int available)
+            {
+                int paid = (int)Math.Floor((component * fraction) + 1e-9);
+                return Math.Max(0, Math.Min(paid, Math.Min(component, Math.Max(0, available))));
+            }
+
+            return new Resources(
+                Pay(cost.Ironium, onHand.Ironium),
+                Pay(cost.Boranium, onHand.Boranium),
+                Pay(cost.Germanium, onHand.Germanium),
+                Pay(cost.Energy, onHand.Energy));
+        }
+
+        /// <summary>
         /// Return the mass of a resource set (Energy does not contribute to the mass).
         /// </summary>
         public int Mass
@@ -285,7 +308,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (mainNode.Name.ToLower())
+                    switch (mainNode.Name.ToLowerInvariant())
                     {
                         case "ironium":
                             Ironium = int.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);

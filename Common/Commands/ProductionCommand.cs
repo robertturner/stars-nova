@@ -99,7 +99,7 @@ namespace Nova.Common.Commands
             
             while (mainNode != null)
             {
-                switch (mainNode.Name.ToLower())
+                switch (mainNode.Name.ToLowerInvariant())
                 {
                     case "mode":
                         Mode = (CommandMode)Enum.Parse(typeof(CommandMode), mainNode.FirstChild.Value);
@@ -129,6 +129,27 @@ namespace Nova.Common.Commands
         
         public bool IsValid(EmpireData empire)
         {
+            // The planet must still be this empire's and the index a real queue position (any
+            // slot up to the end for Add, an existing entry for Edit/Delete): a stale order would
+            // otherwise throw in ApplyToState (List.Insert/RemoveAt) and abort the whole turn's
+            // generation - found by Nova.Sim (seed 3, 4 AIs, Small, year 2197), as Swap below
+            // already guards.
+            if (StarKey == null || !empire.OwnedStars.ContainsKey(StarKey))
+            {
+                return false;
+            }
+
+            int queueLength = empire.OwnedStars[StarKey].ManufacturingQueue.Queue.Count;
+            if (Mode == CommandMode.Add && (Index < 0 || Index > queueLength))
+            {
+                return false;
+            }
+
+            if ((Mode == CommandMode.Edit || Mode == CommandMode.Delete) && (Index < 0 || Index >= queueLength))
+            {
+                return false;
+            }
+
             switch (Mode)
             {
                 case CommandMode.Add:

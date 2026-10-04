@@ -1,0 +1,66 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             x:Class="Nova.Avalonia.Views.Panels.ProductionTemplatesView"
+             x:DataType="panels:ProductionTemplatesViewModel">
+    <!-- The four-slot production-template manager (production-queue.md section 9 and 10f) -
+         see ProductionTemplatesViewModel. -->
+    <ScrollViewer>
+    <StackPanel Margin="8" Spacing="4">
+        <TextBlock Text="Production Templates" FontWeight="Bold" Opacity="0.8" />
+        <ListBox ItemsSource="{Binding SlotNames}" SelectedIndex="{Binding SelectedSlot}" />
+
+        <Grid ColumnDefinitions="Auto,*" Margin="0,4">
+            <TextBlock Grid.Column="0" Text="New colonies get" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding DefaultOptions}" SelectedIndex="{Binding DefaultOptionIndex}"
+                      HorizontalAlignment="Stretch"
+                      ToolTip.Tip="The default template replaces the queue of every planet you colonise or capture (Alternate Reality skips Mines/Factories/Defenses, Claim Adjuster skips terraforming)" />
+        </Grid>
+
+        <TextBlock Text="{Binding RenamePrompt}" Opacity="0.7" Margin="0,6,0,0" />
+        <Grid ColumnDefinitions="*,Auto">
+            <TextBox Grid.Column="0" Text="{Binding RenameText}" />
+            <Button Grid.Column="1" Content="OK" Command="{Binding RenameCommand}" Margin="4,0,0,0" />
+        </Grid>
+
+        <TextBlock Text="Entries (auto-build, up to 12)" FontWeight="Bold" Opacity="0.8" Margin="0,8,0,0" />
+        <ItemsControl ItemsSource="{Binding Entries}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="panels:ProductionTemplateEntryRowViewModel">
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                        <StackPanel Grid.Column="0">
+                            <TextBlock>
+                                <Run Text="{Binding Caption}" />
+                                <Run Text=" " />
+                                <Run Text="{Binding QuantityText}" />
+                            </TextBlock>
+                            <TextBlock Text="{Binding ExcludedNote}" FontSize="10" Foreground="OrangeRed" IsVisible="{Binding IsExcluded}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                            <Button Content="▲" Padding="4,0" Command="{Binding MoveUpCommand}" />
+                            <Button Content="▼" Padding="4,0" Command="{Binding MoveDownCommand}" />
+                            <Button Content="✕" Padding="4,0" Command="{Binding RemoveCommand}" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,4">
+            <ComboBox Grid.Column="0" ItemsSource="{Binding EntryTypeOptions}" SelectedIndex="{Binding NewEntryTypeIndex}" HorizontalAlignment="Stretch" />
+            <NumericUpDown Grid.Column="1" Value="{Binding NewEntryQuantity}" Minimum="1" Maximum="1023" FormatString="0" Width="110" Margin="4,0,0,0" />
+            <Button Grid.Column="2" Content="Add" Command="{Binding AddEntryCommand}" Margin="4,0,0,0" />
+        </Grid>
+
+        <CheckBox Content="Contribute only leftover resources to research" IsChecked="{Binding OnlyLeftover}" />
+
+        <WrapPanel Margin="0,4,0,0">
+            <Button Content="{Binding CopyFromPlanetLabel}" Command="{Binding CopyFromPlanetCommand}" Margin="0,0,4,4" />
+            <Button Content="Use Player's Guide Example" Command="{Binding UseExampleCommand}" Margin="0,0,4,4" />
+            <Button Content="Clear Slot" Command="{Binding ClearCommand}" Margin="0,0,4,4" />
+        </WrapPanel>
+
+        <TextBlock Text="{Binding StatusMessage}" Opacity="0.7" IsVisible="{Binding HasStatusMessage}" TextWrapping="Wrap" />
+    </StackPanel>
+    </ScrollViewer>
+</UserControl>

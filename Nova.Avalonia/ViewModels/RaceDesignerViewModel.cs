@@ -3,21 +3,36 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Xml;
 using CommunityToolkit.Mvvm.Input;
+using Nova.Avalonia.ViewModels.Panels;
+using Nova.Client;
 using Nova.Common;
 
 namespace Nova.Avalonia.ViewModels;
 
 /// <summary>
 /// Race Designer's main view model - the native Avalonia replacement for
-/// Nova/WinForms/RaceDesigner/RaceDesigner.cs, wrapping a <see cref="Race"/> and exposing every
-/// field the original dialog lets a player set. Follows this app's established
-/// event-forwarding pattern (see OpenGameViewModel): this class has no TopLevel/StorageProvider
-/// access of its own, so Save/Load's actual file pickers live in RaceDesignerView's code-behind,
-/// which calls back into <see cref="CompleteSave"/> or <see cref="TryLoadFromStream"/> once a
-/// file is chosen.
+/// Nova/WinForms/RaceDesigner/RaceDesigner.cs, exposing every field the original dialog lets a
+/// player set. Follows this app's established event-forwarding pattern (see OpenGameViewModel):
+/// this class has no TopLevel/StorageProvider access of its own, so Save/Load's actual file
+/// pickers live in RaceDesignerView's code-behind, which calls back into <see cref="CompleteSave"/>
+/// or <see cref="TryLoadFromStream"/> once a file is chosen.
+///
+/// behavior-specs-10/race-designer-ui-and-availability.md:
+/// - <b>Draft-local working copy</b> ("Cross-stage persistence", "Trait stage"): every control
+///   edits a copy of the race; the race passed in is only changed when Save succeeds
+///   (accept), and Cancel discards the copy. Moving between sections carries the draft along;
+///   "Undo section changes" restores just the current section from the values the designer
+///   opened with (a stage-level cancel).
+/// - <b>Earlier selections lock later controls</b>: picking Alternate Reality resets and
+///   disables economy rows 2-7 and clears the Germanium discount; the research checkbox names
+///   tech level 4 for Jack of All Trades.
+/// - <b>Non-editable context</b>: constructed with isEditable false, every mutable control is
+///   disabled while the values stay visible.
+/// - <b>Preset archetypes</b>: the eight Identity-stage choices, Random included (RacePresets).
+/// - <b>Steppers</b>: the seven economic rows step by 1, 3 with Shift, with auto-repeat.
+/// - <b>Help</b>: available from any section; it only shows the manual's matching topic.
 /// </summary>
 public class RaceDesignerViewModel : ViewModelBase
 {
@@ -49,14 +64,15 @@ public class RaceDesignerViewModel : ViewModelBase
         LeftoverPoints,
     }
 
-    private static readonly (string Label, Page Value)[] PageDefinitions =
+    private static readonly (string Label, Page Value, RaceDraftSection Section, int HelpTopic)[] PageDefinitions =
     {
-        ("Identity", Page.Identity),
-        ("Traits", Page.Traits),
-        ("Environment", Page.Environment),
-        ("Production", Page.Production),
-        ("Research", Page.Research),
-        ("Leftover Points", Page.LeftoverPoints),
+        // Help topics are entries of the shipped manual's own HelpContent/topics.tsv.
+        ("Identity", Page.Identity, RaceDraftSection.Identity, 249),
+        ("Traits", Page.Traits, RaceDraftSection.Traits, 269),
+        ("Environment", Page.Environment, RaceDraftSection.Environment, 284),
+        ("Production", Page.Production, RaceDraftSection.Production, 287),
+        ("Research", Page.Research, RaceDraftSection.Research, 288),
+        ("Leftover Points", Page.LeftoverPoints, RaceDraftSection.LeftoverPoints, 249),
     };
 
     private Page selectedPage = Page.Identity;
@@ -68,7 +84,7 @@ public class RaceDesignerViewModel : ViewModelBase
         get => PageDefinitions.First(p => p.Value == SelectedPage).Label;
         set
         {
-            (string Label, Page Value) match = PageDefinitions.FirstOrDefault(p => p.Label == value);
+            (string Label, Page Value, RaceDraftSection Section, int HelpTopic) match = PageDefinitions.FirstOrDefault(p => p.Label == value);
             if (match.Label != null)
             {
                 SelectedPage = match.Value;
@@ -90,6 +106,10 @@ public class RaceDesignerViewModel : ViewModelBase
                 OnPropertyChanged(nameof(ShowProductionPage));
                 OnPropertyChanged(nameof(ShowResearchPage));
                 OnPropertyChanged(nameof(ShowLeftoverPointsPage));
+                if (IsHelpVisible)
+                {
+                    ShowHelp();
+                }
             }
         }
     }
@@ -113,16 +133,18 @@ public class RaceDesignerViewModel : ViewModelBase
     /// ("Mineral concentration", singular), a real pre-existing bug in the original dialog.
     /// Using the string the consumer actually matches instead of reproducing that bug.
     /// </summary>
-    public static readonly IReadOnlyList<string> LeftoverPointTargets = new[]
-    {
-        "Surface minerals",
-        "Mineral concentration",
-        "Mines",
-        "Factories",
-        "Defenses",
-    };
+    public static readonly IReadOnlyList<string> LeftoverPointTargets = RaceDesignerRules.LeftoverPointTargets;
 
+    /// <summary>The race the designer was opened on; written only when Save succeeds.</summary>
+    private readonly Race original;
+
+    /// <summary>The draft-local working copy every control edits.</summary>
     private readonly Race race;
+
+    /// <summary>The draft as it was when the designer opened (for per-section undo).</summary>
+    private readonly Race baseline;
+
+    private readonly Random random = new Random();
 
     private string password = string.Empty;
 
@@ -132,80 +154,130 @@ public class RaceDesignerViewModel : ViewModelBase
 
     private TraitEntry selectedPrimaryTrait;
 
-    /// <summary>Creates a brand new, unsaved race, seeded with the same starting values the
-    /// original dialog's numeric controls open with (a fresh <see cref="Race"/>'s int fields
-    /// all default to 0, which is below every one of these fields' real minimum).</summary>
-    public RaceDesignerViewModel() : this(new Race())
+    private RacePreset selectedPreset = RacePresets.All[RacePresets.All.Count - 1];
+
+    private bool isHelpVisible;
+
+    private string helpTitle = string.Empty;
+
+    private string helpText = string.Empty;
+
+    /// <summary>Creates a brand new, unsaved race, seeded with the economic defaults of the
+    /// spec's table (the Humanoid record: 1,000 / 10 / 10 / 10 / 10 / 5 / 10) and a 15% growth
+    /// rate (a fresh <see cref="Race"/>'s int fields all default to 0, below every minimum).</summary>
+    public RaceDesignerViewModel() : this(CreateDefaultRace())
     {
-        ColonistsPerResource = 1000;
-        OperableFactories = 10;
-        FactoryBuildCost = 10;
-        MineBuildCost = 5;
-        FactoryProduction = 10;
-        MineProductionRate = 10;
-        OperableMines = 10;
-        GrowthRate = 15;
     }
 
-    public RaceDesignerViewModel(Race race)
+    /// <param name="race">The race to edit (it is not touched until Save succeeds).</param>
+    /// <param name="isEditable">False for a read-only view of a race: every mutable control is
+    /// disabled while the stored values stay visible.</param>
+    public RaceDesignerViewModel(Race race, bool isEditable = true)
     {
-        this.race = race;
+        original = race;
+        this.race = RaceDesignerRules.CopyOf(race);
+        IsEditable = isEditable;
 
         AllRaceIcons.Restore();
         IconOptions = AllRaceIcons.Data.IconList;
-        selectedIcon = IconOptions.FirstOrDefault(icon => icon.Source == race.Icon.Source) ?? IconOptions.FirstOrDefault();
+        selectedIcon = IconOptions.FirstOrDefault(icon => icon.Source == this.race.Icon?.Source) ?? IconOptions.FirstOrDefault();
         if (selectedIcon != null)
         {
-            race.Icon = selectedIcon;
+            this.race.Icon = selectedIcon;
         }
 
         PrimaryTraitOptions = PrimaryTraits.Traits;
-        selectedPrimaryTrait = race.Traits.Primary;
+        selectedPrimaryTrait = this.race.Traits.Primary;
 
         SecondaryTraitOptions = SecondaryTraits.Traits
-            .Where(entry => entry.Code != "CF" && entry.Code != "ExtraTech")
-            .Select(entry => new SecondaryTraitOptionViewModel(race, entry, RecalculateTotals))
+            .Where(entry => entry.Code != RaceDesignerRules.CheapFactories && entry.Code != RaceDesignerRules.ExtraTech)
+            .Select(entry => new SecondaryTraitOptionViewModel(this.race, entry, RecalculateTotals))
             .ToList();
         CheapFactoriesTrait = new SecondaryTraitOptionViewModel(
-            race, SecondaryTraits.Traits.Single(entry => entry.Code == "CF"), RecalculateTotals);
+            this.race, SecondaryTraits.Traits.Single(entry => entry.Code == RaceDesignerRules.CheapFactories), RecalculateTotals);
         ExtraTechTrait = new SecondaryTraitOptionViewModel(
-            race, SecondaryTraits.Traits.Single(entry => entry.Code == "ExtraTech"), RecalculateTotals);
+            this.race,
+            SecondaryTraits.Traits.Single(entry => entry.Code == RaceDesignerRules.ExtraTech),
+            RecalculateTotals,
+            () => $"Expensive research fields start at tech level {RaceDesignerRules.ExtraTechStartLevel(this.race)}");
 
-        GravityTolerance = new EnvironmentToleranceViewModel("Gravity", race.GravityTolerance, Gravity.FormatWithUnit);
-        TemperatureTolerance = new EnvironmentToleranceViewModel("Temperature", race.TemperatureTolerance, Temperature.FormatWithUnit);
+        GravityTolerance = new EnvironmentToleranceViewModel("Gravity", this.race.GravityTolerance, Gravity.FormatWithUnit);
+        TemperatureTolerance = new EnvironmentToleranceViewModel("Temperature", this.race.TemperatureTolerance, Temperature.FormatWithUnit);
         RadiationTolerance = new EnvironmentToleranceViewModel(
-            "Radiation", race.RadiationTolerance, value => value.ToString("F0", CultureInfo.InvariantCulture) + "mR");
-        foreach (EnvironmentToleranceViewModel tolerance in new[] { GravityTolerance, TemperatureTolerance, RadiationTolerance })
+            "Radiation", this.race.RadiationTolerance, value => value.ToString("F0", CultureInfo.InvariantCulture) + "mR");
+        foreach (EnvironmentToleranceViewModel tolerance in Tolerances)
         {
             tolerance.PropertyChanged += (_, _) => RecalculateTotals();
         }
 
-        Biotechnology = new ResearchCostViewModel("Biotechnology", race.ResearchCosts, TechLevel.ResearchField.Biotechnology);
-        Electronics = new ResearchCostViewModel("Electronics", race.ResearchCosts, TechLevel.ResearchField.Electronics);
-        Energy = new ResearchCostViewModel("Energy", race.ResearchCosts, TechLevel.ResearchField.Energy);
-        Propulsion = new ResearchCostViewModel("Propulsion", race.ResearchCosts, TechLevel.ResearchField.Propulsion);
-        Weapons = new ResearchCostViewModel("Weapons", race.ResearchCosts, TechLevel.ResearchField.Weapons);
-        Construction = new ResearchCostViewModel("Construction", race.ResearchCosts, TechLevel.ResearchField.Construction);
-        foreach (ResearchCostViewModel cost in new[] { Biotechnology, Electronics, Energy, Propulsion, Weapons, Construction })
+        Biotechnology = new ResearchCostViewModel("Biotechnology", this.race.ResearchCosts, TechLevel.ResearchField.Biotechnology);
+        Electronics = new ResearchCostViewModel("Electronics", this.race.ResearchCosts, TechLevel.ResearchField.Electronics);
+        Energy = new ResearchCostViewModel("Energy", this.race.ResearchCosts, TechLevel.ResearchField.Energy);
+        Propulsion = new ResearchCostViewModel("Propulsion", this.race.ResearchCosts, TechLevel.ResearchField.Propulsion);
+        Weapons = new ResearchCostViewModel("Weapons", this.race.ResearchCosts, TechLevel.ResearchField.Weapons);
+        Construction = new ResearchCostViewModel("Construction", this.race.ResearchCosts, TechLevel.ResearchField.Construction);
+        foreach (ResearchCostViewModel cost in ResearchCosts)
         {
             cost.PropertyChanged += (_, _) => RecalculateTotals();
         }
 
-        if (string.IsNullOrEmpty(race.LeftoverPointTarget))
+        if (string.IsNullOrEmpty(this.race.LeftoverPointTarget))
         {
-            race.LeftoverPointTarget = LeftoverPointTargets[0];
+            this.race.LeftoverPointTarget = LeftoverPointTargets[0];
         }
+
+        Func<Race> draft = () => this.race;
+        Func<bool> editable = () => IsEditable;
+        ColonistsRow = new RaceDesignerEconomyRowViewModel(0, "One resource is generated each year for every this many colonists", draft, editable, RecalculateTotals);
+        FactoryOutputRow = new RaceDesignerEconomyRowViewModel(1, "Every 10 factories produce this many resources each year", draft, editable, RecalculateTotals);
+        FactoryCostRow = new RaceDesignerEconomyRowViewModel(2, "Factories require this many resources to build", draft, editable, RecalculateTotals);
+        FactoriesOperatedRow = new RaceDesignerEconomyRowViewModel(3, "Every 10,000 colonists may operate this many factories", draft, editable, RecalculateTotals);
+        MineOutputRow = new RaceDesignerEconomyRowViewModel(4, "Every 10 mines produce this much of each mineral every year", draft, editable, RecalculateTotals);
+        MineCostRow = new RaceDesignerEconomyRowViewModel(5, "Mines require this many resources to build", draft, editable, RecalculateTotals);
+        MinesOperatedRow = new RaceDesignerEconomyRowViewModel(6, "Every 10,000 colonists may operate this many mines", draft, editable, RecalculateTotals);
+
+        // Taken after the sub view models normalised the draft (research classes, leftover
+        // choice, emblem), so an undo restores values the controls can show.
+        baseline = RaceDesignerRules.CopyOf(this.race);
 
         SaveCommand = new RelayCommand(Save, CanSave);
         CancelCommand = new RelayCommand(() => RaceSavedOrCancelled?.Invoke());
         SelectIconCommand = new RelayCommand<RaceIcon>(icon =>
         {
-            if (icon != null)
+            if (icon != null && IsEditable)
             {
                 SelectedIcon = icon;
             }
         });
+        ApplyPresetCommand = new RelayCommand(ApplySelectedPreset, () => IsEditable);
+        RevertSectionCommand = new RelayCommand(RevertCurrentSection, () => IsEditable);
+        HelpCommand = new RelayCommand(ShowHelp);
+        CloseHelpCommand = new RelayCommand(() => IsHelpVisible = false);
     }
+
+    private static Race CreateDefaultRace()
+    {
+        Race race = new Race();
+        for (int slot = 0; slot < RaceDesignerRules.EconomySlots.Length; slot++)
+        {
+            RaceDesignerRules.SetSlot(race, slot, RaceDesignerRules.EconomySlots[slot].Default);
+        }
+
+        foreach (TechLevel.ResearchField field in RaceDesignerRules.ResearchSlotOrder)
+        {
+            race.ResearchCosts[field] = 100;
+        }
+
+        race.GrowthRate = 15;
+        race.LeftoverPointTarget = RaceDesignerRules.LeftoverPointTargets[0];
+        return race;
+    }
+
+    /// <summary>False in a non-editable context: the view disables every mutable control.</summary>
+    public bool IsEditable { get; }
+
+    /// <summary>"Cancel" while editing, "Close" when only viewing.</summary>
+    public string CancelLabel => IsEditable ? "Cancel" : "Close";
 
     /// <summary>Instance-accessible mirror of <see cref="LeftoverPointTargets"/> so the view can
     /// bind to it directly (a static member can't be reached from an instance-typed binding).</summary>
@@ -231,6 +303,8 @@ public class RaceDesignerViewModel : ViewModelBase
 
     public EnvironmentToleranceViewModel RadiationTolerance { get; }
 
+    private IEnumerable<EnvironmentToleranceViewModel> Tolerances => new[] { GravityTolerance, TemperatureTolerance, RadiationTolerance };
+
     public ResearchCostViewModel Biotechnology { get; }
 
     public ResearchCostViewModel Electronics { get; }
@@ -243,11 +317,43 @@ public class RaceDesignerViewModel : ViewModelBase
 
     public ResearchCostViewModel Construction { get; }
 
+    private IEnumerable<ResearchCostViewModel> ResearchCosts => new[] { Biotechnology, Electronics, Energy, Propulsion, Weapons, Construction };
+
+    public RaceDesignerEconomyRowViewModel ColonistsRow { get; }
+
+    public RaceDesignerEconomyRowViewModel FactoryOutputRow { get; }
+
+    public RaceDesignerEconomyRowViewModel FactoryCostRow { get; }
+
+    public RaceDesignerEconomyRowViewModel FactoriesOperatedRow { get; }
+
+    public RaceDesignerEconomyRowViewModel MineOutputRow { get; }
+
+    public RaceDesignerEconomyRowViewModel MineCostRow { get; }
+
+    public RaceDesignerEconomyRowViewModel MinesOperatedRow { get; }
+
+    private IEnumerable<RaceDesignerEconomyRowViewModel> EconomyRows => new[]
+    {
+        ColonistsRow, FactoryOutputRow, FactoryCostRow, FactoriesOperatedRow, MineOutputRow, MineCostRow, MinesOperatedRow
+    };
+
+    /// <summary>True when the draft is Alternate Reality (rows 2-7 are locked).</summary>
+    public bool IsAlternateReality => RaceDesignerRules.IsAlternateReality(race);
+
     public IRelayCommand SaveCommand { get; }
 
     public IRelayCommand CancelCommand { get; }
 
     public IRelayCommand<RaceIcon> SelectIconCommand { get; }
+
+    public IRelayCommand ApplyPresetCommand { get; }
+
+    public IRelayCommand RevertSectionCommand { get; }
+
+    public IRelayCommand HelpCommand { get; }
+
+    public IRelayCommand CloseHelpCommand { get; }
 
     /// <summary>Raised once the user picks Save and validation passes, carrying a suggested
     /// file name - the view resolves the actual save location via its own SaveFilePickerAsync
@@ -262,6 +368,152 @@ public class RaceDesignerViewModel : ViewModelBase
     /// original dialog's own FileSearcher.GetFolder(Global.RaceFolderKey, Global.RaceFolderName)
     /// call, so races saved from either UI land in the same place.</summary>
     public static string DefaultRaceFolder => FileSearcher.GetFolder(Global.RaceFolderKey, Global.RaceFolderName);
+
+    // ---- Presets ---------------------------------------------------------------------------
+
+    /// <summary>The eight Identity-stage archetypes: six named presets, Random and Custom.</summary>
+    public IReadOnlyList<RacePreset> PresetOptions => RacePresets.All;
+
+    public RacePreset SelectedPreset
+    {
+        get => selectedPreset;
+        set
+        {
+            if (value != null)
+            {
+                SetProperty(ref selectedPreset, value);
+            }
+        }
+    }
+
+    private void ApplySelectedPreset()
+    {
+        if (!IsEditable || SelectedPreset.IsCustom)
+        {
+            StatusMessage = "Custom keeps the race as you have drafted it.";
+            return;
+        }
+
+        if (SelectedPreset.IsRandom)
+        {
+            RandomRaceResult result = RandomRaceGenerator.Generate(race, random, candidate => candidate.GetAdvantagePoints());
+            RaceDesignerRules.CopyAll(result.Race, race);
+            StatusMessage = result.UsedFallback
+                ? "No random race within 0-50 advantage points was found; the Humanoid preset was used instead."
+                : "Generated a random race.";
+        }
+        else
+        {
+            RacePresets.Apply(SelectedPreset, race);
+            StatusMessage = $"Applied the {SelectedPreset.Name} preset.";
+        }
+
+        RefreshAll();
+    }
+
+    // ---- Working copy ----------------------------------------------------------------------
+
+    /// <summary>Restores the current section's fields to the values the designer opened with.</summary>
+    private void RevertCurrentSection()
+    {
+        if (!IsEditable)
+        {
+            return;
+        }
+
+        RaceDraftSection section = PageDefinitions.First(p => p.Value == SelectedPage).Section;
+        RaceDesignerRules.CopySection(baseline, race, section);
+        StatusMessage = $"Undid the changes to {SelectedPageLabel}.";
+        RefreshAll();
+    }
+
+    /// <summary>Re-reads every control after the draft changed underneath.</summary>
+    private void RefreshAll()
+    {
+        selectedPrimaryTrait = race.Traits.Primary;
+        selectedIcon = IconOptions.FirstOrDefault(icon => icon.Source == race.Icon?.Source) ?? selectedIcon;
+        foreach (string property in new[]
+        {
+            nameof(Name), nameof(PluralName), nameof(SelectedPrimaryTrait), nameof(SelectedIcon),
+            nameof(LeftoverPointTarget), nameof(GrowthRate), nameof(IsAlternateReality),
+        })
+        {
+            OnPropertyChanged(property);
+        }
+
+        foreach (SecondaryTraitOptionViewModel trait in SecondaryTraitOptions.Concat(new[] { CheapFactoriesTrait, ExtraTechTrait }))
+        {
+            trait.Refresh();
+        }
+
+        foreach (EnvironmentToleranceViewModel tolerance in Tolerances)
+        {
+            tolerance.Refresh();
+        }
+
+        foreach (ResearchCostViewModel cost in ResearchCosts)
+        {
+            cost.Refresh();
+        }
+
+        foreach (RaceDesignerEconomyRowViewModel row in EconomyRows)
+        {
+            row.Refresh();
+        }
+
+        RecalculateTotals();
+    }
+
+    // ---- Help ------------------------------------------------------------------------------
+
+    /// <summary>True while the help panel is showing; help never changes the draft.</summary>
+    public bool IsHelpVisible
+    {
+        get => isHelpVisible;
+        private set => SetProperty(ref isHelpVisible, value);
+    }
+
+    public string HelpTitle
+    {
+        get => helpTitle;
+        private set => SetProperty(ref helpTitle, value);
+    }
+
+    public string HelpText
+    {
+        get => helpText;
+        private set => SetProperty(ref helpText, value);
+    }
+
+    private void ShowHelp()
+    {
+        int topicNumber = PageDefinitions.First(p => p.Value == SelectedPage).HelpTopic;
+        try
+        {
+            HelpViewModel manual = new HelpViewModel("RaceDesignerHelp", "Help");
+            HelpTopicViewModel? topic = manual.Topics.FirstOrDefault(t => t.Number == topicNumber);
+            if (topic != null)
+            {
+                manual.SelectedTopic = topic;
+                HelpTitle = topic.Title;
+                HelpText = string.IsNullOrEmpty(manual.ContentText) ? "This help topic is not available." : manual.ContentText;
+            }
+            else
+            {
+                HelpTitle = SelectedPageLabel;
+                HelpText = "The manual is not available on this installation.";
+            }
+        }
+        catch (Exception ex)
+        {
+            HelpTitle = SelectedPageLabel;
+            HelpText = "The manual could not be opened: " + ex.Message;
+        }
+
+        IsHelpVisible = true;
+    }
+
+    // ---- Identity --------------------------------------------------------------------------
 
     public string Name
     {
@@ -339,14 +591,24 @@ public class RaceDesignerViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Selecting a PRT goes through RaceDesignerRules.ApplyPrimaryTrait, so picking
+    /// Alternate Reality resets and locks the economy rows it ignores.</summary>
     public TraitEntry SelectedPrimaryTrait
     {
         get => selectedPrimaryTrait;
         set
         {
-            if (SetProperty(ref selectedPrimaryTrait, value))
+            if (value is not null && SetProperty(ref selectedPrimaryTrait, value))
             {
-                race.Traits.SetPrimary(value);
+                RaceDesignerRules.ApplyPrimaryTrait(race, value.Code);
+                foreach (RaceDesignerEconomyRowViewModel row in EconomyRows)
+                {
+                    row.Refresh();
+                }
+
+                CheapFactoriesTrait.Refresh();
+                ExtraTechTrait.Refresh();
+                OnPropertyChanged(nameof(IsAlternateReality));
                 RecalculateTotals();
             }
         }
@@ -357,54 +619,12 @@ public class RaceDesignerViewModel : ViewModelBase
         get => race.LeftoverPointTarget;
         set
         {
-            if (race.LeftoverPointTarget != value)
+            if (value != null && race.LeftoverPointTarget != value)
             {
                 race.LeftoverPointTarget = value;
                 OnPropertyChanged();
             }
         }
-    }
-
-    public int ColonistsPerResource
-    {
-        get => race.ColonistsPerResource;
-        set => SetRaceField(ref race.ColonistsPerResource, value, 700, 2500);
-    }
-
-    public int OperableFactories
-    {
-        get => race.OperableFactories;
-        set => SetRaceField(ref race.OperableFactories, value, 5, 25);
-    }
-
-    public int FactoryBuildCost
-    {
-        get => race.FactoryBuildCost;
-        set => SetRaceField(ref race.FactoryBuildCost, value, 5, 25);
-    }
-
-    public int MineBuildCost
-    {
-        get => race.MineBuildCost;
-        set => SetRaceField(ref race.MineBuildCost, value, 2, 15);
-    }
-
-    public int FactoryProduction
-    {
-        get => race.FactoryProduction;
-        set => SetRaceField(ref race.FactoryProduction, value, 5, 15);
-    }
-
-    public int MineProductionRate
-    {
-        get => race.MineProductionRate;
-        set => SetRaceField(ref race.MineProductionRate, value, 5, 25);
-    }
-
-    public int OperableMines
-    {
-        get => race.OperableMines;
-        set => SetRaceField(ref race.OperableMines, value, 5, 25);
     }
 
     /// <summary>1-20 percent per year, not normalized (Race.GrowthRate's own doc comment).</summary>
@@ -423,11 +643,12 @@ public class RaceDesignerViewModel : ViewModelBase
         }
     }
 
-    /// <summary>The race object this screen is editing - exposed read-only so a host that
-    /// embeds this screen (e.g. New Game's "New Race..." button) can pick up the finished race
-    /// directly once <see cref="WasSaved"/> is true, rather than having to re-scan the race
-    /// folder on disk (which would miss a race saved somewhere other than the default folder).</summary>
-    public Race Race => race;
+    /// <summary>The race this screen committed to - exposed read-only so a host that embeds this
+    /// screen (e.g. New Game's "New Race..." button) can pick up the finished race directly once
+    /// <see cref="WasSaved"/> is true, rather than having to re-scan the race folder on disk
+    /// (which would miss a race saved somewhere other than the default folder). Until a Save
+    /// succeeds it still holds the values the designer was opened with.</summary>
+    public Race Race => original;
 
     /// <summary>True once <see cref="CompleteSave"/> has actually written a file - lets a host
     /// distinguish a genuine save from a Cancel, since both raise <see cref="RaceSavedOrCancelled"/>.</summary>
@@ -453,6 +674,9 @@ public class RaceDesignerViewModel : ViewModelBase
     /// it. The earlier file-path version silently skipped writing whenever that handle couldn't
     /// resolve to a local path, leaving that already-created file at 0 bytes - confirmed live as
     /// "the race file I created previously is zero length".
+    ///
+    /// Save is the designer's accept: only once the file is written is the working copy
+    /// committed onto the race the designer was opened with.
     /// </summary>
     public void CompleteSave(Stream stream)
     {
@@ -475,6 +699,7 @@ public class RaceDesignerViewModel : ViewModelBase
 
             xmldoc.Save(stream);
 
+            RaceDesignerRules.CopyAll(race, original);
             StatusMessage = $"Saved \"{race.Name}\".";
             WasSaved = true;
             RaceSavedOrCancelled?.Invoke();
@@ -513,7 +738,8 @@ public class RaceDesignerViewModel : ViewModelBase
 
     private bool CanSave()
     {
-        return AdvantagePoints >= 0
+        return IsEditable
+            && AdvantagePoints >= 0
             && !string.IsNullOrWhiteSpace(Name)
             && !string.IsNullOrWhiteSpace(PluralName)
             && !string.IsNullOrWhiteSpace(Password);
@@ -530,16 +756,5 @@ public class RaceDesignerViewModel : ViewModelBase
         OnPropertyChanged(nameof(LeftoverPoints));
         OnPropertyChanged(nameof(WorldAvailabilityPercent));
         SaveCommand.NotifyCanExecuteChanged();
-    }
-
-    private void SetRaceField(ref int field, int value, int min, int max, [CallerMemberName] string? propertyName = null)
-    {
-        int clamped = Math.Clamp(value, min, max);
-        if (field != clamped)
-        {
-            field = clamped;
-            OnPropertyChanged(propertyName);
-            RecalculateTotals();
-        }
     }
 }

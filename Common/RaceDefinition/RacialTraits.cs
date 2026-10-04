@@ -52,12 +52,24 @@ namespace Nova.Common
         /// </summary>
         /// <returns>Each of the race's traits, begining with the PrimaryTrait, 
         /// followed by any lesser traits.</returns>
+        /// <remarks>The lesser traits come in ordinal code order: the underlying DictionaryBase is
+        /// a Hashtable, whose order follows the (per-process randomized) string hash codes and the
+        /// insertion history, so walking it directly made saved races - and anything iterating the
+        /// traits - differ between processes and between a kept and a reloaded game.</remarks>
         public new IEnumerator GetEnumerator()
         {
             yield return this.primaryTrait;
+
+            List<TraitEntry> lesser = new List<TraitEntry>();
             foreach (TraitEntry trait in Dictionary.Values)
             {
-                yield return (TraitEntry)trait;
+                lesser.Add(trait);
+            }
+
+            lesser.Sort((a, b) => string.CompareOrdinal(a.Code, b.Code));
+            foreach (TraitEntry trait in lesser)
+            {
+                yield return trait;
             }
         }
 

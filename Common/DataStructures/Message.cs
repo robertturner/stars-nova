@@ -73,7 +73,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (subnode.Name.ToLower())
+                    switch (subnode.Name.ToLowerInvariant())
                     {
                         case "text":
                             if (subnode.FirstChild != null)
@@ -144,12 +144,28 @@ namespace Nova.Common
                         // No object reference required to be saved.
                         break;
 
+                    // A message read back from a file (Message(XmlNode)) holds the saved key as
+                    // text, not the object: write that text back unchanged instead of crashing.
                     case "Minefield":
-                        Global.SaveData(xmldoc, xmlelMessage, "Event", (Event as Minefield).Key);
+                        if (Event is Minefield minefield)
+                        {
+                            Global.SaveData(xmldoc, xmlelMessage, "Event", minefield.Key);
+                        }
+                        else
+                        {
+                            Global.SaveData(xmldoc, xmlelMessage, "Event", Event.ToString());
+                        }
                         break;
 
                     case "BattleReport":
-                        Global.SaveData(xmldoc, xmlelMessage, "Event", (Event as BattleReport).Key);
+                        Global.SaveData(xmldoc, xmlelMessage, "Event", Event is BattleReport battle ? battle.Key : Event.ToString());
+                        break;
+
+                    case ProductionNoticeTypes.Production:
+                    case ProductionNoticeTypes.QueueEmpty:
+                    case ProductionNoticeTypes.OrdersCompleted:
+                        // The planet's name (the message's subject, ProductionNoticeTypes).
+                        Global.SaveData(xmldoc, xmlelMessage, "Event", Event.ToString());
                         break;
 
                     default:

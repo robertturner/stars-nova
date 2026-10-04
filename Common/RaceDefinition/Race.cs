@@ -135,77 +135,88 @@ namespace Nova.Common
         /// Calculate this race's Habitability for a given star.
         /// </summary>
         /// <param name="star">The star for which the Habitability is being determined.</param>
-        /// <returns>The normalized habitability of the star (-1 to +1).</returns>
+        /// <returns>The habitability as a fraction: <see cref="HabPercent"/> / 100, so -0.45 to
+        /// +1.00 in whole-percent steps.</returns>
         /// <remarks>
-        /// This algorithm is taken from the Stars! Technical FAQ:
-        /// http://www.starsfaq.com/advfaq/contents.htm
-        ///
-        /// Return the hab value of this star for the specified race (in the range
-        /// -1 to +1 where 1 = 100%). Note that the star environment values are
-        /// percentages of the total range.
-        ///
-        /// The full equation (from the Stars! Technical FAQ) is: 
-        ///
-        /// Hab% = SQRT[(1-g)^2+(1-t)^2+(1-r)^2]*(1-x)*(1-y)*(1-z)/SQRT[3] 
-        ///
-        /// Where g, t,and r (stand for gravity, temperature, and radiation)are given
-        /// by Clicks_from_center/Total_clicks_from_center_to_edge and where x,y, and z
-        /// are:
-        ///
-        /// x=g-1/2 for g>1/2
-        /// x=0 for g less than 1/2 
-        /// y=t-1/2 for t>1/2
-        /// y=0 for t less than 1/2 
-        /// z=r-1/2 for r>1/2
-        /// z=0 for r less than 1/2.
+        /// The original has no separate fractional evaluator (behavior-specs-10/population-
+        /// growth.md section 2, gap-report note): every consumer sees the integer -45..100 result
+        /// of FUN_1048_490e, so this is derived from it rather than from the community's
+        /// floating-point approximation.
         /// </remarks>
         public double HabValue(Star star)
         {
-            double r = NormalizeHabitalityDistance(RadiationTolerance, star.Radiation);
-            double g = NormalizeHabitalityDistance(GravityTolerance, star.Gravity);
-            double t = NormalizeHabitalityDistance(TemperatureTolerance, star.Temperature);
+            return HabPercent(star) / 100.0;
+        }
 
-            if (r > 1 || g > 1 || t > 1)
+        /// <summary>
+        /// This race's habitability percentage for <paramref name="star"/>, exactly as the
+        /// original's integer evaluator FUN_1048_490e computes it (behavior-specs-10/
+        /// population-growth.md section 2, race-traits.md section 1b), -45 to 100:
+        /// - Closeness sum: each immune axis adds 10,000; each in-band axis adds
+        ///   (100 - floor(100d/h))^2, d being the planet's distance from the race's centre and h
+        ///   the centre-to-edge distance ON THE PLANET'S SIDE of the centre.
+        /// - Ideality: starts at 10,000 and, for each in-band axis with 2d > h, is scaled by
+        ///   (3h - 2d) / (2h) in integer arithmetic (the "1.5 - distance" edge factor).
+        /// - Out-of-band penalty: each axis outside the band adds min(distance outside, 15).
+        /// - Result: the negated penalty sum if non-zero, otherwise
+        ///   floor(sqrt(closeness / 3) + 0.9) x ideality / 10,000.
+        /// </summary>
+        public int HabPercent(Star star)
+        {
+            long closeness = 0;
+            long ideality = 10000;
+            int penalty = 0;
+            int maxMalus = GetMaxMalus();
+
+            AccumulateHabitabilityAxis(GravityTolerance, star.Gravity, maxMalus, ref closeness, ref ideality, ref penalty);
+            AccumulateHabitabilityAxis(TemperatureTolerance, star.Temperature, maxMalus, ref closeness, ref ideality, ref penalty);
+            AccumulateHabitabilityAxis(RadiationTolerance, star.Radiation, maxMalus, ref closeness, ref ideality, ref penalty);
+
+            if (penalty != 0)
             {
-                // currently not habitable
-                int result = 0;
-                int maxMalus = GetMaxMalus();
-                if (r > 1)
-                {
-                    result -= GetMalusForEnvironment(RadiationTolerance, star.Radiation, maxMalus);
-                }
-                if (g > 1)
-                {
-                    result -= GetMalusForEnvironment(GravityTolerance, star.Gravity, maxMalus);
-                }
-                if (t > 1)
-                {
-                    result -= GetMalusForEnvironment(TemperatureTolerance, star.Temperature, maxMalus);
-                }
-                return result / 100.0;
+                return -penalty;
             }
 
-            double x = 0;
-            double y = 0;
-            double z = 0;
+            // The original multiplies by the stored double 1/3 (DS 0x1d02) and adds 0.9
+            // (DS 0x1d0a) before truncating (FUN_1120_0e40 truncates toward zero).
+            long root = (long)(Math.Sqrt(closeness * (1.0 / 3.0)) + 0.9);
+            return (int)(root * ideality / 10000);
+        }
 
-            if (g > 0.5)
+        /// <summary>One axis's contribution to <see cref="HabPercent"/>'s three running sums.</summary>
+        private static void AccumulateHabitabilityAxis(EnvironmentTolerance tolerance, int starValue, int maxMalus, ref long closeness, ref long ideality, ref int penalty)
+        {
+            if (tolerance.Immune)
             {
-                x = g - 0.5;
-            }
-            if (t > 0.5)
-            {
-                y = t - 0.5;
-            }
-            if (r > 0.5)
-            {
-                z = r - 0.5;
+                closeness += 10000;
+                return;
             }
 
-            double h = Math.Sqrt(
-                            ((1 - g) * (1 - g)) + ((1 - t) * (1 - t)) + ((1 - r) * (1 - r))) * (1 - x) * (1 - y) * (1 - z)
-                                 / Math.Sqrt(3.0);
-            return h;
+            int outside = GetMalusForEnvironment(tolerance, starValue, int.MaxValue);
+            if (outside > 0)
+            {
+                penalty += Math.Min(outside, maxMalus);
+                return;
+            }
+
+            int centre = tolerance.OptimumLevel;
+            int d = Math.Abs(starValue - centre);
+            int h = starValue < centre ? centre - tolerance.MinimumValue : tolerance.MaximumValue - centre;
+            if (h <= 0)
+            {
+                // A zero-width band side: the planet can only be in band here by sitting exactly on
+                // the centre, which is as close as it gets.
+                closeness += 10000;
+                return;
+            }
+
+            long closenessTerm = 100 - ((100L * d) / h);
+            closeness += closenessTerm * closenessTerm;
+
+            if (2 * d > h)
+            {
+                ideality = ideality * ((3 * h) - (2 * d)) / (2 * h);
+            }
         }
 
         /// <summary>
@@ -285,7 +296,7 @@ namespace Nova.Common
             return 15;
         }
 
-        private int GetMalusForEnvironment(EnvironmentTolerance tolerance, int starValue, int maxMalus)
+        private static int GetMalusForEnvironment(EnvironmentTolerance tolerance, int starValue, int maxMalus)
         {
             if (starValue > tolerance.MaximumValue)
             {
@@ -299,28 +310,6 @@ namespace Nova.Common
             {
                 return 0;
             }
-        }
-        
-        /// <summary>
-        /// Clicks_from_center / Total_clicks_from_center_to_edge .
-        /// </summary>
-        /// <param name="tol"></param>
-        /// <param name="starValue"></param>
-        /// <returns></returns>
-        private double NormalizeHabitalityDistance(EnvironmentTolerance tol, int starValue)
-        {
-            if (tol.Immune)
-            {
-                return 0.0;
-            }
-
-            int minv = tol.MinimumValue;
-            int maxv = tol.MaximumValue;
-            int span = Math.Abs(maxv - minv);
-            double totalClicksFromCenterToEdge = span / 2;
-            double centre = minv + totalClicksFromCenterToEdge;
-            double clicksFromCenter = Math.Abs(centre - starValue);
-            return clicksFromCenter / totalClicksFromCenterToEdge;
         }
         
         /// <summary>
@@ -377,7 +366,7 @@ namespace Nova.Common
                 { 
                     maxPop = (int)(maxPop * Global.PopulationFactorJackOfAllTrades);
                 }
-                if (HasTrait("OBRM")) 
+                if (HasTrait("OBRM"))
                 {
                     maxPop = (int)(maxPop * Global.PopulationFactorOnlyBasicRemoteMining);
                 }
@@ -388,25 +377,42 @@ namespace Nova.Common
         /// <summary>
         /// Get the starting population for this race.
         /// </summary>
-        /// <returns>The starting population.</returns>
+        /// <returns>The starting population (colonists) of the home planet before any Packet
+        /// Physics / Interstellar Traveler second-planet split.</returns>
+        /// <param name="expertComputerPlayer">
+        /// True for a computer player at the Expert skill tier (PlayerSettings.AiSkill 3, "the
+        /// computer-player bit together with a skill field above 2"); humans and the Easy,
+        /// Standard and Tough tiers pass false.
+        /// </param>
         /// <remarks>
-        /// TODO (priority 4) - Implement starting populations for races with two starting planets.
+        /// behavior-specs-11/new-game-setup.md, "Starting population, exact order", in units of
+        /// 100 colonists with every division truncating: (1) base 250 units, or 175 with Low
+        /// Starting Population; (2) an Expert-tier computer player gets +10%, the population plus
+        /// a tenth of itself truncated, whatever the game options (`:51000`-`51006`); (3)
+        /// Accelerated BBS Play multiplies by (g + 5) x 2 and then divides by 10, g being the
+        /// growth-rate setting doubled for Hyper Expansion. Step (4), the 2/5 + 4/5 split for a
+        /// second home planet, is StarMapinitializer.SplitStartingPopulation.
         /// </remarks>
-        public int GetStartingPopulation()
+        public int GetStartingPopulation(bool expertComputerPlayer = false)
         {
-            int population = Global.StartingColonists;
-            
+            int units = HasTrait("LSP") ? 175 : Global.StartingColonists / 100;
+
+            if (expertComputerPlayer)
+            {
+                units += units / 10;
+            }
+
             if (GameSettings.Data.AcceleratedStart)
             {
-                population = Global.StartingColonistsAcceleratedBBS;
+                int g = (int)GrowthRate;
+                if (HasTrait("HE"))
+                {
+                    g *= 2;
+                }
+                units = units * (g + 5) * 2 / 10;
             }
 
-            if (HasTrait("LSP"))
-            {
-                population = (int)(population * Global.LowStartingPopulationFactor);
-            }
-
-            return population;
+            return units * 100;
         }
 
         // Quick and dirty way to clone a race but has the big advantage
@@ -507,7 +513,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (xmlnode.Name.ToLower())
+                    switch (xmlnode.Name.ToLowerInvariant())
                     {
                         case "root":
                             xmlnode = xmlnode.FirstChild;

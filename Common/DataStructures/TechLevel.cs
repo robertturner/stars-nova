@@ -322,7 +322,7 @@ namespace Nova.Common
 				{
 					foreach (string key in ResearchKeys)
 					{
-						if (subnode.Name.ToLower() == key.ToLower())
+						if (subnode.Name.ToLowerInvariant() == key.ToLowerInvariant())
 						{
 							this.techValues[key] = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
 						}

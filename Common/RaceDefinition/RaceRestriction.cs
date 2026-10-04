@@ -202,7 +202,7 @@ namespace Nova.Common
                 {
                     foreach (string key in AllTraits.TraitKeys)
                     {
-                        if (subnode.Name.ToLower() == key.ToLower())
+                        if (subnode.Name.ToLowerInvariant() == key.ToLowerInvariant())
                         {
                             this.restrictions[key] = (RaceAvailability)int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                         }

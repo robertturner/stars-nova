@@ -145,11 +145,11 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "safehullmass")
+                    if (subnode.Name.ToLowerInvariant() == "safehullmass")
                     {
                         SafeHullMass = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    if (subnode.Name.ToLower() == "saferange")
+                    if (subnode.Name.ToLowerInvariant() == "saferange")
                     {
                         SafeRange = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }

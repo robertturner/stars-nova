@@ -56,6 +56,22 @@ namespace Nova.Common.Components
         }
 
         /// <summary>
+        /// Every component in ordinal name order. A ConcurrentDictionary's enumeration order is
+        /// its hash-bucket layout, not insertion order, so game logic that walks the components
+        /// (and anything it writes - available-component lists, new-component messages) must use
+        /// this stable order for turn generation to be repeatable.
+        /// </summary>
+        public IEnumerable<Component> GetAllInNameOrder
+        {
+            get
+            {
+                List<Component> sorted = new List<Component>(components.Values);
+                sorted.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
+                return sorted;
+            }
+        }
+
+        /// <summary>
         /// Default Constructor.
         /// </summary>
         /// <param name="restore">If true (by default) it will also restore

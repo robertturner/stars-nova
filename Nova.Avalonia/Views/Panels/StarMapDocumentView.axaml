@@ -18,8 +18,8 @@
         <Style Selector="Button.starMapMarker:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#26ffffff" />
         </Style>
-        <!-- Shared Canvas positioning for both the star and fleet ItemsControls below - both
-             view models derive from MapMarkerViewModel, which is where X/Y live. -->
+        <!-- Shared Canvas positioning for the star, fleet and wormhole ItemsControls below - all
+             derive from MapMarkerViewModel, which is where X/Y live. -->
         <Style Selector="ItemsControl.mapLayer ContentPresenter" x:DataType="panels:MapMarkerViewModel">
             <Setter Property="Canvas.Left" Value="{Binding X}" />
             <Setter Property="Canvas.Top" Value="{Binding Y}" />
@@ -44,19 +44,6 @@
         <Style Selector="Rectangle.starbaseSmall">
             <Setter Property="Fill" Value="Gray" />
         </Style>
-        <!-- Fleet-in-orbit ring color - see StarMapStarViewModel.HasForeignFleetInOrbit's own
-             comment: white for the viewer's own fleet only, red for a foreign fleet only, and a
-             third, distinct color when both classes apply at once (a friendly and a foreign fleet
-             sharing the same orbit). -->
-        <Style Selector="Ellipse.orbitOwn:not(.orbitForeign)">
-            <Setter Property="Stroke" Value="White" />
-        </Style>
-        <Style Selector="Ellipse.orbitForeign:not(.orbitOwn)">
-            <Setter Property="Stroke" Value="Red" />
-        </Style>
-        <Style Selector="Ellipse.orbitOwn.orbitForeign">
-            <Setter Property="Stroke" Value="Magenta" />
-        </Style>
     </UserControl.Styles>
     <Grid>
         <ScrollViewer Name="MapScroll"
@@ -65,19 +52,18 @@
                       VerticalScrollBarVisibility="Auto"
                       PointerWheelChanged="OnMapPointerWheelChanged">
             <!-- Avalonia's ScrollViewer has no WPF/UWP-style PanningMode property - touch/pen
-                 drag-to-scroll instead needs an explicit ScrollGestureRecognizer (its default,
-                 with no recognizer at all, is mouse-wheel/scrollbar only), which is what "make
-                 the map draggable" turned out to mean in practice. -->
+                 drag-to-scroll instead needs an explicit ScrollGestureRecognizer. -->
             <ScrollViewer.GestureRecognizers>
                 <ScrollGestureRecognizer CanHorizontallyScroll="True" CanVerticallyScroll="True" />
             </ScrollViewer.GestureRecognizers>
-        <LayoutTransformControl>
+        <LayoutTransformControl x:Name="MapScaleHost">
             <LayoutTransformControl.LayoutTransform>
                 <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
             </LayoutTransformControl.LayoutTransform>
             <Panel x:Name="MapPanel" Width="{Binding MapWidth}" Height="{Binding MapHeight}">
             <!-- Scan-range washes render first (so they sit behind the stars/fleets below)
-                 and never intercept clicks. -->
+                 and never intercept clicks. Already scanner-percentage corrected and culled
+                 (StarMapDocumentViewModel.BuildScanCircles); empty while key 7 has them off. -->
             <ItemsControl Classes="scanLayer" ItemsSource="{Binding ScanCircles}" IsHitTestVisible="False">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -91,11 +77,9 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <!-- Minefields - a big clickable circle per field, selectable like a star or fleet
-                 (see StarMapMineFieldViewModel/InspectorViewModel.ShowMinefield). Drawn after
-                 scan washes but before the route/star/fleet layers, matching StarMap.cs's own
-                 "(3) Minefields" comment ordering. -->
-            <ItemsControl Classes="mineLayer" ItemsSource="{Binding Minefields}">
+            <!-- Minefields - a big clickable circle per field (key 8 toggles the layer). Drawn
+                 after scan washes but before the route/star/fleet layers. -->
+            <ItemsControl Classes="mineLayer" ItemsSource="{Binding Minefields}" IsVisible="{Binding ShowMinefields}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <Canvas />
@@ -103,7 +87,7 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="panels:StarMapMineFieldViewModel">
-                        <Button Classes="starMapMarker" Command="{Binding SelectCommand}">
+                        <Button Classes="starMapMarker" Command="{Binding SelectCommand}" ToolTip.Tip="{Binding ToolTipText}">
                             <Panel Width="{Binding Diameter}" Height="{Binding Diameter}">
                                 <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}"
                                          Fill="{Binding Color}" />
@@ -116,9 +100,9 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <!-- Selected fleet's pending route - drawn after scan washes but before the
-                 star/fleet markers, matching StarMap.cs's WinForms draw order (routes(4) then
-                 stars(5)) so the clickable markers sit visually on top. -->
+            <!-- Selected fleet's pending route - drawn before the star/fleet markers so the
+                 clickable markers sit visually on top. A leg repeating an earlier leg's endpoints
+                 is dashed while key 9 (route-overlap) is on. -->
             <ItemsControl Classes="routeLayer" ItemsSource="{Binding RouteLegs}" IsHitTestVisible="False">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -129,15 +113,66 @@
                     <DataTemplate x:DataType="panels:StarMapRouteLegViewModel">
                         <Canvas>
                             <Line StartPoint="{Binding Start}" EndPoint="{Binding End}"
-                                  Stroke="{Binding LineColor}" StrokeThickness="{Binding LineThickness}" />
+                                  Stroke="{Binding LineColor}" StrokeThickness="{Binding LineThickness}"
+                                  StrokeDashArray="{Binding DashArray}" />
                             <Ellipse Canvas.Left="{Binding MarkerLeft}" Canvas.Top="{Binding MarkerTop}"
                                      Width="{Binding MarkerDiameter}" Height="{Binding MarkerDiameter}"
                                      Fill="{Binding MarkerColor}" />
-                            <!-- Points are already rotated/positioned in absolute Canvas
-                                 coordinates by StarMapRouteLegViewModel itself - no
-                                 RenderTransform needed (or wanted - see that class's own
-                                 comment on why one gave a slightly-off arrow tip). -->
                             <Polygon Points="{Binding ArrowPoints}" Fill="{Binding LineColor}" />
+                        </Canvas>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Wormholes this empire has detected (EmpireData.WormholeReports). -->
+            <ItemsControl Classes="mapLayer" ItemsSource="{Binding Wormholes}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <Canvas />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="panels:StarMapWormholeViewModel">
+                        <Canvas>
+                            <Button Classes="starMapMarker" Command="{Binding SelectCommand}"
+                                    Canvas.Left="-16" Canvas.Top="-16" Width="32" Height="32"
+                                    ToolTip.Tip="{Binding ToolTipText}">
+                                <Panel>
+                                    <Ellipse Width="16" Height="16" Stroke="Gold" StrokeThickness="2"
+                                             IsVisible="{Binding IsSelected}"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Ellipse Width="10" Height="10" Stroke="{Binding Color}" StrokeThickness="1.5"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Ellipse Width="4" Height="4" Fill="{Binding Color}"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Panel>
+                            </Button>
+                        </Canvas>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Mineral packets in flight this empire sees (EmpireData.MineralPacketReports). -->
+            <ItemsControl Classes="mapLayer" ItemsSource="{Binding Packets}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <Canvas />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="panels:StarMapPacketViewModel">
+                        <Canvas>
+                            <Button Classes="starMapMarker" Command="{Binding SelectCommand}"
+                                    Canvas.Left="-16" Canvas.Top="-16" Width="32" Height="32"
+                                    ToolTip.Tip="{Binding ToolTipText}">
+                                <Panel>
+                                    <Ellipse Width="12" Height="12" Stroke="Gold" StrokeThickness="2"
+                                             IsVisible="{Binding IsSelected}"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Rectangle Width="4" Height="4" Fill="{Binding Color}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Panel>
+                            </Button>
                         </Canvas>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
@@ -151,30 +186,47 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="panels:StarMapStarViewModel">
-                        <!-- Root is an unconstrained local Canvas, not a StackPanel/auto-sizing
-                             Panel - the outer "mapLayer" style Canvas-positions this whole item
-                             at the star's raw logical (X,Y) (the same point the route-leg overlay
-                             draws to), and the icon/label below position independently relative
-                             to that local origin, each un-affected by the other's size. A shared
-                             auto-sizing parent (the previous StackPanel here) let a long star
-                             name's width push the icon off its true center - since Canvas.Left/
-                             Top there anchors the TOP-LEFT of that parent's whole declared
-                             footprint, not the icon's own center - which is exactly what made the
-                             route-line endpoint stop lining up with where the star actually drew. -->
+                        <!-- Root is an unconstrained local Canvas positioned at the star's logical
+                             (X,Y); everything below positions relative to that origin, so a long
+                             name can never push the icon off its true centre. -->
                         <Canvas>
+                            <!-- "Planets:" view-mode overlays (behavior-specs-10/client-interface.md,
+                                 "Planet display-mode ring/bar overlay"), all centred on the planet
+                                 and never hit-testable. Habitability: a dark-fill/bright-outline
+                                 bullseye pair (red outside tolerance, green inside, olive when the
+                                 exact and estimated readings disagree). -->
+                            <Ellipse Width="{Binding HabitabilityOuterDiameter}" Height="{Binding HabitabilityOuterDiameter}"
+                                     Canvas.Left="{Binding HabitabilityOuterOffset}" Canvas.Top="{Binding HabitabilityOuterOffset}"
+                                     Fill="{Binding HabitabilityFill}" Stroke="{Binding HabitabilityStroke}" StrokeThickness="1"
+                                     IsVisible="{Binding ShowHabitabilityRing}" IsHitTestVisible="False" />
+                            <Ellipse Width="{Binding HabitabilityInnerDiameter}" Height="{Binding HabitabilityInnerDiameter}"
+                                     Canvas.Left="{Binding HabitabilityInnerOffset}" Canvas.Top="{Binding HabitabilityInnerOffset}"
+                                     Fill="{Binding HabitabilityStroke}"
+                                     IsVisible="{Binding ShowHabitabilityRing}" IsHitTestVisible="False" />
+                            <!-- Population: one solid ring, green own / yellow friendly / red otherwise. -->
+                            <Ellipse Width="{Binding PopulationRingDiameter}" Height="{Binding PopulationRingDiameter}"
+                                     Canvas.Left="{Binding PopulationRingOffset}" Canvas.Top="{Binding PopulationRingOffset}"
+                                     Fill="{Binding PopulationBrush}" Stroke="{Binding PopulationBrush}" Opacity="0.85"
+                                     IsVisible="{Binding ShowPopulationRing}" IsHitTestVisible="False" />
+                            <!-- Minerals: the 3-segment bar (blue / dark green / yellow, in that order),
+                                 0-20 steps tall, standing just above the icon. -->
+                            <Rectangle Width="3" Height="{Binding IroniumBarHeight}" Fill="Blue"
+                                       Canvas.Left="-4.5" Canvas.Top="{Binding IroniumBarTop}"
+                                       IsVisible="{Binding ShowMineralBars}" IsHitTestVisible="False" />
+                            <Rectangle Width="3" Height="{Binding BoraniumBarHeight}" Fill="#008000"
+                                       Canvas.Left="-1.5" Canvas.Top="{Binding BoraniumBarTop}"
+                                       IsVisible="{Binding ShowMineralBars}" IsHitTestVisible="False" />
+                            <Rectangle Width="3" Height="{Binding GermaniumBarHeight}" Fill="Yellow"
+                                       Canvas.Left="1.5" Canvas.Top="{Binding GermaniumBarTop}"
+                                       IsVisible="{Binding ShowMineralBars}" IsHitTestVisible="False" />
+
                             <!-- Tap target (32x32) is deliberately bigger than the visible 16x16
-                                 selection ring/dot below - both stay centered on the star's own
-                                 origin point via the same Canvas.Left/Top offset trick, so the
-                                 wider hit area is invisible and doesn't change how the marker
-                                 looks. Especially needed here since the whole map scales down
-                                 with Zoom (LayoutTransformControl above), shrinking the physical
-                                 on-screen hit area right along with it at any zoomed-out level.
-                                 Still bound to Command as a fallback - see MapPanel's own Tunnel-
-                                 phase handler in the code-behind, which resolves a star/fleet tie
-                                 by nearest-center first and only falls through to this Command
-                                 when nothing is close enough to call. -->
+                                 selection ring/dot below. Still bound to Command as a fallback - see
+                                 MapPanel's own Tunnel-phase handler in the code-behind. The hover
+                                 tooltip is the planet tooltip (mode 7). -->
                             <Button Classes="starMapMarker" Command="{Binding SelectCommand}"
-                                    Canvas.Left="-16" Canvas.Top="-16" Width="32" Height="32">
+                                    Canvas.Left="-16" Canvas.Top="-16" Width="32" Height="32"
+                                    ToolTip.Tip="{Binding ToolTipText}">
                                 <Panel>
                                     <Ellipse Width="16" Height="16"
                                              Stroke="Gold" StrokeThickness="2"
@@ -185,27 +237,27 @@
                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Panel>
                             </Button>
-                            <!-- Orbiting-fleets ring - StarMap.cs's DrawOrbitingFleets ("orbiting
-                                 fleets (smaller circle)") for the WinForms original: an unfilled
-                                 ring centered on the star icon itself (not an offset dot like the
-                                 three below), shown whenever a non-starbase fleet is sitting here
-                                 - see StarMapDocumentViewModel's own comment on why this is
-                                 computed fresh rather than from the game's own never-updated
-                                 HasFleetsInOrbit field. Colored per docs/behavior-specs-5/
-                                 client-interface.md's "Fleet-in-orbit ring" note: white for the
-                                 viewer's own fleet, red for a foreign one, magenta when both are
-                                 present at once - not one fixed color regardless of ownership. -->
-                            <Ellipse Width="12" Height="12" Canvas.Left="-6" Canvas.Top="-6"
-                                     StrokeThickness="1.5" IsHitTestVisible="False"
-                                     Classes.orbitOwn="{Binding HasOwnFleetInOrbit}" Classes.orbitForeign="{Binding HasForeignFleetInOrbit}"
-                                     IsVisible="{Binding HasFleetsInOrbit}"
-                                     ToolTip.Tip="Fleet(s) in orbit" />
-                            <!-- Starbase capability dots - docs/behavior-specs-3/client-interface.md's
-                                 "Starbase capability indicators" section: up to three small colored
-                                 squares, one per independent condition, each at its own fixed offset
-                                 from the star icon. IsHitTestVisible="False" so they never steal the
-                                 marker Button's click. Colors are this port's own choice - the
-                                 original client's actual colors couldn't be recovered by analysis. -->
+                            <!-- The habitability mode's small square for a planet with no owner. -->
+                            <Rectangle Width="{Binding UnownedMarkerSize}" Height="{Binding UnownedMarkerSize}"
+                                       Canvas.Left="{Binding UnownedMarkerOffset}" Canvas.Top="{Binding UnownedMarkerOffset}"
+                                       Fill="{Binding HabitabilityStroke}"
+                                       IsVisible="{Binding ShowUnownedMarker}" IsHitTestVisible="False" />
+                            <!-- Fleet-in-orbit ring - two size classes (behavior-specs-10/
+                                 client-interface.md, "Fleet-in-orbit ring"): 11x11 normally, 19x19
+                                 while this planet is the tracked (selected) object; light-gray /
+                                 red / magenta for own / foreign / both (the small one a two-tone
+                                 bevel, the large one white / red / magenta single-tone). -->
+                            <Ellipse Width="{Binding OrbitRingDiameter}" Height="{Binding OrbitRingDiameter}"
+                                     Canvas.Left="{Binding OrbitRingOffset}" Canvas.Top="{Binding OrbitRingOffset}"
+                                     Stroke="{Binding OrbitRingStroke}" StrokeThickness="1" IsHitTestVisible="False"
+                                     IsVisible="{Binding HasFleetsInOrbit}" />
+                            <Ellipse Width="{Binding OrbitRingInnerDiameter}" Height="{Binding OrbitRingInnerDiameter}"
+                                     Canvas.Left="{Binding OrbitRingInnerOffset}" Canvas.Top="{Binding OrbitRingInnerOffset}"
+                                     Stroke="{Binding OrbitRingInnerStroke}" StrokeThickness="1" IsHitTestVisible="False"
+                                     IsVisible="{Binding HasFleetsInOrbit}" />
+                            <!-- Starbase capability dots - up to three small colored squares, one
+                                 per independent condition, each at its own fixed offset from the
+                                 star icon. Colors are this port's own choice. -->
                             <Rectangle Width="4" Height="4" IsHitTestVisible="False"
                                        Classes.starbaseFull="{Binding IsFullStarbase}" Classes.starbaseSmall="{Binding !IsFullStarbase}"
                                        Canvas.Left="5" Canvas.Top="-8" IsVisible="{Binding HasStarbase}"
@@ -216,17 +268,10 @@
                             <Rectangle Width="4" Height="4" Fill="Magenta" IsHitTestVisible="False"
                                        Canvas.Left="5" Canvas.Top="4" IsVisible="{Binding HasMassDriver}"
                                        ToolTip.Tip="Mass Driver" />
-                            <!-- Horizontally centered on the same anchor point regardless of the
-                                 name's own width - the Avalonia equivalent of GDI+'s
-                                 StringFormat.Alignment=Center used by the WinForms
-                                 StarMap.DrawStar this ports - via a TranslateTransform bound to
-                                 this TextBlock's own measured Bounds.Width (Avalonia's
-                                 TransformOperations parser has no percentage-unit support, so
-                                 "translate(-50%,0)" isn't an option here). Not Margin/
-                                 HorizontalAlignment, which only center within a parent that's
-                                 already exactly as wide as the text, which this Canvas isn't. -->
+                            <!-- Horizontally centred on the anchor point via a TranslateTransform
+                                 bound to this TextBlock's own measured width. Key 0 toggles it. -->
                             <TextBlock x:Name="StarNameLabel" Text="{Binding Name}" Foreground="White" FontSize="10"
-                                       Canvas.Left="0" Canvas.Top="10">
+                                       Canvas.Left="0" Canvas.Top="10" IsVisible="{Binding ShowName}" IsHitTestVisible="False">
                                 <TextBlock.RenderTransform>
                                     <TranslateTransform X="{Binding #StarNameLabel.Bounds.Width, Converter={x:Static conv:NegateHalfConverter.Instance}}" />
                                 </TextBlock.RenderTransform>
@@ -244,56 +289,37 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="panels:StarMapFleetViewModel">
-                        <!-- Local Canvas root, same reasoning as the star marker above - the
-                             outer "mapLayer" style Canvas-positions this item's whole local
-                             Canvas at the fleet's raw logical (X,Y) (the exact point the
-                             route-leg overlay's Start/End also use), and Canvas.Left/Top="-7"
-                             below (half of the 14px icon) then centers the fixed-size icon box
-                             on that same local origin - a plain Canvas.Left/Top set directly on
-                             the Button here would have no effect, since attached Canvas
-                             properties only apply to a Canvas's direct children. -->
+                        <!-- Local Canvas root, same reasoning as the star marker above. -->
                         <Canvas>
-                            <!-- Same wider-than-visible tap target as the star marker above (32x32
-                                 hit area around a 14x14 icon), centered the same way - see the
-                                 star marker's own comment on the Tunnel-phase fallback logic. -->
                             <Button Classes="starMapMarker" Command="{Binding SelectCommand}"
                                     Canvas.Left="-16" Canvas.Top="-16" Width="32" Height="32"
+                                    ToolTip.Tip="{Binding ToolTipText}"
                                     input:InputElement.IsHoldingEnabled="True" Holding="OnFleetMarkerHolding">
                                 <Panel>
-                                    <Ellipse Width="14" Height="14"
-                                             Stroke="Gold" StrokeThickness="2"
-                                             IsVisible="{Binding IsSelected}"
-                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                    <!-- Points form a triangle pointing DOWN at Bearing=0 (apex at
-                                         0,9 / base at 5,0-10,0), matching StarMap.cs's own
-                                         `triangle` field ((0,5),(-5,-5),(5,-5) - apex at +Y, base
-                                         at -Y, i.e. apex-down in screen coordinates) exactly - the
-                                         previous apex-up points here were 180 degrees off from the
-                                         WinForms original, so every fleet rendered pointing
-                                         opposite its real heading once RotateTransform
-                                         Angle=Bearing was applied on top. -->
+                                    <!-- Points form a triangle pointing DOWN at Bearing=0, matching
+                                         StarMap.cs's own `triangle` field, rotated to the heading. -->
                                     <Polygon Points="5,9 10,0 0,0"
-                                             Fill="{Binding Color}"
+                                             Fill="{Binding Color}" IsVisible="{Binding ShowTriangle}"
                                              HorizontalAlignment="Center" VerticalAlignment="Center"
                                              RenderTransformOrigin="50%,50%">
                                         <Polygon.RenderTransform>
                                             <RotateTransform Angle="{Binding Bearing}" />
                                         </Polygon.RenderTransform>
                                     </Polygon>
+                                    <!-- Tracked-object chevron (behavior-specs-10/client-interface.md,
+                                         "Deep-space fleet marker"): while this fleet is the tracked
+                                         (selected) object its icon is replaced by the fixed 11x11
+                                         chevron, blue own / red otherwise, never rotated. -->
+                                    <Path Data="{x:Static panels:StarMapFleetViewModel.ChevronGeometry}"
+                                          Fill="{Binding ChevronBrush}" Width="11" Height="11" Stretch="None"
+                                          IsVisible="{Binding ShowChevron}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Panel>
                             </Button>
-                            <!-- Ship-count badge - docs/behavior-specs-5/client-interface.md
-                                 documents a small numeric badge next to a fleet's map icon
-                                 showing total ship count in the stack (clamped to 999), colored by
-                                 owner - missing from this port until now. Reuses the same Color
-                                 brush as the heading triangle above (green own, orange-red
-                                 foreign) rather than a separate color scheme. Offset to the
-                                 icon's lower-right, clear of both the triangle and the star-style
-                                 offset dots this fleet doesn't have. -->
+                            <!-- Ship-count badge (Shift+0 toggles it). -->
                             <TextBlock Text="{Binding ShipCountDisplay}" Foreground="{Binding Color}"
                                        FontSize="9" FontWeight="Bold" IsHitTestVisible="False"
-                                       Canvas.Left="6" Canvas.Top="2"
-                                       ToolTip.Tip="Ships in this fleet" />
+                                       Canvas.Left="6" Canvas.Top="2" IsVisible="{Binding ShowBadge}" />
                         </Canvas>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
@@ -303,23 +329,84 @@
         </ScrollViewer>
         <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8"
                 Background="#aa000000" CornerRadius="4" Padding="8,4">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock Text="{Binding Zoom, StringFormat='Zoom {0:P0}'}" Foreground="White" VerticalAlignment="Center" />
-                <!-- Explicit +/- buttons, not just the mouse-wheel handler - a touchscreen never
-                     raises a wheel event, so these are the only way to zoom at all on Android. -->
-                <Button Content="-" Command="{Binding ZoomOutCommand}" Padding="10,2" FontWeight="Bold" />
-                <Button Content="+" Command="{Binding ZoomInCommand}" Padding="10,2" FontWeight="Bold" />
-                <Button Content="Reset" Command="{Binding ResetZoomCommand}" Padding="6,2" />
-                <!-- Measures from whatever's currently selected (Overview/Navigator/a previous
-                     tap) to the next thing tapped - disabled with nothing real selected, since a
-                     distance needs two actual points. -->
-                <Button Content="Measure" Command="{Binding MeasureDistanceCommand}" Padding="8,2" />
+            <StackPanel Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                    <!-- The 9 fixed zoom steps (View > Zoom 25%-400%); +/- step through them - a
+                         touchscreen never raises a wheel event, so these are the only way to zoom
+                         at all on Android. -->
+                    <ComboBox ItemsSource="{Binding ZoomLevelLabels}" SelectedIndex="{Binding ZoomLevelIndex}"
+                              VerticalAlignment="Center" MinWidth="80" ToolTip.Tip="Zoom" />
+                    <Button Content="-" Command="{Binding ZoomOutCommand}" Padding="10,2" FontWeight="Bold" />
+                    <Button Content="+" Command="{Binding ZoomInCommand}" Padding="10,2" FontWeight="Bold" />
+                    <Button Content="Reset" Command="{Binding ResetZoomCommand}" Padding="6,2" />
+                    <!-- Measures from whatever's currently selected to the next thing tapped. -->
+                    <Button Content="Measure" Command="{Binding MeasureDistanceCommand}" Padding="8,2" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                    <!-- The shared 6-way "Planets:" selector (keys 1-6), which picks the planet
+                         ring/bar overlay. -->
+                    <TextBlock Text="Planets:" Foreground="White" VerticalAlignment="Center" />
+                    <ComboBox ItemsSource="{Binding PlanetModeLabels}" SelectedIndex="{Binding PlanetMode}"
+                              VerticalAlignment="Center" MinWidth="170" />
+                    <Button Content="View" Padding="8,2">
+                        <Button.Flyout>
+                            <Flyout Placement="TopEdgeAlignedRight">
+                                <StackPanel Spacing="4" MinWidth="220">
+                                    <CheckBox Content="Scan circles (7)" IsChecked="{Binding ShowScanCircles}" />
+                                    <CheckBox Content="Minefields (8)" IsChecked="{Binding ShowMinefields}" />
+                                    <CheckBox Content="Dash overlapping route legs (9)" IsChecked="{Binding ShowRouteOverlap}" />
+                                    <CheckBox Content="Planet names (0)" IsChecked="{Binding ShowPlanetNames}" />
+                                    <CheckBox Content="Ship counts (Shift+0)" IsChecked="{Binding ShowShipCountBadges}" />
+                                    <TextBlock Text="{Binding ScannerPercentage, StringFormat='Scanner display {0}%'}" Margin="0,6,0,0" />
+                                    <!-- Below 100% the drawn circles grow (radius x 100 / percentage);
+                                         changing it turns the scan circles on. -->
+                                    <Slider Minimum="2" Maximum="100" Value="{Binding ScannerPercentage}"
+                                            TickFrequency="1" IsSnapToTickEnabled="True" />
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <!-- View > Find (Ctrl+F) - windowed UI only; the code-behind hides it on Android. -->
+                    <Button x:Name="FindButton" Content="Find" Command="{Binding Search.OpenCommand}" Padding="8,2"
+                            ToolTip.Tip="Find an object (Ctrl+F)" />
+                </StackPanel>
             </StackPanel>
         </Border>
 
-        <!-- "Add Waypoint" arming is triggered from the Inspector panel (see its own Orders
-             section) but shown here, since it's this map that the next tap actually targets -
-             both panels just react to the same shared SelectionService.IsAddingWaypoint. -->
+        <!-- Find dialog (View > Find / Ctrl+F): a query over every object this empire knows
+             about; the chosen result becomes the selection and is centred on the map. -->
+        <Border DataContext="{Binding Search}" x:DataType="panels:StarMapSearchViewModel"
+                IsVisible="{Binding IsOpen}" Background="#ee101018" BorderBrush="DodgerBlue"
+                BorderThickness="1" CornerRadius="4" Padding="8" Margin="8"
+                HorizontalAlignment="Left" VerticalAlignment="Top" Width="300">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Find" FontWeight="Bold" Foreground="White" />
+                <TextBox x:Name="SearchBox" Text="{Binding Query}" PlaceholderText="Name">
+                    <TextBox.KeyBindings>
+                        <KeyBinding Gesture="Enter" Command="{Binding GoCommand}" />
+                        <KeyBinding Gesture="Escape" Command="{Binding CloseCommand}" />
+                    </TextBox.KeyBindings>
+                </TextBox>
+                <ComboBox ItemsSource="{x:Static panels:StarMapSearchViewModel.KindLabels}" SelectedIndex="{Binding KindIndex}"
+                          HorizontalAlignment="Stretch" />
+                <ListBox ItemsSource="{Binding Results}" SelectedItem="{Binding SelectedResult}" MaxHeight="220"
+                         DoubleTapped="OnSearchResultDoubleTapped">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="panels:StarMapSearchResultViewModel">
+                            <TextBlock Text="{Binding Display}" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Text="No matching object" Foreground="Gray" IsVisible="{Binding NoResult}" />
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                    <Button Content="Go to" Command="{Binding GoCommand}" Padding="8,2" />
+                    <Button Content="Close" Command="{Binding CloseCommand}" Padding="8,2" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- "Add Waypoint" arming is triggered from the Inspector panel but shown here, since
+             it's this map that the next tap actually targets. -->
         <Border IsVisible="{Binding IsAddingWaypoint}" Background="#442299ff" BorderBrush="DodgerBlue"
                 BorderThickness="1" CornerRadius="4" Padding="8,4" HorizontalAlignment="Center"
                 VerticalAlignment="Top" Margin="8">
@@ -329,12 +416,7 @@
             </StackPanel>
         </Border>
 
-        <!-- "Measure Distance" arming/result - same floating-banner pattern as "Add Waypoint"
-             above, just triggered from the Measure button on this same panel rather than from
-             Inspector. Only one of the two banners is ever visible at once (arming either cancels
-             the other - see SelectionService.ArmMeasureTarget/ArmWaypointTarget), and the result
-             banner only shows once a measurement has actually completed (cleared on the next
-             selection change, a fresh Measure, or Dismiss). -->
+        <!-- "Measure Distance" arming/result - same floating-banner pattern as "Add Waypoint". -->
         <Border IsVisible="{Binding IsMeasuringDistance}" Background="#442299ff" BorderBrush="DodgerBlue"
                 BorderThickness="1" CornerRadius="4" Padding="8,4" HorizontalAlignment="Center"
                 VerticalAlignment="Top" Margin="8">

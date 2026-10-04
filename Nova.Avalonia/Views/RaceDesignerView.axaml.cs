@@ -26,6 +26,17 @@ public partial class RaceDesignerView : UserControl
         SetViewModel(new RaceDesignerViewModel());
     }
 
+    /// <summary>Opens the designer on an existing race. With <paramref name="isEditable"/> false
+    /// it is the spec's non-editable context: every control shows the stored value but is
+    /// disabled (race-designer-ui-and-availability.md, "Race-design draft"). Either way the
+    /// race itself only changes if a Save succeeds.</summary>
+    public RaceDesignerView(Race race, bool isEditable)
+    {
+        InitializeComponent();
+
+        SetViewModel(new RaceDesignerViewModel(race, isEditable));
+    }
+
     /// <summary>Raised once the race has been saved, or the user cancels out of this screen.
     /// Forwarded from whichever RaceDesignerViewModel is current - a Load can swap it out for a
     /// freshly constructed one wrapping the loaded Race, so this event is re-wired to the new

@@ -112,6 +112,8 @@ public class SelectionService : ViewModelBase
             FleetIntel fleetIntel => "Space at " + fleetIntel.Position,
             Minefield minefield => "Space at " + minefield.Position,
             Wormhole wormhole => "Space at " + wormhole.Position,
+            WormholeIntel wormholeIntel => "Space at " + wormholeIntel.Position,
+            MineralPacket packet => "Space at " + packet.Position,
             _ => null,
         };
 

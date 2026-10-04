@@ -88,7 +88,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (mainNode.Name.ToLower())
+                    switch (mainNode.Name.ToLowerInvariant())
                     {
                     case "year":
                         Year = int.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -199,8 +199,11 @@ namespace Nova.Common
                 Year = year;
                 
                 Owner                   = star.Owner;                
-                MineralConcentration    = star.MineralConcentration;
-                Gravity                 = star.Gravity;
+                // A copy, not the star's live object: a report is a snapshot of what was seen,
+                // as it is once saved and reloaded - aliasing it let the report silently follow
+                // the star's later mining in a game kept in memory, so a reloaded game diverged.
+                MineralConcentration    = new Resources(star.MineralConcentration);
+                Gravity                = star.Gravity;
                 Radiation               = star.Radiation;
                 Temperature             = star.Temperature;
                 Starbase                = star.Starbase;

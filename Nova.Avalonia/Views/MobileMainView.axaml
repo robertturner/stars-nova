@@ -71,7 +71,17 @@
                 <Border BorderBrush="Gray" BorderThickness="0,1,0,0" Margin="6,4" />
                 <CheckBox Content="Dark Mode" IsChecked="{Binding IsDarkMode}" Margin="10,4"
                           ToolTip.Tip="Overrides following the system theme with an explicit choice, remembered for next time" />
+                <!-- View > Race (F8 on the desktop): the player's own race, read-only. -->
+                <Button Classes="menuEntry" Content="View Race" Command="{Binding ViewRaceFromMenuCommand}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
                 <Button Classes="menuEntry" Content="About" Command="{Binding ShowAboutFromMenuCommand}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+                <!-- Report > Dump to Text File (Nova.Client.ReportExport), written into the game folder. -->
+                <Button Classes="menuEntry" Content="Export Planets (text)" Command="{Binding ExportFromMenuCommand}" CommandParameter="Planets"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+                <Button Classes="menuEntry" Content="Export Universe (text)" Command="{Binding ExportFromMenuCommand}" CommandParameter="Universe"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+                <Button Classes="menuEntry" Content="Export Fleets (text)" Command="{Binding ExportFromMenuCommand}" CommandParameter="Fleets"
                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
                 <Button Classes="menuEntry" Content="Share Error Log" Command="{Binding ShareErrorLogCommand}"
                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
@@ -190,6 +200,15 @@
             </Border>
             <Border IsVisible="{Binding ShowScoreReportPage}">
                 <panels:ScoreReportView DataContext="{Binding ScoreReport}" />
+            </Border>
+            <Border IsVisible="{Binding ShowVictoryConditionsPage}">
+                <panels:VictoryConditionsView DataContext="{Binding VictoryConditions}" />
+            </Border>
+            <Border IsVisible="{Binding ShowProductionTemplatesPage}">
+                <panels:ProductionTemplatesView DataContext="{Binding ProductionTemplates}" />
+            </Border>
+            <Border IsVisible="{Binding ShowTechnologyBrowserPage}">
+                <panels:TechnologyBrowserView DataContext="{Binding TechnologyBrowser}" />
             </Border>
             <Border IsVisible="{Binding ShowHelpPage}">
                 <panels:HelpView DataContext="{Binding Help}" />

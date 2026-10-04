@@ -27,27 +27,30 @@
 // pointing at the other via PairedKey); a fleet reaching either end
 // transits to the other the same year it arrives.
 //
-// This port deliberately simplifies two things the spec itself flags as
-// either unquantified or genuinely unresolved (see that section and
-// turn-generation-engine.md's "Fleet-linked habitat-tolerance drift" note):
-// - Placement uses a plain minimum-distance check rather than the spec's own
-//   "four squared-distance tiers" scoring, since no concrete distances survive
-//   for those tiers.
-// - Detection is a simple "visible once a fleet is within range" model
-//   rather than the spec's per-turn probabilistic (0-99-vs-cloak%) roll,
-//   since building a full parallel per-empire Intel/report pipeline for one
-//   object type - mirroring Minefield's, which this class otherwise mirrors
-//   structurally - is a disproportionate side-investment for this pass. The
-//   heavy-mineral-cargo transit side effect (relocation for gas-tolerant
-//   races, habitat-tolerance drift for ordinary ones) is left unimplemented
-//   entirely for the same reason: several of the traits/thresholds it
-//   depends on are explicitly unidentified even in the source material.
+// Placement uses a plain minimum-distance check rather than the spec's
+// "four squared-distance tiers" scoring, since no concrete distances survive
+// for those tiers.
+//
+// Detection follows behavior-specs-10/fleet-movement-scanning-cargo.md §3:
+// a flat radius test plus a 0-99 roll against the 75% cloak until the empire
+// has discovered the wormhole once (ScanStep.DetectWormholes,
+// ScannerRules.DetectsWormhole); each empire's sightings are kept as
+// WormholeIntel in EmpireData.WormholeReports, which also carries the
+// stability tier seen and whether that race has used the wormhole
+// (UsedBy here; the per-race bitmask the AI's diversion scoring reads,
+// ai-opponent-behavior.md §12).
+//
+// There is no "heavy-mineral-cargo wormhole transit" effect: the spec
+// re-attributes that routine to the Mystery Trader encounter
+// (turn-generation-engine.md §5a).
 // ===========================================================================
 #endregion
 
 namespace Nova.Common
 {
     using System;
+    using System.Collections.Generic;
+    using System.Linq;
     using System.Xml;
 
     [Serializable]
@@ -62,8 +65,25 @@ namespace Nova.Common
         /// 7-tier (0-6) stability scale.</summary>
         public int StabilityTier;
 
+        /// <summary>
+        /// The races (empire ids) that have used this wormhole end: the wormhole's per-race
+        /// bitmask (word +10) that the AI's diversion scoring tests as "known"
+        /// (behavior-specs-10/ai-opponent-behavior.md §12, personality 0 colony ships step 3:
+        /// "A wormhole this race has not used scores 90 ... else 50; a known one scores
+        /// 70 - 10 x its stability tier"). The spec does not say which code sets the bit; this
+        /// port sets it for both ends when one of the race's fleets transits the pair
+        /// (TurnGenerator.TryWormholeTransit).
+        /// </summary>
+        public HashSet<int> UsedBy = new HashSet<int>();
+
         public Wormhole()
         {
+        }
+
+        /// <summary>True when the race (empire id) has used this wormhole end.</summary>
+        public bool IsUsedBy(int empireId)
+        {
+            return UsedBy.Contains(empireId);
         }
 
         /// <summary>
@@ -77,6 +97,10 @@ namespace Nova.Common
 
             Global.SaveData(xmldoc, xmlelWormhole, "PairedKey", PairedKey.ToString("X"));
             Global.SaveData(xmldoc, xmlelWormhole, "StabilityTier", StabilityTier.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (UsedBy.Count > 0)
+            {
+                Global.SaveData(xmldoc, xmlelWormhole, "UsedBy", string.Join(",", UsedBy.OrderBy(id => id).Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture))));
+            }
 
             return xmlelWormhole;
         }
@@ -92,7 +116,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (subnode.Name.ToLower())
+                    switch (subnode.Name.ToLowerInvariant())
                     {
                         case "pairedkey":
                             PairedKey = long.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture);
@@ -100,6 +124,14 @@ namespace Nova.Common
 
                         case "stabilitytier":
                             StabilityTier = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
+                            break;
+
+                        case "usedby":
+                            foreach (string id in ((XmlText)subnode.FirstChild).Value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                UsedBy.Add(int.Parse(id.Trim(), System.Globalization.CultureInfo.InvariantCulture));
+                            }
+
                             break;
                     }
                 }

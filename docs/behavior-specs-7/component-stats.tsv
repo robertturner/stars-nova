@@ -1,0 +1,299 @@
+# Stars! per-component base-stat tables, extracted from stars.exe
+# Source: one contiguous read-only data block embedded in the client's component-resolver
+#   code segment (NE segment 2). Segment-relative offset -> file offset = 0x3240 + offset.
+# Universal record layout: +0 ordinal(u16) | +2..+7 six tech-level prerequisites
+#   (Energy,Weapons,Propulsion,Construction,Electronics,Biotechnology, one byte each)
+#   | +8..+39 name (NUL-terminated, 32-byte field) | +40 mass | +42 resources
+#   | +44 ironium | +46 boranium | +48 germanium | +50 icon index | +52.. category stats
+# Engines: +52 special-behaviour selector, +54..+74 fuel usage indexed by warp 0..10.
+# All multi-byte fields are little-endian 16-bit unsigned unless noted.
+# Hull records additionally carry a slot array at +58 (4 bytes/entry:
+#   u16 allowed-category bitmask, u8 reserved(always 0), u8 slot capacity), terminated
+#   by a zero mask; +122 = slot count; +123.. = designer-diagram display metadata.
+
+## category 0x0001  Engines  base=0x4c38 stride=78 count=16
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	special	fuelW0	fuelW1	fuelW2	fuelW3	fuelW4	fuelW5	fuelW6	fuelW7	fuelW8	fuelW9	fuelW10	(rsvd)
+0	Settler's Delight	0	0	0	0	0	0	2	2	1	0	1	8	1	0	0	0	0	0	0	0	140	275	480	576	0
+1	Quick Jump 5	0	0	0	0	0	0	4	3	3	0	1	0	0	0	0	25	100	100	100	180	500	800	900	1080	0
+2	Fuel Mizer	0	0	2	0	0	0	6	11	8	0	0	9	3	0	0	0	0	0	35	120	175	235	360	420	0
+3	Long Hump 6	0	0	3	0	0	0	9	6	5	0	1	1	0	0	0	20	60	100	100	105	450	750	900	1080	0
+4	Daddy Long Legs 7	0	0	5	0	0	0	13	12	11	0	3	2	0	0	0	20	60	70	100	100	110	600	750	900	0
+5	Alpha Drive 8	0	0	7	0	0	0	17	28	16	0	3	3	0	0	0	15	50	60	70	100	100	115	700	840	0
+6	Trans-Galactic Drive	0	0	9	0	0	0	25	50	20	20	9	4	0	0	0	15	35	45	55	70	80	90	100	120	0
+7	Interspace-10	0	0	11	0	0	0	25	60	18	25	10	12	5	0	0	10	30	40	50	60	70	80	90	100	0
+8	Enigma Pulsar	7	0	13	5	9	0	20	40	12	15	11	109	6	0	0	0	0	0	0	65	75	85	95	105	0
+9	Trans-Star 10	0	0	23	0	0	0	5	10	3	0	3	117	0	0	0	5	15	20	25	30	35	40	45	50	0
+10	Radiating Hydro-Ram Scoop	2	0	6	0	0	0	10	8	3	2	9	7	2	0	0	0	0	0	0	0	165	375	600	720	0
+11	Sub-Galactic Fuel Scoop	2	0	8	0	0	0	20	12	4	4	7	5	0	0	0	0	0	0	0	85	105	210	380	456	0
+12	Trans-Galactic Fuel Scoop	3	0	9	0	0	0	19	18	5	4	12	6	0	0	0	0	0	0	0	0	88	100	145	174	0
+13	Trans-Galactic Super Scoop	4	0	12	0	0	0	18	24	6	4	16	10	0	0	0	0	0	0	0	0	0	65	90	108	0
+14	Trans-Galactic Mizer Scoop	4	0	16	0	0	0	11	20	5	2	13	11	0	0	0	0	0	0	0	0	0	0	70	84	0
+15	Galaxy Scoop	5	0	20	0	0	0	8	12	4	2	9	191	4	0	0	0	0	0	0	0	0	0	0	60	0
+
+## category 0x0002  Scanners (ship)  base=0x4630 stride=56 count=16
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	scanRange	penClass
+0	Bat Scanner	0	0	0	0	0	0	2	1	1	0	1	59	0	0
+1	Rhino Scanner	0	0	0	0	1	0	5	3	3	0	2	48	50	0
+2	Mole Scanner	0	0	0	0	4	0	2	9	2	0	2	49	100	0
+3	DNA Scanner	0	0	3	0	0	6	2	5	1	1	1	52	125	0
+4	Possum Scanner	0	0	0	0	5	0	3	18	3	0	3	61	150	0
+5	Pick Pocket Scanner	4	0	0	0	4	4	15	35	8	10	6	56	80	4
+6	Chameleon Scanner	3	0	0	0	6	0	6	25	4	6	4	63	160	4
+7	Ferret Scanner	3	0	0	0	7	2	2	36	2	0	8	53	185	1
+8	Dolphin Scanner	5	0	0	0	10	4	4	40	5	5	10	54	220	2
+9	Gazelle Scanner	4	0	0	0	8	0	5	24	4	0	5	50	225	0
+10	RNA Scanner	0	0	5	0	0	10	2	20	1	1	2	60	230	0
+11	Cheetah Scanner	5	0	0	0	11	0	4	50	3	1	13	62	275	0
+12	Elephant Scanner	6	0	0	0	16	7	6	70	8	5	14	55	300	3
+13	Eagle Eye Scanner	6	0	0	0	14	0	3	64	3	2	21	51	335	0
+14	Robber Baron Scanner	10	0	0	0	15	10	20	90	10	10	10	57	220	4
+15	Peerless Scanner	7	0	0	0	24	0	4	90	3	2	30	58	500	0
+
+## category 0x0004  Shields  base=0x4414 stride=54 count=10
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	shield
+0	Mole-skin Shield	0	0	0	0	0	0	1	4	1	0	1	42	25
+1	Cow-hide Shield	3	0	0	0	0	0	1	5	2	0	2	43	40
+2	Wolverine Diffuse Shield	6	0	0	0	0	0	1	6	3	0	3	44	60
+3	Croby Sharmor	7	0	0	4	0	0	10	15	7	0	4	40	60
+4	Shadow Shield	7	0	0	0	3	0	2	7	3	0	3	41	75
+5	Bear Neutrino Barrier	10	0	0	0	0	0	1	8	4	0	4	45	100
+6	Langston Shell	12	0	9	0	9	0	10	20	10	2	6	183	125
+7	Gorilla Delagator	14	0	0	0	0	0	1	11	5	0	6	46	175
+8	Elephant Hide Fortress	18	0	0	0	0	0	1	15	8	0	10	47	300
+9	Complete Phase Shield	22	0	0	0	0	0	1	20	12	0	15	119	500
+
+## category 0x0008  Armor  base=0x49b0 stride=54 count=12
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	armor
+0	Tritanium	0	0	0	0	0	0	60	10	5	0	0	64	50
+1	Crobmnium	0	0	0	3	0	0	56	13	6	0	0	65	75
+2	Carbonic Armor	0	0	0	0	0	4	25	15	0	0	5	70	100
+3	Strobnium	0	0	0	6	0	0	54	18	8	0	0	68	120
+4	Organic Armor	0	0	0	0	0	7	15	20	0	0	6	71	175
+5	Kelarium	0	0	0	9	0	0	50	25	9	1	0	67	180
+6	Fielded Kelarium	4	0	0	10	0	0	50	28	10	0	2	78	175
+7	Depleted Neutronium	0	0	0	10	3	0	50	28	10	0	2	79	200
+8	Neutronium	0	0	0	12	0	0	45	30	11	2	1	69	275
+9	Mega Poly Shell	14	0	0	14	14	6	20	65	18	6	6	110	400
+10	Valanium	0	0	0	16	0	0	40	50	15	0	0	66	500
+11	Superlatanium	0	0	0	24	0	0	30	100	25	0	0	77	1500
+
+## category 0x0010  Beam weapons  base=0x2728 stride=60 count=24
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	range	damage	initiative	fireMode
+0	Laser	0	0	0	0	0	0	1	5	0	6	0	28	1	10	9	0
+1	X-Ray Laser	0	3	0	0	0	0	1	6	0	6	0	29	1	16	9	0
+2	Mini Gun	0	5	0	0	0	0	3	10	0	16	0	20	2	13	12	2
+3	Yakimora Light Phaser	0	6	0	0	0	0	1	7	0	8	0	19	1	26	9	0
+4	Blackjack	0	7	0	0	0	0	10	7	0	16	0	14	0	90	10	0
+5	Phaser Bazooka	0	8	0	0	0	0	2	11	0	8	0	21	2	26	7	0
+6	Pulsed Sapper	5	9	0	0	0	0	1	12	0	0	4	17	3	82	14	1
+7	Colloidal Phaser	0	10	0	0	0	0	2	18	0	14	0	192	3	26	5	0
+8	Gatling Gun	0	11	0	0	0	0	3	13	0	20	0	26	2	31	12	2
+9	Mini Blaster	0	12	0	0	0	0	1	9	0	10	0	24	1	66	9	0
+10	Bludgeon	0	13	0	0	0	0	10	9	0	22	0	15	0	231	10	0
+11	Mark IV Blaster	0	14	0	0	0	0	2	15	0	12	0	25	2	66	7	0
+12	Phased Sapper	8	15	0	0	0	0	1	16	0	0	6	18	3	211	14	1
+13	Heavy Blaster	0	16	0	0	0	0	2	25	0	20	0	193	3	66	5	0
+14	Gatling Neutrino Cannon	0	17	0	0	0	0	3	17	0	28	0	30	2	80	13	2
+15	Myopic Disruptor	0	18	0	0	0	0	1	12	0	14	0	194	1	169	9	0
+16	Blunderbuss	0	19	0	0	0	0	10	13	0	30	0	13	0	592	11	0
+17	Disruptor	0	20	0	0	0	0	2	20	0	16	0	27	2	169	8	0
+18	Multi Contained Munition	21	21	0	0	16	12	8	40	6	40	6	111	3	140	6	0
+19	Syncro Sapper	11	21	0	0	0	0	1	21	0	0	8	16	3	541	14	1
+20	Mega Disruptor	0	22	0	0	0	0	2	33	0	30	0	195	3	169	6	0
+21	Big Mutha Cannon	0	23	0	0	0	0	3	23	0	36	0	31	2	204	13	2
+22	Streaming Pulverizer	0	24	0	0	0	0	1	16	0	20	0	22	1	433	9	0
+23	Anti-Matter Pulverizer	0	26	0	0	0	0	2	27	0	22	0	23	2	433	8	0
+
+## category 0x0020  Torpedoes / capital missiles  base=0x2cc8 stride=60 count=12
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	range	damage	initiative	accuracyPct
+0	Alpha Torpedo	0	0	0	0	0	0	25	5	9	3	3	87	4	5	0	35
+1	Beta Torpedo	0	5	1	0	0	0	25	6	18	6	4	88	4	12	1	45
+2	Delta Torpedo	0	10	2	0	0	0	25	8	22	8	5	89	4	26	1	60
+3	Epsilon Torpedo	0	14	3	0	0	0	25	10	30	10	6	92	5	48	2	65
+4	Rho Torpedo	0	18	4	0	0	0	25	12	34	12	8	93	5	90	2	75
+5	Upsilon Torpedo	0	22	5	0	0	0	25	15	40	14	9	94	5	169	3	75
+6	Omega Torpedo	0	26	6	0	0	0	25	18	52	18	12	95	5	316	4	80
+7	Anti Matter Torpedo	0	11	12	0	0	21	8	50	3	8	1	108	6	60	0	85
+8	Jihad Missile	0	12	6	0	0	0	35	13	37	13	9	200	5	85	0	20
+9	Juggernaut Missile	0	16	8	0	0	0	35	16	48	16	11	201	5	150	1	20
+10	Doomsday Missile	0	20	10	0	0	0	35	20	60	20	13	202	6	280	2	25
+11	Armageddon Missile	0	24	10	0	0	0	35	24	67	23	16	203	6	525	3	30
+
+## category 0x0040  Bombs  base=0x2f98 stride=58 count=15
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	(const1)	popKill_x0.1pct	installations
+0	Lady Finger Bomb	0	2	0	0	0	0	40	5	1	20	0	35	1	6	2
+1	Black Cat Bomb	0	5	0	0	0	0	45	7	1	22	0	36	1	9	4
+2	M-70 Bomb	0	8	0	0	0	0	50	9	1	24	0	37	1	12	6
+3	M-80 Bomb	0	11	0	0	0	0	55	12	1	25	0	38	1	17	7
+4	Cherry Bomb	0	14	0	0	0	0	52	11	1	25	0	39	1	25	10
+5	LBU-17 Bomb	0	5	0	0	8	0	30	7	1	15	15	32	1	2	16
+6	LBU-32 Bomb	0	10	0	0	10	0	35	10	1	24	15	33	1	3	28
+7	LBU-74 Bomb	0	15	0	0	12	0	45	14	1	33	12	34	1	4	45
+8	Hush-a-Boom	0	12	0	0	12	12	5	5	1	5	0	182	1	30	2
+9	Retro Bomb	0	10	0	0	0	12	45	50	15	15	10	174	1	0	0
+10	Smart Bomb	0	5	0	0	0	7	50	27	1	22	0	112	1	13	0
+11	Neutron Bomb	0	10	0	0	0	10	57	30	1	30	0	113	1	22	0
+12	Enriched Neutron Bomb	0	15	0	0	0	12	64	25	1	36	0	114	1	35	0
+13	Peerless Bomb	0	22	0	0	0	15	55	32	1	33	0	115	1	50	0
+14	Annihilator Bomb	0	26	0	0	0	17	50	28	1	30	0	116	1	70	0
+
+## category 0x0080  Mining robots  base=0x3a60 stride=54 count=8
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	miningRate
+0	Robo-Midget Miner	0	0	0	0	0	0	80	50	14	0	4	138	5
+1	Robo-Mini-Miner	0	0	0	2	1	0	240	100	30	0	7	139	4
+2	Robo-Miner	0	0	0	4	2	0	240	100	30	0	7	140	12
+3	Robo-Maxi-Miner	0	0	0	7	4	0	240	100	30	0	7	141	18
+4	Robo-Super-Miner	0	0	0	12	6	0	240	100	30	0	7	142	27
+5	Robo-Ultra-Miner	0	0	0	15	8	0	80	50	14	0	4	143	25
+6	Alien Miner	5	0	0	10	5	5	20	20	8	0	2	181	10
+7	Orbital Adjuster	0	0	0	0	0	6	80	50	25	25	25	173	0
+
+## category 0x0100  Mine layers  base=0x3c10 stride=54 count=10
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	minesPerYear_x10
+0	Mine Dispenser 40	0	0	0	0	0	0	25	45	2	10	8	128	4
+1	Mine Dispenser 50	2	0	0	0	0	4	30	55	2	12	10	129	5
+2	Mine Dispenser 80	3	0	0	0	0	7	30	65	2	14	10	130	8
+3	Mine Dispenser 130	6	0	0	0	0	12	30	80	2	18	10	131	13
+4	Heavy Dispenser 50	5	0	0	0	0	3	10	50	2	20	5	135	5
+5	Heavy Dispenser 110	9	0	0	0	0	5	15	70	2	30	5	136	11
+6	Heavy Dispenser 200	14	0	0	0	0	7	20	90	2	45	5	137	20
+7	Speed Trap 20	0	0	2	0	0	2	100	60	30	0	12	132	2
+8	Speed Trap 30	0	0	3	0	0	6	135	72	32	0	14	133	3
+9	Speed Trap 50	0	0	5	0	0	11	140	80	40	0	15	134	5
+
+## category 0x0200  Stargates / mass drivers  base=0x000f stride=56 count=16
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	maxMassOrWarp	maxRangeLy
+0	Stargate 100/250	0	0	5	5	0	0	0	400	100	40	40	144	100	250
+1	Stargate any/300	0	0	6	10	0	0	0	500	100	40	40	145	65535	300
+2	Stargate 150/600	0	0	11	7	0	0	0	1000	100	40	40	146	150	600
+3	Stargate 300/500	0	0	9	13	0	0	0	1200	100	40	40	147	300	500
+4	Stargate 100/any	0	0	16	12	0	0	0	1400	100	40	40	148	100	65535
+5	Stargate any/800	0	0	12	18	0	0	0	1400	100	40	40	149	65535	800
+6	Stargate any/any	0	0	19	24	0	0	0	1600	100	40	40	150	65535	65535
+7	Mass Driver 5	4	0	0	0	0	0	0	140	48	40	40	151	5	0
+8	Mass Driver 6	7	0	0	0	0	0	0	288	48	40	40	152	6	0
+9	Mass Driver 7	9	0	0	0	0	0	0	1024	200	200	200	153	7	0
+10	Super Driver 8	11	0	0	0	0	0	0	512	48	40	40	154	8	0
+11	Super Driver 9	13	0	0	0	0	0	0	648	48	40	40	155	9	0
+12	Ultra Driver 10	15	0	0	0	0	0	0	1936	200	200	200	156	10	0
+13	Ultra Driver 11	17	0	0	0	0	0	0	968	48	40	40	157	11	0
+14	Ultra Driver 12	20	0	0	0	0	0	0	1152	48	40	40	158	12	0
+15	Ultra Driver 13	24	0	0	0	0	0	0	1352	48	40	40	159	13	0
+
+## category 0x0400  Starbase chassis  base=0x05db stride=143 count=5
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	cargo	fuel	armor	nslots	slots
+0	Orbital Fort	0	0	0	0	0	0	0	80	24	0	34	128	0	0	100	5	Orb+Elecx1 Beam+Torpx12 Shld+Armx12 Beam+Torpx12 Shld+Armx12
+1	Space Dock	0	0	0	4	0	0	0	200	40	10	50	132	200	0	250	8	Orb+Elecx1 Beam+Torpx16 Shld+Armx24 Beam+Torpx16 Shldx24 Elecx2 Elecx2 Beam+Torpx16
+2	Space Station	0	0	0	0	0	0	0	1200	240	160	500	136	65535	0	500	12	Orb+Elecx1 Beam+Torpx16 Shldx16 Beam+Torpx16 Shld+Armx16 Shldx16 Elecx3 Beam+Torpx16 Elecx3 Beam+Torpx16 Orb+Elecx1 Shld+Armx16
+3	Ultra Station	0	0	0	12	0	0	0	1200	240	160	600	140	65535	0	1000	16	Orb+Elecx1 Beam+Torpx16 Elecx3 Beam+Torpx16 Shldx20 Shldx20 Elecx3 Beam+Torpx16 Elecx3 Beam+Torpx16 Orb+Elecx1 Shld+Armx20 Beam+Torpx16 Shld+Armx20 Elecx3 Beam+Torpx16
+4	Death Star	0	0	0	17	0	0	0	1500	240	160	700	144	65535	0	1500	16	Orb+Elecx1 Beam+Torpx32 Elecx4 Elecx4 Shldx30 Shldx30 Elecx4 Beam+Torpx32 Elecx4 Beam+Torpx32 Orb+Elecx1 Shld+Armx20 Elecx4 Shld+Armx20 Elecx4 Beam+Torpx32
+
+## category 0x0800  Electrical  base=0x407e stride=54 count=17
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	stat
+0	Transport Cloaking	0	0	0	0	0	0	1	3	2	0	2	98	300
+1	Stealth Cloak	2	0	0	0	5	0	2	5	2	0	2	99	70
+2	Super-Stealth Cloak	4	0	0	0	10	0	3	15	8	0	8	100	140
+3	Ultra-Stealth Cloak	10	0	0	0	12	0	5	25	10	0	10	101	540
+4	Multi Function Pod	11	0	11	0	11	0	2	15	5	0	5	189	60
+5	Battle Computer	0	0	0	0	0	0	1	6	0	0	15	165	20
+6	Battle Super Computer	5	0	0	0	11	0	1	14	0	0	25	166	30
+7	Battle Nexus	10	0	0	0	19	0	1	15	0	0	30	167	50
+8	Jammer 10	2	0	0	0	6	0	1	6	0	0	2	120	10
+9	Jammer 20	4	0	0	0	10	0	1	20	1	0	5	121	20
+10	Jammer 30	8	0	0	0	16	0	1	20	1	0	6	122	30
+11	Jammer 50	16	0	0	0	22	0	1	20	2	0	7	123	50
+12	Energy Capacitor	7	0	0	0	4	0	1	5	0	0	8	127	10
+13	Flux Capacitor	14	0	0	0	8	0	1	5	0	0	8	190	20
+14	Energy Dampener	14	0	8	0	0	0	2	50	5	10	0	124	1
+15	Tachyon Detector	8	0	0	0	14	0	1	70	1	5	0	125	2
+16	Anti-matter Generator	0	12	0	0	0	7	10	10	8	3	3	126	3
+
+## category 0x1000  Mechanical  base=0x3e2c stride=54 count=11
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	stat
+0	Colonization Module	0	0	0	0	0	0	32	10	12	10	10	106	1
+1	Orbital Construction Module	0	0	0	0	0	0	50	20	20	15	15	107	1
+2	Cargo Pod	0	0	0	3	0	0	5	10	5	0	2	96	2
+3	Super Cargo Pod	3	0	0	9	0	0	7	15	8	0	2	97	2
+4	Multi Cargo Pod	5	0	0	11	5	0	9	25	12	0	3	118	2
+5	Fuel Tank	0	0	0	0	0	0	3	4	6	0	0	104	4
+6	Super Fuel Tank	6	0	4	14	0	0	8	8	8	0	0	105	4
+7	Maneuvering Jet	2	0	3	0	0	0	5	10	5	0	5	102	1
+8	Overthruster	5	0	12	0	0	0	5	20	10	0	8	103	2
+9	Jump Gate	16	0	20	20	16	0	10	40	0	0	50	208	0
+10	Beam Deflector	6	6	0	6	6	0	1	8	0	0	10	209	10
+
+## category 0x2000  Terraforming  base=0x32fe stride=54 count=20
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	maxTerraform
+0	Total Terraform ±3	0	0	0	0	0	0	0	70	0	0	0	184	3
+1	Total Terraform ±5	0	0	0	0	0	3	0	70	0	0	0	185	5
+2	Total Terraform ±7	0	0	0	0	0	6	0	70	0	0	0	186	7
+3	Total Terraform ±10	0	0	0	0	0	9	0	70	0	0	0	187	10
+4	Total Terraform ±15	0	0	0	0	0	13	0	70	0	0	0	188	15
+5	Total Terraform ±20	0	0	0	0	0	17	0	70	0	0	0	180	20
+6	Total Terraform ±25	0	0	0	0	0	22	0	70	0	0	0	172	25
+7	Total Terraform ±30	0	0	0	0	0	25	0	70	0	0	0	164	30
+8	Gravity Terraform ±3	0	0	1	0	0	1	0	100	0	0	0	160	3
+9	Gravity Terraform ±7	0	0	5	0	0	2	0	100	0	0	0	161	7
+10	Gravity Terraform ±11	0	0	10	0	0	3	0	100	0	0	0	162	11
+11	Gravity Terraform ±15	0	0	16	0	0	4	0	100	0	0	0	163	15
+12	Temp Terraform ±3	1	0	0	0	0	1	0	100	0	0	0	168	3
+13	Temp Terraform ±7	5	0	0	0	0	2	0	100	0	0	0	169	7
+14	Temp Terraform ±11	10	0	0	0	0	3	0	100	0	0	0	170	11
+15	Temp Terraform ±15	16	0	0	0	0	4	0	100	0	0	0	171	15
+16	Radiation Terraform ±3	0	1	0	0	0	1	0	100	0	0	0	176	3
+17	Radiation Terraform ±7	0	5	0	0	0	2	0	100	0	0	0	177	7
+18	Radiation Terraform ±11	0	10	0	0	0	3	0	100	0	0	0	178	11
+19	Radiation Terraform ±15	0	16	0	0	0	4	0	100	0	0	0	179	15
+
+## category 0x4000  Ship hulls  base=0x1548 stride=143 count=32
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	cargo	fuel	armor	nslots	slots
+0	Small Freighter	0	0	0	0	0	0	25	20	12	0	17	0	70	130	25	3	Engx1 Scan+Elec+Mechx1 Shld+Armx1
+1	Medium Freighter	0	0	0	3	0	0	60	40	20	0	19	4	210	450	50	3	Engx1 Scan+Elec+Mechx1 Shld+Armx1
+2	Large Freighter	0	0	0	8	0	0	125	100	35	0	21	8	1200	2600	150	3	Engx2 Scan+Elec+Mechx2 Shld+Armx2
+3	Super Freighter	0	0	0	13	0	0	175	125	45	0	21	12	3000	8000	400	4	Engx3 Scan+Elec+Mechx3 Shld+Armx5 Elecx2
+4	Scout	0	0	0	0	0	0	8	10	4	2	4	16	0	50	20	3	Engx1 Scanx1 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx1
+5	Frigate	0	0	0	6	0	0	8	12	4	2	4	20	0	125	45	4	Engx1 Scanx2 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Shld+Armx2
+6	Destroyer	0	0	0	3	0	0	30	35	15	3	5	24	0	280	200	7	Engx1 Beam+Torpx1 Beam+Torpx1 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx1 Armx2 Mechx1 Elecx1
+7	Cruiser	0	0	0	9	0	0	90	85	40	5	8	28	0	600	700	7	Engx2 Shld+Elec+Mechx1 Shld+Elec+Mechx1 Beam+Torpx2 Beam+Torpx2 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx2 Shld+Armx2
+8	Battle Cruiser	0	0	0	10	0	0	120	120	55	8	12	32	0	1400	1000	7	Engx2 Shld+Elec+Mechx2 Shld+Elec+Mechx2 Beam+Torpx3 Beam+Torpx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Shld+Armx4
+9	Battleship	0	0	0	13	0	0	222	225	120	25	20	36	0	2800	2000	11	Engx4 Scan+Elec+Mechx1 Shldx8 Beam+Torpx6 Beam+Torpx6 Beam+Torpx2 Beam+Torpx2 Beam+Torpx4 Armx6 Elecx3 Elecx3
+10	Dreadnought	0	0	0	16	0	0	250	275	140	30	25	40	0	4500	4500	13	Engx5 Shld+Armx4 Shld+Armx4 Beam+Torpx6 Beam+Torpx6 Elecx4 Elecx4 Beam+Torpx8 Beam+Torpx8 Armx8 Shld+Beam+Torpx5 Shld+Beam+Torpx5 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx2
+11	Privateer	0	0	0	4	0	0	65	50	50	3	2	44	250	650	150	5	Engx1 Shld+Armx2 Scan+Elec+Mechx1 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx1 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx1
+12	Rogue	0	0	0	8	0	0	75	60	80	5	5	48	500	2250	450	9	Engx2 Shld+Armx3 MLay+Elec+Mechx2 Scanx1 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx2 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx2 MLay+Elec+Mechx2 Elecx1 Elecx1
+13	Galleon	0	0	0	11	0	0	125	105	70	5	5	52	1000	2500	900	8	Engx4 Shld+Armx2 Shld+Armx2 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 MLay+Elec+Mechx2 Elec+Mechx2 Scanx2
+14	Mini-Colony Ship	0	0	0	0	0	0	8	3	2	0	2	56	10	150	10	2	Engx1 Mechx1
+15	Colony Ship	0	0	0	0	0	0	20	20	10	0	15	60	25	200	20	2	Engx1 Mechx1
+16	Mini Bomber	0	0	0	1	0	0	28	35	20	5	10	64	0	120	50	2	Engx1 Bombx2
+17	B-17 Bomber	0	0	0	6	0	0	69	150	55	10	10	68	0	400	175	4	Engx2 Bombx4 Bombx4 Scan+Elec+Mechx1
+18	Stealth Bomber	0	0	0	8	0	0	70	175	55	10	15	72	0	750	225	5	Engx2 Bombx4 Bombx4 Scan+Elec+Mechx1 Elecx3
+19	B-52 Bomber	0	0	0	15	0	0	110	280	90	15	10	76	0	750	450	7	Engx3 Bombx4 Bombx4 Bombx4 Bombx4 Scan+Elec+Mechx2 Shldx2
+20	Midget Miner	0	0	0	0	0	0	10	20	10	0	3	80	0	210	100	2	Engx1 Minex2
+21	Mini-Miner	0	0	0	2	0	0	80	50	25	0	6	84	0	210	130	4	Engx1 Scan+Elec+Mechx1 Minex1 Minex1
+22	Miner	0	0	0	6	0	0	110	110	32	0	6	88	0	500	475	6	Engx2 Scan+Arm+Elec+Mechx2 Minex2 Minex1 Minex2 Minex1
+23	Maxi-Miner	0	0	0	11	0	0	110	140	32	0	6	92	0	850	1400	6	Engx3 Scan+Arm+Elec+Mechx2 Minex4 Minex1 Minex4 Minex1
+24	Ultra-Miner	0	0	0	14	0	0	100	130	30	0	6	96	0	1300	1500	6	Engx2 Scan+Arm+Elec+Mechx3 Minex4 Minex2 Minex4 Minex2
+25	Fuel Transport	0	0	0	4	0	0	12	50	10	0	5	100	0	750	5	2	Engx1 Shldx1
+26	Super-Fuel Xport	0	0	0	7	0	0	111	70	20	0	8	104	0	2250	12	3	Engx2 Shldx2 Scanx1
+27	Mini Mine Layer	0	0	0	0	0	0	10	20	8	2	5	108	0	400	60	4	Engx1 MLayx2 MLayx2 Scan+Elec+Mechx1
+28	Super Mine Layer	0	0	0	15	0	0	30	30	20	3	9	112	0	2200	1200	6	Engx3 MLayx8 MLayx8 Shld+Armx3 Scan+Elec+Mechx3 MLay+Elec+Mechx3
+29	Nubian	0	0	0	26	0	0	100	150	75	12	12	124	0	5000	5000	13	Engx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3
+30	Mini Morph	0	0	0	8	0	0	70	100	30	8	8	120	150	400	250	7	Engx2 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx1 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx1 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx1 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx2 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx2
+31	Meta Morph	0	0	0	10	0	0	85	120	50	12	12	116	300	700	500	7	Engx3 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx8 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx2 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx2 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx1 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx2 Scan+Shld+Arm+Beam+Torp+MLay+Elec+Mechx2
+
+## category 0x8000  Planetary scanners / defenses  base=0x3736 stride=54 count=15
+idx	name	E	W	P	C	El	B	mass	res	iron	bor	germ	icon	scanRange_negIfPenetrating
+0	Viewer 50	0	0	0	0	0	0	0	100	10	10	70	80	50
+1	Viewer 90	0	0	0	0	1	0	0	100	10	10	70	81	90
+2	Scoper 150	0	0	0	0	3	0	0	100	10	10	70	82	150
+3	Scoper 220	0	0	0	0	6	0	0	100	10	10	70	83	220
+4	Scoper 280	0	0	0	0	8	0	0	100	10	10	70	90	280
+5	Snooper 320X	3	0	0	0	10	3	0	100	10	10	70	84	65216
+6	Snooper 400X	4	0	0	0	13	6	0	100	10	10	70	85	65136
+7	Snooper 500X	5	0	0	0	16	7	0	100	10	10	70	86	65036
+8	Snooper 620X	7	0	0	0	23	9	0	100	10	10	70	91	64916
+9	SDI	0	0	0	0	0	0	0	15	5	5	5	72	10
+10	Missile Battery	5	0	0	0	0	0	0	15	5	5	5	73	20
+11	Laser Battery	10	0	0	0	0	0	0	15	5	5	5	74	24
+12	Planetary Shield	16	0	0	0	0	0	0	15	5	5	5	75	30
+13	Neutron Shield	23	0	0	0	0	0	0	15	5	5	5	76	38
+14	Genesis Device	20	10	10	20	10	20	0	5000	0	0	0	175	0

@@ -58,12 +58,33 @@ namespace Nova.Server
         /// So make sure any pointers to AllStars refer to the copy in turnData otherwise we'll get
         /// duplicated (but separate) star objects.
         /// </remarks>
+        /// <summary>
+        /// The minefields one player's turn file carries: only those the player can see
+        /// (EmpireData.CanSeeMinefield - its own, those that struck its fleets and those its
+        /// scanners detected this year), the "other races' visible minefields" of a player's
+        /// snapshot (behavior-specs-10/save-turn-file-format.md), rather than every field in the
+        /// game.
+        /// </summary>
+        public static Dictionary<long, Minefield> VisibleMinefieldsFor(ServerData serverState, EmpireData empire)
+        {
+            Dictionary<long, Minefield> visible = new Dictionary<long, Minefield>();
+            foreach (KeyValuePair<long, Minefield> entry in serverState.AllMinefields)
+            {
+                if (empire.CanSeeMinefield(entry.Value))
+                {
+                    visible.Add(entry.Key, entry.Value);
+                }
+            }
+
+            return visible;
+        }
+
         public void WriteIntel()
         {
             foreach (EmpireData empire in serverState.AllEmpires.Values)
             {
                 turnData = new Intel();
-                turnData.AllMinefields = serverState.AllMinefields;
+                turnData.AllMinefields = VisibleMinefieldsFor(serverState, empire);
                 turnData.EmpireState = serverState.AllEmpires[empire.Id];
                 
                 
@@ -88,7 +109,15 @@ namespace Nova.Server
                     turnData.AllScores = new List<ScoreRecord>();
                 }
 
-                serverState.GameFolder = FileSearcher.GetFolder(Global.ServerFolderKey, Global.ServerFolderName);
+                // The game's own folder; nova.conf's ServerFolder (the last game created or
+                // opened, a process- and user-wide setting) only stands in when the state has no
+                // usable folder. Overwriting it here wrote this game's turn files into whatever
+                // game nova.conf pointed at, and made two games in one process trample each other.
+                if (string.IsNullOrEmpty(serverState.GameFolder) || !Directory.Exists(serverState.GameFolder))
+                {
+                    serverState.GameFolder = FileSearcher.GetFolder(Global.ServerFolderKey, Global.ServerFolderName);
+                }
+
                 if (serverState.GameFolder == null)
                 {
                     Report.Error("Intel Writer: WriteIntel() - Unable to create file \"Nova.intel\".");

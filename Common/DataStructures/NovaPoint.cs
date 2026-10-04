@@ -211,7 +211,7 @@ namespace Nova.Common.DataStructures
             {
                 try
                 {
-                    switch (mainNode.Name.ToLower())
+                    switch (mainNode.Name.ToLowerInvariant())
                     {
                         case "x":
                             {

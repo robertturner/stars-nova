@@ -68,7 +68,7 @@ namespace Nova.Common
             XmlNode mainNode = node.FirstChild;
             while (mainNode != null)
             {
-                switch (mainNode.Name.ToLower())
+                switch (mainNode.Name.ToLowerInvariant())
                 {
                     case "cost":
                         cost = new Resources(mainNode);
@@ -109,6 +109,21 @@ namespace Nova.Common
             return star.Factories;
         }
 
+        /// <summary>See IProductionUnit.SupportableCount's own comment - this is the auto-build
+        /// per-turn throttle, distinct from IsSkipped's deliberate lack of a construction limit
+        /// above the same cap for a manual order or an already-built surplus.</summary>
+        public int? SupportableCount(Star star)
+        {
+            return star.GetFutureOperableFactories();
+        }
+
+        /// <summary>The planet's maximum-population-based factory build cap - a manual order is
+        /// cut to this minus what is already built.</summary>
+        public int? BuildCap(Star star)
+        {
+            return star.GetBuildCapFactories();
+        }
+
         /// <summary>
         /// Construct one factory.
         /// </summary>
@@ -135,8 +150,9 @@ namespace Nova.Common
                 }
     
                 // What we spend on the partial builld.
-                star.ResourcesOnHand -= remainingCost * percentBuildable;    
-                remainingCost -= remainingCost * percentBuildable;
+                Resources partialPayment = Resources.PartialPayment(remainingCost, percentBuildable, star.ResourcesOnHand);
+                star.ResourcesOnHand -= partialPayment;
+                remainingCost -= partialPayment;
                 
                 return false;                
             }

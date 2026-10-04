@@ -1,0 +1,628 @@
+# Combat Resolution
+
+Behavior specification for the tactical battle system in the 1995-2000 4X game *Stars!*, written for a clean-room reimplementation. All facts below are restated in original wording from public community research (primarily the long-standing *starsfaq.com* "Stars! FAQ" site, whose "Guts of the Battle Engine" article is the most detailed known public reverse-engineering writeup of the battle simulator, plus corroborating strategy articles). No content was derived from the original binary or any decompilation artifact. Where sources are silent, contradictory, or only inferred from anecdotal play reports, this is called out explicitly under "Open Questions" rather than asserted as fact.
+
+## Overview
+
+A *Stars!* battle is a fully automatic, deterministic-per-inputs simulation that runs once per turn processing at every map location where hostile fleets/starbases coincide — there is no real-time player input during the fight itself. Before the turn is generated, each player pre-configures reusable "Battle Plans" per fleet (a primary/secondary target-type preference, a list of races considered legitimate enemies, and a movement "tactic"). When the turn processes, the game engine:
+
+1. Detects every location with two or more mutually hostile races present and builds a battle instance there.
+2. Places every participating ship into the battle as part of a "token" (a stack of identical-design ships) on a 10x10 tactical grid.
+3. Runs up to 16 rounds, each consisting of a movement sub-phase (governed by each token's chosen movement "tactic" and an attractiveness-driven target selection) followed by a firing sub-phase (governed by an initiative-ordered weapon-slot queue and a targeting/accuracy/damage model).
+4. Ends the battle early if only one race remains, or if all remaining races have no hostile orders toward one another; otherwise it stops at the 16-round cap.
+5. Produces mineral salvage from destroyed ships and, separately, a chance for survivors to gain partial tech levels from destroyed enemy designs (governed by a different subsystem, only summarized here).
+
+Source: [Guts of the Battle Engine — starsfaq.com](http://starsfaq.com/battleengine.htm)
+
+## Mechanics
+
+### 1. What triggers a battle
+
+A battle is generated at a location when two or more fleets (or a fleet and a starbase) belonging to different races are stacked there, **and** at least one of them carries orders to attack the other's race — the ship types involved are irrelevant to eligibility. A race's fleet that is present but has no attack order against anyone else there, and that nobody else there has orders to attack, sits the battle out entirely (and forfeits any tech-gain opportunity that battle might otherwise offer). Practically, "legitimate enemy" is symmetric: if any other race present has hostile orders against you (even with unarmed ships), you are automatically a legitimate target for them regardless of your own orders.
+
+Source: [Guts of the Battle Engine](http://starsfaq.com/battleengine.htm)
+
+### 2. The battle grid and tokens
+
+- The tactical board is a 10x10 grid of squares.
+- Every ship becomes part of a "token" (stack) with other ships that share the exact same design; a single fleet with multiple ship designs contributes one token per design, and splitting ships into a second fleet before battle is a way to force a second token of the same design.
+- Multiple tokens may occupy the same square.
+- There's a hard cap of 256 tokens per battle across all participants. If the cap would be exceeded, tokens from the fleets with the highest fleet ID numbers are dropped first; token slots are otherwise allocated fairly, split evenly per race, with unused shares redistributed to races that need more.
+
+Source: [Guts of the Battle Engine](http://starsfaq.com/battleengine.htm)
+
+### 3. Round structure and movement
+
+Each battle is capped at **16 rounds**. Every round has two ordered sub-phases: movement, then firing.
+
+**Movement speed and sequencing.** Each token has a speed rating letting it move 0–3 squares per round. A fractional bonus square is added on a schedule tied to the round number: a 1/4 bonus grants one extra square on round 1 and then every 4th round thereafter (round 5, 9, 13); a 1/2 bonus grants a bonus square every other round starting on round 1; a 3/4 bonus grants a bonus square on 3 of every 4 rounds. Within a round, movement resolves in speed tiers: all tokens capable of 3 squares of movement take their first step, then all tokens capable of 2+ squares take a step (this is the second step for speed-3 tokens), then all tokens with at least 1 square remaining take a final step. Within each of these steps, heavier tokens generally move before lighter ones, but if the weight difference between two tokens is under roughly 20% there is a proportionally increasing chance the lighter token acts first instead — i.e., ties are not absolute, they are weighted-random near parity.
+
+**Movement targeting (the 6 battle "tactics").** Each fleet's Battle Plan sets one of six AI behaviors that is re-evaluated every time a token is due to move a square:
+
+- **Disengage** — if any enemy is within its own firing range of you, move to a strictly farther square; if you can't increase distance, hold distance; if you can't even hold distance, move randomly; if no enemy is in range of you, move randomly. Successfully retreating off the board requires accumulating 7 squares of movement under this order.
+- **Disengage if Challenged** — behaves like Maximise Damage until the token actually takes damage, then switches to Disengage behavior for the rest of the battle.
+- **Minimise Damage to Self** — move away from threats exactly as Disengage would when in enemy range; otherwise, close in on the best available target without moving toward the enemy.
+- **Maximise Net Damage** — find the most attractive primary target (falling back to secondary targets, see targeting below); if any weapon is out of range, close the distance; once all weapons are in range, move so as to maximize damage-dealt divided by damage-received (in practice: hold at maximum range if your weapons outrange theirs, move randomly while stayed in range if ranges match, or close to point-blank if you're the shorter-ranged beam combatant). **Confirmed by inspection of the exported client**: candidate moves across every achievable range bracket against every eligible enemy token are scored by `ratio = -(damageReceived × 100) / (damageDealt + 1)`, clamped so a favorable (non-negative-damage-received) outcome always scores as `-1`; the move minimizing this ratio (i.e., maximizing dealt-vs-received) is chosen. Two of the six tactics score by damage dealt alone and two score by self-preservation (negated damage received) alone, consistent with Maximise Damage/Maximise Damage Ratio using one axis and Disengage-style tactics using the other; the remaining tactic pair uses this ratio formula.
+- **Maximise Damage Ratio** — identical logic to Maximise Net Damage, but only the single longest-ranged weapon on the ship is considered when deciding movement.
+- **Maximise Damage** — close distance until every weapon is in range of the most attractive target; beam-armed ships continue closing all the way to point-blank range (beam damage falls off with range, see below); missile/torpedo-armed ships, once in range, move randomly among squares that keep them in range.
+
+A documented quirk: starbases get a +1 bonus to weapon range (and to minesweeping rate) but cannot move, and the movement AI does not account for that range bonus when *other* ships are trying to disengage from a starbase — a ship trying to flee a range-6-missile starbase will move to distance 7 believing itself safe while still actually in range.
+
+Source: [Guts of the Battle Engine](http://starsfaq.com/battleengine.htm)
+
+### 4. Targeting logic
+
+A Battle Plan's targeting configuration has four parts: a **primary target type**, a **secondary target type**, a list of races considered legitimate enemies, and the movement tactic described above. When a token looks for something to shoot (or move toward), it first looks for the most "attractive" enemy token of a type listed as its primary target; only if no primary-type targets exist does it consider secondary-type targets. Target types not listed as either primary or secondary are never fired upon by that token, even if that ignored ship is itself shooting back.
+
+**Target-category classification, confirmed by inspection of the exported client.** The engine's target-type test is a 7-way classifier matching exactly the well-known category list (Any / Starbase / Armed Ships / Bombers / Unarmed Ships / Fuel Transports / Freighters): "Any" always matches; "Starbase" is tested via a single dedicated status flag rather than a category value (starbases are structurally distinct records, not classified by the same field as ships); "Armed Ships," "Fuel Transports," and "Freighters" are each an exact single-value category match; "Bombers" and "Unarmed Ships" are each satisfied by either of two category values — and one of those two values is shared between them, meaning **an unarmed ship carrying a bomb-type component counts as both a Bomber and an Unarmed Ship target simultaneously** for targeting purposes.
+
+**Correction, verified against the exported client:** the "list of races considered legitimate enemies" is not an independently stored per-race checklist. It is a single small category value with five possible settings: none; every race with an Enemy relationship; every race with an Enemy *or* Neutral relationship ("everyone except my Friends"); all races; or exactly one specific race. For three of these five settings, which races actually count as enemies is resolved live against the separate inter-race relationship table at the moment orders are evaluated, not stored per plan — see `diplomacy-relations.md`. Changing a relationship can therefore change who a fleet on an unmodified Battle Plan will engage. The Battle Plan record itself is a fixed 36-byte structure; one byte's low/high nibbles hold the primary/secondary target type (matching the "up to 15 types each" shape implied above), and a separate byte's low nibble holds the movement tactic, confirmed to use only values 0-5 — directly corroborating the six-tactic list.
+
+**Attractiveness formula.** Every enemy token has an attractiveness score used both to decide where a ship moves and which enemy it shoots first, and the score is recomputed as the battle progresses (since armor/shields deplete). The general shape, credited to community researcher Art Lathrop's testing:
+
+```
+Attractiveness = Cost / APN
+Cost = Boranium_cost + Resource_cost   (of the ship design; ironium/germanium excluded)
+```
+
+`APN` ("Attack Power Needed", sometimes called `eff_dp`) is weapon-type specific and represents roughly how much punishment the target can soak up against that weapon type:
+
+- **Beam weapons, non-sapper:**
+  `APN = (Armor + Shields) / (0.9^n) * RangeModifier`
+- **Beam weapons, sapper** (shield-only damage weapons):
+  `APN = Shields / (0.9^n) * RangeModifier`
+  where `n` = number of beam deflectors fitted, and `RangeModifier = 1 - 0.1 * (Range / MaxRange)` (this range term was the original researcher's best-effort inference; **now checked against the code and found absent from this specific formula.** The APN/attractiveness function was read in full: it does compute a target's distance and compare it against the firing weapon's max range, but only as a binary in-range/out-of-range eligibility gate — the distance value is discarded immediately afterward and never reappears in the APN math itself, which is built entirely from the target's Armor/Shields/deflector-stacking/cost fields. The `1 - 0.1×(Range/MaxRange)` shape genuinely does exist verbatim elsewhere in the same function, but as the beam **range-dissipation** formula applied to a shot's actual damage (already documented in §6 below), not as a targeting-priority multiplier — almost certainly the source of the original researcher's inference, since both formulas sit close together in the game's real behavior. Treat this document's own APN formula as **not** incorporating a range term.)
+- **Torpedoes and missiles**, where target Shields ≥ target Armor:
+  `APN = Armor * 2 / Accuracy`
+- **Torpedoes and missiles**, where target Shields < target Armor:
+  `APN = Shield * 2 / Accuracy + (Armor - Shield) / (Accuracy * WeaponType)`
+  where `WeaponType = 1` for standard torpedoes and `2` for capital-ship missiles, and `Accuracy` is the attacker's already-fully-modified (post-computer, post-jammer) hit chance against that specific target, expressed 0–1.
+
+A lower APN (i.e., a "softer" target relative to its cost) yields higher attractiveness and gets shot first. This is why cheap, lightly-defended "chaff" ships are extremely attractive targets (high Cost/APN is wrong direction — cheap ships have low Cost, but their APN is even lower, driving attractiveness up when heavily unshielded/unarmored relative to cost) and why adding shields or jamming meaningfully drops a design's priority as a target. The formula does not model the game's separate "one missile can only ever contribute to killing one whole ship" salvo-accounting nuance (see Damage Calculation), which is part of why fielding large numbers of cheap unshielded chaff tokens is an effective tactic distinct from simply having low attractiveness.
+
+Source: [Targeting Order in Battles — starsfaq.com](http://starsfaq.com/articles/sru/art201.htm) (mirrored in the same site's ["Guts" reference, §4.14](http://www.starsfaq.com/advfaq/guts2.htm))
+
+### 5. Initiative and firing order
+
+After the movement sub-phase, every token fires. Firing is resolved **weapon-slot by weapon-slot**, not ship by ship: all weapons occupying the same equipment slot on a token fire together as one shot. Slots are ordered by total initiative — hull base initiative + bonuses from computers fitted + the weapon's own initiative — with the **highest total initiative firing first**. If two slots (belonging to different tokens) tie on total initiative, the shorter-ranged weapon fires first; if they are still tied, the engine randomly decides a firing priority between the two ships the first time the tie occurs, and that priority is then kept fixed for the rest of the battle. Damage is resolved and applied immediately after each individual slot's shot, before the next slot in the queue fires — so a token destroyed earlier in the firing order never gets to fire its own not-yet-resolved slots that round.
+
+**Initiative computation, confirmed by inspection of the exported client.** A token's total initiative is built from a hull "size class" value (one of two base values, with the larger value reserved for a specific set of hull types), plus a mass-derived component bonus, plus roughly half of a separate category-based bonus accumulator, minus 4, further **+2 for one specific racial primary trait**, minus a mass-vs-component-count penalty term, with the whole result clamped to the range **0–8**. When computing a live combat token's initiative (as opposed to just a design's baseline), the engine additionally rolls a **random value 0–14** folded into a status field — the concrete mechanism behind the "randomly decides a firing priority" tie-break described above.
+
+Because each shot targets whatever is currently the most attractive in-range target at the moment it fires (falling back from the token's primary movement target to whatever primary/secondary-type target is actually in range), a token that closed in on one target during movement may end up shooting a different, closer one if its intended target drifted out of range.
+
+One additional documented quirk, observed for the endgame Battleship hull specifically: its weapon slots do not fire in a simple positional order but in the sequence *top-6, bottom-6, top-2, bottom-2, center-4* (referring to the hull's slot layout) — cited here as an example that per-hull slot firing order is not necessarily "left to right" and should be verified per-hull against play data rather than assumed uniform.
+
+Sources: [Guts of the Battle Engine](http://starsfaq.com/battleengine.htm); [Guts §4.14.1, Battleship slot firing order](http://www.starsfaq.com/advfaq/guts2.htm)
+
+### 6. Damage calculation
+
+**Per-shot base damage.** For a firing weapon slot:
+
+```
+ShotDamage = WeaponsInSlot * ShipsInToken * WeaponDamagePerHit
+```
+
+**Beam weapons — range dissipation and modifiers.** A beam weapon's damage falls off linearly with the range it's fired at, losing up to 10% of its damage at the weapon's maximum range (e.g., a range-2 beam does full damage at range 0, ~5% less at range 1, and ~10% less at range 2). Damage is further modified downward by the target's beam deflectors and, per other strategy sources, upward by the firer's energy capacitors. **The capacitor bonus's mechanism (not its exact percentage) is now confirmed by inspection of the exported client** — see Open Questions for what remains unresolved and why. Beam deflectors stack as:
+
+```
+DeflectedDamage = UndeflectedDamage * (0.9 ^ n)   where n = number of deflectors on the target
+```
+
+**Shields before armor.** All incoming damage (beam or missile) is applied to a token's pooled shield points first; only once the token's entire shield pool for that stack is exhausted does further damage reach armor.
+
+**Torpedo/missile hit resolution.** Each individual missile/torpedo in a shot is resolved as an independent hit/miss check against an accuracy percentage (see below).
+- A **miss** still deals 1/8 of its damage to the target's shields only (armor is unaffected by a miss).
+- A **hit** applies up to half its damage to shields, with the remainder going to armor (once shields for the stack are depleted, naturally all damage from subsequent hits goes to armor).
+- **Capital missiles** specifically deal **double damage to armor** for any portion of their damage that lands after the target's shields are already fully depleted — ordinary torpedoes do not get this doubling.
+
+**Accuracy — formula now confirmed by inspection of the exported client, and arithmetically cross-checked against the community-sourced worked numbers below (it reproduces all three published percentages exactly).** A missile/torpedo's chance to hit is a function of the weapon's own base accuracy, the firing ship's computers (which raise accuracy), and the target's jammers (which lower accuracy). Historically only the empirical before/after numbers below were available; this pass re-located and fully read the owning function (segment 31, `FUN_10f0_41ca`) rather than just the fragment previously excerpted in §8:
+- A weapon with 20% base accuracy and no computer support reaches 44% accuracy for the attacker when a single "Battle Super Computer" is fitted.
+- The same attacker, firing on a target fitted with a single "Jammer 20" component, sees accuracy fall — e.g. an unmodified 20%-base attacker drops to 16% against a Jammer-20 target, while the 44%-with-computer attacker drops to 28% against the same Jammer-20 target. (Both figures come from the same worked example; they show jammers and computers are not simply additive percentage points against each other — see the source article's algebra.)
+- Jammers show strongly diminishing returns as more are stacked on a single ship: one community-run test against a 7-computer-boosted torpedo attacker found accuracy dropping from 98% (0 jammers) to 93% (1), 86% (3), 83% (4), 79% (6), and only 78% (7) — the first jammer contributes far more than the seventh.
+- High-accuracy standard torpedoes are documented as much harder to jam down to low accuracy than capital missiles are, for a given amount of jamming — capital missiles rely more heavily on computer support and are correspondingly more vulnerable to jammers.
+
+**The confirmed formula.** `FUN_10f0_41ca(shotCount, targetToken, weaponBaseAccuracy, attackerComputerBonus)` takes the target's stored jam percentage (a byte field on the target's per-battle combat-stat record, see below) and the attacker's stored computer accuracy-bonus percentage (the analogous field on the attacker's record) and first lets them **partially cancel each other subtractively** — `residual = jam − computerBonus`. Whichever side has anything left over then determines which of two branches applies:
+- If jam's residual is ≥ 0 (computer bonus fully absorbed or absent): `accuracy = base × (100 − residualJam) / 100` — a simple proportional reduction.
+- If the computer bonus's residual is > 0 (it outweighed the jam): `accuracy = (100 − residualComputerBonus) × (base − 100) / 100 + 100` — a diminishing-return climb toward 100%, applied to the *shortfall* from 100% rather than to the base value directly. **This is exactly the previously-found candidate fragment** `adjusted = (100−jam)×(base−100)/100 + 100`, now confirmed to be one arm of a two-arm formula rather than the whole thing, with `jam` in that fragment actually being this residual-computer-bonus value, not raw jam.
+- The result is floored at 1% and at 100 (accuracy ≥ 100 always hits).
+
+**Arithmetic cross-check against the worked numbers above**, solving for the one unknown (the "Battle Super Computer" bonus stat, call it `C`): with base=20, no jam, `accuracy = (100−C)×(20−100)/100+100 = 44` gives `C = 30`. Holding `C = 30` fixed and re-running the other two cases reproduces both remaining figures exactly with no further free parameters — this is what elevates the formula from "plausible" to "confirmed":
+- Jammer-20 alone (jam=20, computer=0): `accuracy = (100−20)×20/100 = 16`. Matches the documented 16% exactly.
+- Battle Super Computer (30) vs. Jammer-20 (20): jam's residual after subtracting the computer bonus is negative, so the computer-bonus branch applies with a residual of `30−20=10`: `accuracy = (100−10)×(20−100)/100+100 = 28`. Matches the documented 28% exactly.
+
+**Per-shot resolution, also confirmed.** Once the final accuracy percentage is computed, the function resolves the shot's individual missiles/torpedoes one at a time via an independent random roll (`FUN_1040_1652(100)`, a general-purpose "random integer in [0, n)" helper used throughout the executable, e.g. also for the turn-generation engine's random-proportional-rounding bombing math) compared against the accuracy threshold — directly confirming §6's "each individual missile/torpedo is resolved as an independent hit/miss check" claim at the code level, for salvos of up to 200 shots. For salvos of 201 or more individual missiles in a single shot, the function switches to a deterministic expected-value shortcut (`hits = accuracy% × shotCount / 100`) instead of rolling each one — a previously-undocumented performance optimization that only matters for unusually large single-slot salvos, and does not change the per-shot statistics for ordinary fleet sizes.
+
+**Whole-ship kills within a token.** After a shot's total armor damage is computed, the number of *whole ships* destroyed in the target token is `floor(TotalArmorDamageFromThisShot / CurrentArmorPerShipInToken)`, where "current armor per ship" accounts for cumulative damage already suffered by the stack (`TotalArmor * remaining_undamaged_fraction`). Any remaining (non-lethal) damage from the same shot is then spread evenly across the surviving ships in the token. Internally, a token's cumulative armor damage is tracked in units of **1/500** of the stack's total armor (see §8 for the correction from this document's earlier "1/512" figure — the discrepancy is now resolved, not just re-confirmed), and this quantization is always rounded in the damage's favor (rounds up). This is exploitable: a design split into many small tokens, each individually easy to land at least one hit on, can cumulatively take more effective damage from many weak missile-slot hits than the same total ship count in one token would, since every slot that lands a hit contributes at least ~0.2% of that token's armor regardless of how small the actual per-missile damage roll was (1/500 = exactly 0.2%, matching this observation precisely).
+
+**"One missile, one kill" checked against the code — no distinct rule found (see Open Questions).** The whole-ship-kill division above is applied by the same function (`FUN_10f0_52c4`, see §8) regardless of whether the incoming damage came from a beam shot or a resolved missile/torpedo salvo: the caller aggregates an entire slot's salvo (all individual per-missile hit/miss rolls, shield/armor splits, and capital-missile doubling already applied) into one total armor-damage figure *before* handing it to the kill-division loop, and that loop has no additional cap tying the number of kills to the number of missiles that hit. A single weapon-slot shot can therefore still produce multiple whole-ship kills in one call if the aggregated damage is large enough relative to current per-ship armor — the division formula appears to be the complete kill-accounting story for missiles as well as beams, at least in the code path traced here.
+
+**Firing continues** slot-by-slot in initiative order (see §5) until every weapon slot currently in range has fired, then the round ends and the next round's movement phase begins.
+
+Sources: [Guts of the Battle Engine](http://starsfaq.com/battleengine.htm); [Guts §4.7, Beam Deflectors](http://www.starsfaq.com/advfaq/guts2.htm); ["Frigates vs. Cruisers" — worked accuracy numbers](http://starsfaq.com/articles/sru/art104.htm); ["When Not to Use Max Computers" — jammer-stacking table](http://starsfaq.com/articles/sru/art172.htm)
+
+### 7. How a battle ends
+
+A battle stops at whichever of these happens first:
+
+1. **Round cap** — 16 rounds have elapsed.
+2. **Last race standing** — only one race still has ships/starbases present.
+3. **Mutual non-hostility** — two or more races remain present, but none of them has hostile orders toward any of the others still present (this can happen mid-battle if the only race a given fleet was hostile to has already been wiped out).
+
+A token attempting to flee under the Disengage tactic (see §3) must accumulate 7 squares of movement to actually leave the battle board; ships that don't reach that threshold before the battle otherwise ends simply remain present (and, if the battle ends by round cap with hostiles of multiple races still alive, presumably fight again next turn at the same location, since the underlying trigger condition is unchanged).
+
+**Aftermath.** Destroyed ships leave salvage equal to 1/3 of the total mineral cost of everything destroyed in the battle; if the battle happened over a planet the salvage is deposited on that planet, otherwise it's left as a decaying deep-space mineral concentration (each mineral type decays 10%, or 10kT, whichever is larger, per year, in deep space; planet-side salvage does not decay). Separately, any race that had at least one ship survive the battle (by surviving to the end or by successfully retreating) becomes eligible for a chance to gain partial tech levels based on the enemy tech present in ships destroyed during the fight — this is a distinct subsystem from combat resolution itself and is out of scope for this document.
+
+Source: [Guts of the Battle Engine](http://starsfaq.com/battleengine.htm)
+
+### 7a. A diminishing-returns component-stacking formula, found but not conclusively identified
+
+A ship-design stat aggregator was found to compute, for certain equipment categories mounted in multiple slots, a stacking percentage using `p = p + (100 - p) × rate / 100` applied once per matching component (rate fixed at 10, or looked up per-component for a different equipment family), with the running additive total separately capped at **63%**. This diminishing-returns shape is the same general pattern this document's §6 uses for beam deflector stacking (`(0.9)^n`) and is consistent with how jammers are known to stack (§6's accuracy section), but this specific function could not be conclusively tied to jammers, cloaking, or another electronics stat — flagged here as a candidate data point rather than a confirmed formula. Do not treat the 63% figure as a confirmed jammer/cloak cap without further corroboration.
+
+**Confirmed by inspection of the exported client, exhaustive segment-31 pass.** This formula's owning function has now been individually read in full (it is one specific, small function in segment 31, distinct from the token/design-stat aggregator in §6's cross-reference). It computes *two* outputs from the same per-slot walk: (a) the 0–63-capped value described above, fed by two triggers — a fixed category/subtype pair using a flat rate of 10, and a second category (spanning four adjacent subtype codes) that instead looks up a per-component rate field via the shared component resolver; and (b) a second, independently-accumulated percentage using the identical `p = p + (100-p)×rate/100` shape but with no explicit cap coded (it saturates toward 100 naturally). Both outputs are then written into a per-battle-token record (by the token-setup pass, see the new §8 note below) at two adjacent byte fields alongside the token's initiative and other combat stats. This places the formula squarely inside battle-token *setup*, not general ship-design bookkeeping.
+
+**Real-world label now identified — it is neither jamming nor cloaking.** A follow-up pass traced this function to its name, `FUN_10f0_264c` (`stars.exe.export.c:99898`-`99973`), and its caller, `FUN_10f0_2786` (`stars.exe.export.c:99977`-`99992`), which is invoked once per token immediately before `FUN_10f0_27da` in the token-setup loop (`FUN_10f0_2cca`, e.g. `stars.exe.export.c:100351`-`100352`). The caller writes the two outputs to concrete, confirmed offsets: `*(byte*)(token+6) = <0-63-capped value>` and `*(byte*)(token+0xc) = <uncapped/saturating value>` (`stars.exe.export.c:99988` and `99990`). Both fields are then independently confirmed as READ elsewhere in the battle engine:
+
+- **Token offset `+0xc` is the "computer accuracy bonus" byte already flagged in §8/Open Questions** — `FUN_10f0_41ca` (the accuracy formula) reads this exact offset from the firing token as its `attackerComputerBonus` 4th argument (call sites at `stars.exe.export.c:100625` and `101938`). This closes that Open Question: see the new §8 bullet below for the full write-site trace. **This decisively rules out cloaking or jamming for output (b)** — it is the computer's stacked accuracy bonus, not a detection-related stat. Fittingly, inside `FUN_10f0_264c` this output accumulates via the diminishing-returns shape using each installed Battle Computer/Battle Super Computer/Battle Nexus's own stored accuracy-bonus stat (20/30/50, category `0x0800` subtypes 5/6/7 — `stars.exe.export.c:99941`-`99958`) as the per-component rate, i.e. multiple computers of different tiers now have a confirmed, code-level stacking rule (diminishing returns, not simple addition, not "best computer only").
+- **Token offset `+6` is read inside the per-weapon-slot firing function `FUN_10f0_4326`** (`stars.exe.export.c:101593`) as `*(byte*)(token+6) + weaponComponent[+0x38]`, clamped to 0–63 and compared for equality against the current initiative bracket (`param_2`) being processed by the firing dispatcher — i.e. it is added directly to the firing weapon's own stored initiative stat to decide which initiative bracket that slot fires in. This is an initiative-family value, not a detection/defense stat: consistent with §5's "hull size class value... plus a mass-derived component bonus... plus roughly half of a separate category-based bonus accumulator" description, though this pass did not fully reconcile it against `FUN_10f0_2184`'s separately-confirmed 0–8-clamped overall initiative value (read in full this pass, `stars.exe.export.c:99622`-`99757`, and found to compute initiative from the design's component list directly rather than from this cached byte) — the two may serve different granularities (a coarse 0–8 "initiative bracket count" driving the firing dispatcher's outer loop vs. this finer 0–63 per-slot tiebreak value), which is noted here as a residual gap rather than asserted with certainty.
+
+This closes the "what does §7a's formula actually measure" question in the negative direction the original hedge already flagged as possible ("an initiative-adjacent 0–8-range bonus after further scaling") for output (a), and definitively identifies output (b) as the computer accuracy bonus. **Corroborating evidence that cloaking is sourced elsewhere entirely:** §8 already independently confirms "a per-design cloak-percentage lookup table with 18 entries," a flat data lookup unrelated to this stacking formula — there was never a structural need for cloaking to live in `FUN_10f0_264c` in the first place.
+
+Two loose ends from this trace, noted for completeness rather than pursued further: the `+6` output's first trigger (`FUN_10f0_264c`, `stars.exe.export.c:99927`-`99939`) fires on category `0x0010` (Beam weapons) subtype `0x12` specifically — by the same subtype-numbering scheme confirmed for the computer family, this indexes to "Multi Contained Munition" (`extracted-game-data/component-stats.tsv` category `0x0010` idx 18), an unremarkable mid-tier beam weapon with no obvious mechanical reason to specifically trigger an initiative-stacking bonus at flat rate 10 — flagged as understood mechanically but not motivated. Category `0x1000` (Mechanical) subtypes 7/8 (Maneuvering Jet, Overthruster) were also seen contributing to the *other* accumulator inside the separately-confirmed initiative function `FUN_10f0_2184` (`stars.exe.export.c:99689`-`99695`), which is a plausible, thematically consistent match (engine-adjacent components affecting initiative) but was not cross-checked against official documentation.
+
+### 8. Verification against the exported client
+
+A pass over the game's decompiled turn-generation logic (summarized fully in `turn-generation-engine.md` §2) independently confirms several of the above facts directly from the executable, and identifies the boundary of what could and could not be checked this way:
+
+- **The 16-round cap is confirmed directly** — the battle-resolution routine's round loop is an explicit, hardcoded bound of 16 iterations, matching this document's §7 claim exactly.
+- **The 10×10 grid is confirmed independently twice** — both in the battle-replay viewer's own grid-drawing routine (which draws exactly 10 gridlines per axis) and in its click-hit-testing code (which clamps both axes to 0-9). Each token's board position is stored as a single byte with one 4-bit column and one 4-bit row value, consistent with (though not a proof of) a grid no larger than 10 per side.
+- **The battle-replay ("VCR") viewer is confirmed to be pure playback.** It reads a pre-computed, round-by-round event log (each entry: a token id, a "beam fired" or "missile fired" flag, and a raw damage/delta value) and only ever animates and displays these already-decided outcomes — it performs no targeting, accuracy, or damage computation of its own anywhere in its code. The actual per-shot math happens earlier, inside the turn-generation battle engine that builds this log in the first place.
+- **A per-design cloak-percentage lookup table with 18 entries is confirmed to exist**, corroborating that cloaking affects combat outcomes (this document previously had no mention of cloaking at all). **Now fully resolved, including the individual values — see §11.** The "18 entries" turned out to be the Tachyon Detector's counter-cloak multiplier table specifically (indexed 0–17 by installed-detector count), found via this project's established CS-relative-constant-data technique; the base design cloak percentage itself turned out to be a piecewise formula rather than a table, also now fully recovered.
+- **The 256-token cap is now confirmed directly.** The per-battle token array is allocated at a fixed byte size that divides exactly by the per-token record size (29 bytes) to give **256** — an exact match for this document's §2 figure, not just a "consistent with" byte-width observation. The per-race fair-allocation/highest-fleet-ID-dropped-first rule itself was still not independently located.
+- **The exact targeting/"attractiveness" formula (§4) is now confirmed in its decision-rule shape, though not its full APN sub-formulas.** A dedicated function computes `ratio = -(damageReceived × 100) / (damageDealt + 1)`, clamped so any outcome with non-negative net damage received scores as `-1` — an exact code-level match for the §4 formula already stated as "confirmed by inspection" above. The 7-way target-type classifier (Any/Starbase/Armed/Fuel Transports/Freighters/Bombers/Unarmed, with Bombers and Unarmed sharing one category value) is likewise now pinned to one concrete function, matching the §4 description exactly, including the shared-value overlap. A token's initiative computation was also pinned to one concrete function whose final result is clamped to **0–8**, matching §5's "clamped to the range 0–8" claim exactly. The round-by-round bonus-movement-square schedule (1/4, 1/2, 3/4) described in §3 was likewise traced to one small function and confirmed to implement exactly that schedule.
+- **The accuracy formula (§6) is now fully confirmed and arithmetically cross-checked, closing this Open Question.** A follow-up pass re-located the owning function (`FUN_10f0_41ca`, segment 31) and read it in full rather than the fragment excerpted in an earlier revision of this bullet. Each individual missile/torpedo's hit/miss check is confirmed to run via an independent bounded random roll (`FUN_1040_1652(100)`) against a computed percentage threshold — directly confirming §6's "each individual missile/torpedo is resolved as an independent hit/miss check" claim at the code level, for salvos up to 200 shots (larger single-slot salvos use a deterministic expected-value shortcut instead, a previously-undocumented detail). The threshold itself is computed by first letting the target's jam percentage and the attacker's computer accuracy-bonus percentage cancel each other subtractively, then applying `accuracy = base × (100 − residualJam) / 100` if any jam residual remains, or `accuracy = (100 − residualComputerBonus) × (base − 100) / 100 + 100` if any computer-bonus residual remains instead — the previously-noted `adjusted = (100 − jam) × (base − 100) / 100 + 100` fragment is confirmed to be this second branch specifically, not the whole formula. Solving for the "Battle Super Computer" bonus stat from the documented 20%→44% case gives exactly 30, and holding that value fixed reproduces both remaining documented figures (16% and 28%) exactly — see §6 for the full derivation. This is now treated as a confirmed formula, not a candidate.
+- **The armor-quantization scheme (§6) discrepancy is now resolved, not just re-confirmed.** The same damage-application function (`FUN_10f0_52c4`, segment 31) stores a token's cumulative-damage state in one 16-bit field, packed as two adjacent sub-fields rather than one: the low 7 bits (0–127, the field an earlier pass had found and flagged as mismatched against the documented 1/512 figure) hold a percentage-style reconstruction of how many whole ships in the token have already been destroyed so far (recombined with the token's current ship count each shot to recover an absolute already-dead count); the high 9 bits (bits 7–15) hold the actual fractional armor-damage accumulator, and the code explicitly clamps this sub-field to **0–499** (`if (499 < value) value = 499;`) before repacking it — i.e. real granularity of **1/500**, not 1/512, but close enough that the earlier community figure was very likely an approximation or a mis-derivation of the same mechanic rather than a wholly different one. The earlier "7-bit field" observation was capturing only the low half of this packed word, not the whole armor-fraction mechanism — hence the apparent mismatch. §6's worked-numbers text ("~0.2% of armor per landed hit") is in fact an exact match for 1/500 (0.200%), which is additional corroborating evidence for the 1/500 reading over 1/512 (0.195%).
+- **The "one missile, one kill" salvo-accounting aside (§6, Open Questions) was checked against the actual missile damage-application path and does not appear to exist as separate code.** The same `FUN_10f0_52c4` function applies the whole-ship-kill division loop identically whether the incoming damage originated from a beam shot or an already-resolved missile/torpedo salvo (the missile-specific hit/miss/shield-split/capital-doubling math all happens in the caller, `FUN_10f0_4326`, before a single aggregated damage figure is handed to this function) — no additional per-shot kill cap tied to missile count was found. The division formula in §6 appears to be the complete story for missiles as well as beams in this code path; see the new Open Questions entry for the caveat on how confident this negative finding is.
+- **The energy-capacitor beam-damage bonus (§6/Open Questions) now has a confirmed mechanism, though not a confirmed percentage.** The per-battle-token stat-setup function already cited in §7a (`FUN_10f0_27da`) computes a compounding multiplier from category `0x0800`, subtypes `0x0c`/`0x0d` — distinct from the capped-at-63%/saturates-to-100% pair described in §7a, this output instead *compounds upward* per component (`accum = accum × (rate + 100) / 100`, i.e. growth rather than diminishing return) and is explicitly clamped at **255%** of baseline. `FUN_10f0_4326` (the per-weapon-slot firing/targeting function) reads this exact stored byte directly on the firing ship's combat-stat record and multiplies it into the base beam damage figure for that shot (`damage = damage × storedPercent / 100`), guarded so the multiply is skipped entirely when no capacitors are fitted (field otherwise left at 0, not 100). This is a confident structural match for "energy capacitors increase beam damage": the mechanism, its cap, and its application point are now pinned to concrete functions. The one thing still missing is the *per-component rate* itself — that value comes from the same per-category static component-data block whose location is known but whose contents could not be recovered (the unresolved decompiler/fixup issue already documented under Open Questions item 1's "exact canonical weapon/armor/shield numeric stat tables" — this is the same blocker, not a new one).
+- **A related, previously-unidentified per-token stat field was pinned down as a side effect of this pass: an attacker "computer accuracy bonus" byte**, read directly by the accuracy formula above (`FUN_10f0_41ca`'s 4th argument) from the firing ship's combat-stat record. **Its write site is now traced.** The byte lives at token offset `+0xc` and is populated by `FUN_10f0_2786` (`stars.exe.export.c:99977`-`99992`), called once per token during token setup (`FUN_10f0_2cca`) immediately before `FUN_10f0_27da`. `FUN_10f0_2786` delegates the actual accumulation to `FUN_10f0_264c` (`stars.exe.export.c:99898`-`99973`), which walks the design's installed-component array and, for each installed component in category `0x0800` (Electrical) with subtype 5, 6, or 7 — **Battle Computer, Battle Super Computer, and Battle Nexus respectively, confirmed against `extracted-game-data/component-stats.tsv`'s Electrical category** — folds that component's own stored accuracy-bonus stat (20/30/50) into a running total via the diminishing-returns shape `p = p + (100-p)×rate/100`, with no cap coded (§7a's output (b); see the new §7a note above for the full trace, including a second, minor trigger on one specific beam weapon at a flat rate of 10). This confirms the task's own hypothesis: the computer accuracy bonus is populated from Electrical-category "Battle Computer" family components specifically, and multiple computers stack with diminishing returns rather than simple addition or "best one only."
+- **The exact 1/3 salvage-cost divisor from §7 is now confirmed directly at the code level.** The mineral-salvage computation walks a destroyed design's component-cost fields, multiplies by the number of ships lost, and divides by exactly **3** — an exact match for this document's "salvage equal to 1/3 of the total mineral cost" claim, previously sourced only from the public FAQ.
+- **The battle-replay ("VCR") event log's *writer* side is now located** (the reader/playback side was already confirmed in §8 above from segment 30). The same function that applies shields-then-armor damage and computes whole-ship kills also appends the log entry the VCR viewer later reads (a token id, a beam/missile flag, and a signed damage delta), immediately after each shot resolves — closing the loop between "per-shot math happens earlier" (stated above) and where, specifically, it happens.
+- **The beam APN sub-formula's home is now pinned down, but the RangeModifier term (§4/Open Questions) was not found there.** The APN computation is not a small standalone function as previously guessed — it is inlined directly inside the same per-weapon-slot targeting/firing function (`FUN_10f0_4326`) that scans every eligible enemy token to pick the most attractive one. Its torpedo/missile branch is a strong structural match for both documented APN sub-formulas: a `Shield×2/Accuracy`-shaped term is computed unconditionally, a second, more complex term folds in `(Armor−Shield)` against accuracy scaled by a `weaponType`-like flag that is 0 for most weapon subtypes and 1 for four specific subtypes of one weapon category — matching the documented `WeaponType = 1` (standard torpedo) vs. `2` (capital missile) distinction exactly (the code computes `(weaponTypeFlag + 1)` as the effective divisor multiplier) — and the two terms are combined with a clamp that is consistent with the doc's two-branch (shields ≥ armor vs. shields < armor) structure. Its beam branch computes an analogous ratio of the form `(X × 100) / (Armor + Shields + 1)` for the non-sapper case and `(X × 100 + Shields − 1) / Shields` for a shields-only case — matching the documented non-sapper/sapper APN split — where `X` incorporates the same deflector-stacking percentage used elsewhere in this document. **No separate, clearly range-dependent multiplicative term was found feeding into `X`** in the portion of this function traced this pass; the numerator's inputs look more consistent with per-design armor/shield sums and the deflector percentage than with a live weapon-range value. **Superseded by a later, full-function re-read (see §4's inline note): with the entire function now read end to end, this is upgraded from "not confirmed present" to a considered negative** — a distance value is computed and used only as a binary in-range eligibility gate, discarded before the APN math runs, and the `1-0.1×(Range/MaxRange)` shape does exist verbatim elsewhere in the same function as the beam range-dissipation formula (§6) — almost certainly the source of the original researcher's inference.
+- **Battleship weapon-slot firing-order generality (§5/Open Questions): no separate per-hull firing-order table exists, and this is now confirmed positively rather than only by its absence.** The per-hull design-record area (`ship-design-and-components.md` §1-§2, the 147-byte record and its per-hull slot-template resolver `FUN_1070_2808`) was re-examined specifically for a per-hull slot-firing-order table. `FUN_1070_2808` turned out to be a slot-name/string-template copy routine, not a data table with ordering information, and `ship-design-and-components.md` itself already independently notes that even the more basic "per-slot allowed-category mask" table content was never located in this segment. No per-hull firing-order table was found anywhere near the design-record layout code — consistent with there simply being no such table to find. **A follow-up pass confirms the positive mechanism instead: the firing dispatcher `FUN_10f0_5950` (`stars.exe.export.c:102555`-`102974`) processes initiative brackets high-to-low and, within each bracket, invokes `FUN_10f0_4326` (`101501`-`102037`) whose own internal loop always walks a design's up-to-9 installed-component array from index 0 upward, firing whichever entries match the current bracket** — i.e., "slot order" for same-initiative weapons is simply array-index order, with no lookup table involved anywhere. See the Open Questions entry below for the full trace.
+- **Post-battle resource handling is tied into the same production-planning logic the AI uses for its own economy** (see `ai-opponent-behavior.md` §6) — after each round's damage resolves, a shared routine evaluates whether destroyed-ship minerals should be pulled toward nearby production needs, though this is a different code path from the salvage/decay mechanic described in §7 above and the two were not reconciled against each other.
+
+**Segment 31 characterization — fourth pass, now exhaustive.** Three prior sampling passes (summarized in earlier revisions of this document, collectively covering roughly 45-50% of the segment's 40 numbered functions) characterized segment 31 (`FUN_10F0_*`) as "mostly the battle engine and AI production planning" and flagged the remainder as very likely more of the same. A fourth pass individually read **all 40 numbered functions** (plus the three specially-named dialog procedures already attributed to `client-interface.md`), the first exhaustive accounting of this segment. The "more of the same" hypothesis mostly held — the great majority of the previously-unread functions are indeed more battle-round movement/targeting/firing/salvage internals, small helper/utility functions, or presentation-adjacent bookkeeping — but this pass also produced a run of concrete formula/mechanism confirmations (folded into §§7a and 8 above) and one genuinely new subsystem (§9 below):
+
+- **Every function in the segment now has a concrete, individually-verified role.** This includes several small helper functions previously left unindividuated (component-category existence checks used to classify a design's armament for targeting purposes; a generic component/design-slot address resolver reused throughout the segment; small comparison and decay/accumulator helpers whose exact real-world referents remain uncertain but whose mechanical behavior is now known).
+- **The master per-location, per-turn driver was identified.** One function ties together the pieces the three prior passes had found separately: it walks every fleet/starbase at a location, calls the legitimate-enemies bitmask builder, and — if a fight is triggered — hands off to the battle-round engine; **it then also drives a second, entirely separate pass over the same fleet list for planetary bombing** (see §9). This is the first time these two per-turn processes have been shown to share one top-level driver.
+- **A previously-uncertain Fisher-Yates shuffle is now shown to operate on the battle-token array, not a general-purpose list.** The shuffle function takes no parameters and always operates on the same fixed pair of globals (the just-built per-battle token array and its count) — it cannot be a generic reusable "shuffle any list" routine. It runs immediately after tokens are built, for every battle, and is the strongest available candidate for how the game implements §5's "randomly decides a firing priority... kept fixed for the rest of the battle" tie-break rule (a full up-front shuffle establishes a fixed relative order once, rather than a per-tie coin flip). See `ai-opponent-behavior.md` §8 for a correction to that document's attribution of this same shuffle mechanism to the AI's owned-fleet processing order.
+- **The battle-token array's fixed size exactly matches the documented 256-token cap** (see the new §8 bullet above) — resolving a previously-open verification item.
+- **No hidden fourth subsystem was found among the battle-engine/AI-production functions themselves** — the "more of the same" hypothesis from the three prior passes is confirmed, not refuted, for that portion of the segment.
+
+**Conclusion and rating.** With all 40 numbered functions now individually examined and assigned a concrete role, and no remaining unaccounted-for surface area, this segment meets the same bar used to upgrade segments 10/29/30/34 to Full. See `code-coverage-report.md`'s segment 31 row for the updated rating and a full function-by-function accounting.
+
+### 9. Planetary bombing — a related but distinct subsystem, newly identified
+
+A previously-undocumented mechanic was found sharing the same per-location, per-turn driver as battle detection (see above), but triggered separately: after the fleet-vs-fleet battle pass completes for a location, the same driver runs a second pass over every fleet, checking each one's stored hostility disposition (via the same per-race-pair relationship lookup used for the "legitimate enemies" bitmask, §1/§4) against every planet present. Where a fleet is hostile to a planet's owner, a bombing-resolution routine runs:
+
+- It computes population-kill, defense-destruction, and mineral/building-damage amounts as percentages of the planet's current totals, using the bombing fleet's aggregate bombing-capable component stats (fetched via a call into a different segment's dedicated bomb-effect calculator, not itself part of segment 31) combined with a computed planetary-defense-coverage fraction.
+- Each computed percentage is applied with **random proportional rounding** (a fractional remainder is resolved via a bounded random roll against the remainder's own magnitude, rather than simple truncation or banker's rounding) before being subtracted from the planet's stored fields — the same "round in the actor's favor, but randomly" shape as other percentage-based mechanics in this codebase.
+- Distinct message codes are selected and logged depending on the outcome combination (no effect / partial effect / total population loss / planet already undefended, etc.), and a starbase-mineral-transfer race condition is separately handled (minerals moved between the bombed planet and its besieging fleet, capped and clamped).
+- On a successful bombing pass, the same tech-gain trigger check used at the end of fleet-vs-fleet battles (see below) is invoked for the bombing race, gated on the target's defenses having been fully eliminated.
+
+This is a genuinely new finding for this document, which is scoped to "the tactical battle system" (ship-vs-ship combat) and had no prior mention of bombing. It is documented here only at the orchestration level — the actual per-component bomb-effect computation lives in a different segment and was not traced as part of this pass. **This subsystem is out of scope for the rest of this document's mechanics (§§1-7) and is not part of the fleet-vs-fleet battle described above**; it is recorded here because it shares the same discovery context and top-level driver function.
+
+**Tech-gain-from-battle orchestration, partially traced.** Separately, the battle-end handling was found to gate a call into a per-design tech-level-gain routine (which lives outside this segment and was not traced) behind a flag set during the battle-round loop itself, together with a per-race random-roll function that, once a battle is won outright, has roughly even odds (a roll must exceed 49 out of 100) of granting one of 13 tech-related field bonuses (weighted by a stored per-race percentage table) or, failing that, one of 6 fallback "growth"-style field bonuses (weighted by a second stored per-race table). This confirms that the "chance for survivors to gain partial tech levels" mechanic mentioned in §7's Aftermath note is real and triggered from this segment's battle-end code, but the concrete tech-gain computation itself, and the real-world meaning of the 13/6-way category tables, were not traced further and remain out of scope for this document.
+
+### 10. The canonical weapon/armor/shield/hull stat tables, recovered
+
+**This section closes what was this document's longest-standing Open Question.** The per-component
+base-stat tables the worked examples below previously had to substitute placeholder numbers for have
+been located in the executable and extracted in full. `ship-design-and-components.md` §15 documents
+the addressing problem that had blocked several prior passes, the method that resolved it, and the
+complete record format; the full extracted dataset lives in
+`extracted-game-data/component-stats.tsv`. Only the combat-relevant subset is reproduced here.
+
+Every component record carries, in a uniform layout: six tech-level prerequisites (Energy, Weapons,
+Propulsion, Construction, Electronics, Biotechnology), a name, mass in kT, a four-way cost
+(resources plus ironium/boranium/germanium), and then category-specific stats. Costs below are
+written `ironium/boranium/germanium + resources`.
+
+**Two independent confirmations of this document's own prior reasoning fell out of the extraction,
+which is worth stating before the tables**: §6 solved algebraically for the Battle Super Computer's
+accuracy bonus and derived **30**, purely from three published worked percentages — the recovered
+record for that component stores exactly 30. The Jammer 20 used in the same worked example stores
+exactly 20. Neither number was available to the pass that did that algebra.
+
+#### 10a. Beam weapons (24 entries)
+
+Range is the weapon's maximum range in grid squares; damage is per weapon per ship. "Fire mode"
+is a stored per-weapon selector: *standard*, *sapper* (a shield-only weapon), or *hits-all* (the
+gatling-type weapons that strike every target in range rather than one).
+
+| Weapon | Weapons tech | Range | Damage | Initiative | Mass | Cost | Fire mode |
+|---|---|---|---|---|---|---|---|
+| Laser | 0 | 1 | 10 | 9 | 1 | 0/6/0 + 5 | standard |
+| X-Ray Laser | 3 | 1 | 16 | 9 | 1 | 0/6/0 + 6 | standard |
+| Mini Gun | 5 | 2 | 13 | 12 | 3 | 0/16/0 + 10 | hits-all |
+| Yakimora Light Phaser | 6 | 1 | 26 | 9 | 1 | 0/8/0 + 7 | standard |
+| Blackjack | 7 | 0 | 90 | 10 | 10 | 0/16/0 + 7 | standard |
+| Phaser Bazooka | 8 | 2 | 26 | 7 | 2 | 0/8/0 + 11 | standard |
+| Pulsed Sapper | 9 | 3 | 82 | 14 | 1 | 0/0/4 + 12 | sapper |
+| Colloidal Phaser | 10 | 3 | 26 | 5 | 2 | 0/14/0 + 18 | standard |
+| Gatling Gun | 11 | 2 | 31 | 12 | 3 | 0/20/0 + 13 | hits-all |
+| Mini Blaster | 12 | 1 | 66 | 9 | 1 | 0/10/0 + 9 | standard |
+| Bludgeon | 13 | 0 | 231 | 10 | 10 | 0/22/0 + 9 | standard |
+| Mark IV Blaster | 14 | 2 | 66 | 7 | 2 | 0/12/0 + 15 | standard |
+| Phased Sapper | 15 | 3 | 211 | 14 | 1 | 0/0/6 + 16 | sapper |
+| Heavy Blaster | 16 | 3 | 66 | 5 | 2 | 0/20/0 + 25 | standard |
+| Gatling Neutrino Cannon | 17 | 2 | 80 | 13 | 3 | 0/28/0 + 17 | hits-all |
+| Myopic Disruptor | 18 | 1 | 169 | 9 | 1 | 0/14/0 + 12 | standard |
+| Blunderbuss | 19 | 0 | 592 | 11 | 10 | 0/30/0 + 13 | standard |
+| Disruptor | 20 | 2 | 169 | 8 | 2 | 0/16/0 + 20 | standard |
+| Multi Contained Munition | 21 | 3 | 140 | 6 | 8 | 6/40/6 + 40 | standard |
+| Syncro Sapper | 21 | 3 | 541 | 14 | 1 | 0/0/8 + 21 | sapper |
+| Mega Disruptor | 22 | 3 | 169 | 6 | 2 | 0/30/0 + 33 | standard |
+| Big Mutha Cannon | 23 | 2 | 204 | 13 | 3 | 0/36/0 + 23 | hits-all |
+| Streaming Pulverizer | 24 | 1 | 433 | 9 | 1 | 0/20/0 + 16 | standard |
+| Anti-Matter Pulverizer | 26 | 2 | 433 | 8 | 2 | 0/22/0 + 27 | standard |
+
+Note the design pattern now visible in the numbers: among the standard-mode beams, range is traded
+against both damage and initiative, and the two move together in lockstep — range 0 weapons sit at
+initiative 10–11, range 1 at 9, range 2 at 7–8 and range 3 at 5–6, while the short-ranged entries
+carry far more damage for their mass. A long-ranged standard beam therefore fires late in the round.
+**The three sappers are the deliberate exception**: range 3 *and* initiative 14, the highest in the
+table, so they strike before anything else — consistent with a weapon whose job is to strip shields
+before the rest of the fleet's shots land. They are also the only beams costing germanium and no
+boranium, which is a clean structural marker for the family.
+
+#### 10b. Torpedoes and capital missiles (12 entries)
+
+The first eight entries are torpedoes; the final four (the "Missile" family) are the capital
+missiles that §6's double-damage-after-shields rule applies to. Accuracy is the weapon's own base
+accuracy before computers and jammers.
+
+| Weapon | Tech (W/P/B) | Range | Damage | Initiative | Accuracy | Mass | Cost |
+|---|---|---|---|---|---|---|---|
+| Alpha Torpedo | 0/0/0 | 4 | 5 | 0 | 35% | 25 | 9/3/3 + 5 |
+| Beta Torpedo | 5/1/0 | 4 | 12 | 1 | 45% | 25 | 18/6/4 + 6 |
+| Delta Torpedo | 10/2/0 | 4 | 26 | 1 | 60% | 25 | 22/8/5 + 8 |
+| Epsilon Torpedo | 14/3/0 | 5 | 48 | 2 | 65% | 25 | 30/10/6 + 10 |
+| Rho Torpedo | 18/4/0 | 5 | 90 | 2 | 75% | 25 | 34/12/8 + 12 |
+| Upsilon Torpedo | 22/5/0 | 5 | 169 | 3 | 75% | 25 | 40/14/9 + 15 |
+| Omega Torpedo | 26/6/0 | 5 | 316 | 4 | 80% | 25 | 52/18/12 + 18 |
+| Anti Matter Torpedo | 11/12/21 | 6 | 60 | 0 | 85% | 8 | 3/8/1 + 50 |
+| Jihad Missile | 12/6/0 | 5 | 85 | 0 | 20% | 35 | 37/13/9 + 13 |
+| Juggernaut Missile | 16/8/0 | 5 | 150 | 1 | 20% | 35 | 48/16/11 + 16 |
+| Doomsday Missile | 20/10/0 | 6 | 280 | 2 | 25% | 35 | 60/20/13 + 20 |
+| Armageddon Missile | 24/10/0 | 6 | 525 | 3 | 30% | 35 | 67/23/16 + 24 |
+
+The capital missiles' 20–30% base accuracy against the torpedo family's 35–85% is the concrete
+numeric basis for the community observation §6 already records — that capital missiles depend far
+more heavily on computer support and are correspondingly far more vulnerable to jamming.
+
+#### 10c. Shields and armor
+
+| Shield | Energy tech | Shield points | Mass | Cost |
+|---|---|---|---|---|
+| Mole-skin Shield | 0 | 25 | 1 | 1/0/1 + 4 |
+| Cow-hide Shield | 3 | 40 | 1 | 2/0/2 + 5 |
+| Wolverine Diffuse Shield | 6 | 60 | 1 | 3/0/3 + 6 |
+| Croby Sharmor | 7 | 60 | 10 | 7/0/4 + 15 |
+| Shadow Shield | 7 | 75 | 2 | 3/0/3 + 7 |
+| Bear Neutrino Barrier | 10 | 100 | 1 | 4/0/4 + 8 |
+| Langston Shell | 12 | 125 | 10 | 10/2/6 + 20 |
+| Gorilla Delagator | 14 | 175 | 1 | 5/0/6 + 11 |
+| Elephant Hide Fortress | 18 | 300 | 1 | 8/0/10 + 15 |
+| Complete Phase Shield | 22 | 500 | 1 | 12/0/15 + 20 |
+
+| Armor | Armor points | Mass | Cost |
+|---|---|---|---|
+| Tritanium | 50 | 60 | 5/0/0 + 10 |
+| Crobmnium | 75 | 56 | 6/0/0 + 13 |
+| Carbonic Armor | 100 | 25 | 0/0/5 + 15 |
+| Strobnium | 120 | 54 | 8/0/0 + 18 |
+| Organic Armor | 175 | 15 | 0/0/6 + 20 |
+| Kelarium | 180 | 50 | 9/1/0 + 25 |
+| Fielded Kelarium | 175 | 50 | 10/0/2 + 28 |
+| Depleted Neutronium | 200 | 50 | 10/0/2 + 28 |
+| Neutronium | 275 | 45 | 11/2/1 + 30 |
+| Mega Poly Shell | 400 | 20 | 18/6/6 + 65 |
+| Valanium | 500 | 40 | 15/0/0 + 50 |
+| Superlatanium | 1500 | 30 | 25/0/0 + 100 |
+
+Only the single primary stat is stored per record, so components the game describes as combined
+armor-and-shield items (Croby Sharmor and Langston Shell among the shields, Fielded Kelarium and
+Mega Poly Shell among the armors) carry only their own category's value in the table; their
+unusually high mass and cost relative to their stated stat is the visible trace of a secondary
+contribution applied elsewhere.
+
+**Half-resolved by a follow-up pass into `ship-design-and-components.md` §7's aggregate-stats
+function.** A full read of `FUN_10f0_27da` (`stars.exe.export.c:99996`-`100196`) finds that two of
+these four components are directly special-cased there, by exact category+subtype match, inside the
+function's base-10000 "value"/defense-percentage accumulator: **Langston Shell** (Shield category
+`0x0004`, subtype 6) sets a **95%** per-unit multiplier, and **Mega Poly Shell** (Armor category
+`0x0008`, subtype 9) sets an **80%** per-unit multiplier — both feeding the design's cached
+defense-percentage byte (0–95 range, design offset `+0xb`). This is a concrete, quantified
+application site for a "secondary" contribution from these two components specifically. **Croby
+Sharmor (Shield subtype 3) and Fielded Kelarium (Armor subtype 6) get no equivalent treatment
+anywhere in *this* function** — the check is only ever `subtype == 6` for Shield and
+`subtype == 9` for Armor, nothing else. See below: both remaining components' own secondary
+contributions were subsequently found in two *other* design-stat functions, closing this item in
+full.
+
+**Fully resolved — Croby Sharmor's and Fielded Kelarium's own secondary contributions found in two
+sibling design-stat functions, neither of which is `FUN_10f0_27da`.** The open item's own framing
+("check the per-design cost/value cache populator and any other design-stat-consuming function")
+led directly to both remaining sites, each a flat, subtype-specific constant exactly analogous in
+shape to Langston Shell's/Mega Poly Shell's treatment above, just added to a *different* cached
+design field than the `+0xb` defense-percentage byte:
+
+- **Croby Sharmor (Shield subtype 3), in `FUN_1038_2df8` (`stars.exe.export.c:19506`-`19642`), the
+  per-design cost/value cache-populator already documented in this project as `ship-design-and-
+  components.md`'s §8/§9 cache-populator.** Inside its per-slot walk, the category/subtype check at
+  `stars.exe.export.c:19607`-`19609` is `if (uVar2 == 4) { if (subtype != 3 && subtype != 6) skip;
+  contribution = quantity * 0x41; }` — i.e. **both** Shield subtype 3 (Croby Sharmor) **and** subtype
+  6 (Langston Shell) add a flat **65** points per installed unit into a design-cached field this
+  function seeds from the hull's own base-armor value (`design[0x1c]` in the function's own
+  int-indexed addressing, i.e. byte offset **`+0x38`** — confirmed by cross-checking the same
+  function's int-indexed slot-count check, `((int *)param_1)[0x3d]`, against the independently-known
+  byte offset `+0x7a` for that same field elsewhere in this project: `0x3d * 2 == 0x7a`, confirming
+  `int` is 2 bytes in this codebase's addressing and that `[0x1c]` is therefore byte `+0x38`). This
+  field starts at the hull's base armor points (`*(hullRecord+0x38)`, copied in at
+  `stars.exe.export.c:19565`) and is incremented per matching Shield/Armor/Mechanical-category slot —
+  i.e. it reads as a per-design **effective total armor** estimate, and Croby Sharmor's (and,
+  separately, Langston Shell's) contribution to it is this flat 65-point add. This is Croby Sharmor's
+  concrete secondary (cross-category, armor-flavored) stat.
+- **Fielded Kelarium (Armor subtype 6), in `FUN_1038_0a0e` (`stars.exe.export.c:17092`-`17148`), a
+  third, previously-uncharacterized design-stat function called at the very start of
+  `FUN_10f0_27da` itself (`stars.exe.export.c:100040`, `local_8 = FUN_1038_0a0e(...)`) — this is
+  exactly the "per-design base value computed before the per-slot walk" this project's own §7 text
+  already flagged as feeding a final 16-bit output field it hadn't traced the source of. That output
+  is written to **design offset `+0x11`** (`stars.exe.export.c:100194`,
+  `*(undefined2 *)((int)param_1 + 0x11) = local_8;`, or forced to sentinel `0xFFFF` if the design is
+  flagged invalid), closing that residual hedge. `FUN_1038_0a0e` itself sums every installed Shield's
+  own real shield-point value (`stars.exe.export.c:17115`-`17120`) into this field — i.e. the field is
+  the design's **total shield points** — and then, separately, special-cases exactly two Armor
+  subtypes by literal constant with no other Armor subtype receiving any contribution at all
+  (`stars.exe.export.c:17123`-`17133`): **Armor subtype 6 (Fielded Kelarium) adds a flat 50 points
+  per unit**, and Armor subtype 9 (Mega Poly Shell) adds a flat 100 points per unit — both counted as
+  pseudo-shield-points despite being Armor-category components, the mirror image of Croby
+  Sharmor/Langston Shell's shield-items-counted-as-armor treatment above. (A per-race trait-13 check
+  at `stars.exe.export.c:17140`-`17143` then scales the whole total by **+40%** if set, before the
+  16-bit clamp.) This is Fielded Kelarium's concrete secondary (cross-category, shield-flavored)
+  stat, and it also gives Mega Poly Shell a *second*, independent secondary-stat site beyond its
+  already-documented 80% defense-percentage multiplier.
+
+**All four combined armor+shield components now have at least one traced, quantified secondary-stat
+application site** (Langston Shell and Mega Poly Shell each have two, in two different functions
+feeding two different cached design fields): Croby Sharmor +65 armor-flavored points/unit
+(`FUN_1038_2df8`, design `+0x38`); Langston Shell 95% defense-percentage multiplier (`FUN_10f0_27da`,
+design `+0xb`) *and* +65 armor-flavored points/unit (`FUN_1038_2df8`, design `+0x38`); Mega Poly
+Shell 80% defense-percentage multiplier (`FUN_10f0_27da`, design `+0xb`) *and* +100 shield-flavored
+points/unit (`FUN_1038_0a0e`, design `+0x11`); Fielded Kelarium +50 shield-flavored points/unit
+(`FUN_1038_0a0e`, design `+0x11`). This closes the open item in full — see
+`ship-design-and-components.md` §7 for the corresponding write-up there.
+
+#### 10d. Battle-relevant electrical components
+
+| Component | Stat | Mass |
+|---|---|---|
+| Battle Computer | +20% accuracy | 1 |
+| Battle Super Computer | +30% accuracy | 1 |
+| Battle Nexus | +50% accuracy | 1 |
+| Jammer 10 | 10% jam | 1 |
+| Jammer 20 | 20% jam | 1 |
+| Jammer 30 | 30% jam | 1 |
+| Jammer 50 | 50% jam | 1 |
+| Energy Capacitor | +10% beam damage | 1 |
+| Flux Capacitor | +20% beam damage | 1 |
+| Beam Deflector *(mechanical category)* | 10% beam deflection | 1 |
+
+The Beam Deflector's stored 10% matches §6's independently-sourced `0.9 ^ n` stacking rule exactly.
+
+#### 10e. Hull base armor, and the Battleship slot-order question
+
+The 37 hull and starbase-chassis records carry base armor, fuel and cargo capacity plus a complete
+per-slot layout (allowed-category bitmask and capacity per slot) — see
+`ship-design-and-components.md` §15e for the full layout and the format. Base armor for the main
+combat hulls: Scout 20, Frigate 45, Destroyer 200, Cruiser 700, Battle Cruiser 1000, Battleship
+2000, Dreadnought 4500, Nubian 5000, Privateer 150, Rogue 450, Galleon 900, Meta Morph 500;
+starbase chassis Orbital Fort 100, Space Dock 250, Space Station 500, Ultra Station 1000, Death
+Star 1500.
+
+**Bearing on §5's Battleship firing-order note:** the Battleship's eleven slots are stored in a
+fixed order whose five weapon slots have capacities **6, 6, 2, 2, 4** — which is exactly the
+*top-6, bottom-6, top-2, bottom-2, center-4* sequence §5 reports from community play data, in the
+same order. This is strong evidence that the reported "firing order" is simply the hull record's own
+stored slot order rather than a Battleship-specific special case, and that every hull fires its
+weapon slots in the order its record lists them. The community description is positional because the
+ship designer lays those slots out visually; the underlying rule looks like plain array order. This
+is offered as a well-supported inference from the recovered layout, not as a traced code path — the
+firing loop itself was not re-read against this data.
+
+**Now confirmed directly, not just inferred from the data layout.** The per-round battle engine's firing dispatcher was read in full: it sweeps initiative buckets from highest to lowest, and for each bucket calls the per-token firing routine, which walks a design's slot array starting at index 0 and steps forward in plain ascending stored order, firing whichever slot's computed initiative matches the current bucket. This directly confirms every hull fires its weapon slots in stored array order — the "firing order" phrase describes an emergent property of slot layout, not a separate rule.
+
+### 11. Cloaking and detection: the design cloak-percentage curve and the Tachyon Detector counter-cloak table, recovered
+
+This closes §8's "per-design cloak-percentage lookup table" note in full, including the individual values that note previously flagged as unrecovered.
+
+**A design's own cloak percentage is a genuine piecewise formula, not a lookup table.** The per-fleet cloak aggregator (`FUN_1080_1e02`, `stars.exe.export.c:57408`-`57542`) walks every ship design actually present in the fleet and, for each one, sums a raw "cloak rating" contributed by every installed Electrical-category component whose subtype is 0–4 — the four dedicated cloaking devices plus the Multi Function Pod — using each component's own stored stat value already recovered in §10d's source data (`extracted-game-data/component-stats.tsv`): Transport Cloaking 300, Stealth Cloak 70, Super-Stealth Cloak 140, Ultra-Stealth Cloak 540, Multi Function Pod 60 (confirmed as the real-world source of these sums by their reader, `FUN_1080_20c8`, `stars.exe.export.c:57546`-`57636`, whose Electrical/subtype-under-5 branch pulls the component record's stat field directly). A race whose PRT index equals **1** — **Super Stealth**, per this project's already-published PRT-index order (`race-traits.md`'s "HE, SS, WM, CA, IS, SD, PP, IT, AR, JOAT" convention) — gets a flat **300**-point baseline folded into every design's own rating before any installed cloak devices are even counted (`stars.exe.export.c:57452`-`57455`), regardless of whether that design carries a cloaking device at all.
+
+**Addendum (step-36 reconciliation): the per-component reader also awards points to a handful of non-electrical components, and the same computation is applied to a single starbase design.** The paragraph above lists only the electrical contributors; `FUN_1080_20c8` (`stars.exe.export.c:57546`-`57636`) also returns, per unit of quantity (multiplied by the slot's quantity when that exceeds one): 20 points for engine subtype 8, category-`0x0010` subtype 18, shield subtype 6, and general-purpose (category `0x1000`) subtype 4; 40 points for scanner subtype 6 and armor subtype 9; 70 points for shield subtype 4; 50 points for armor subtype 7; and 60 or 50 points for category `0x0080` subtypes 6 or 7. These are consistent with the in-game captions (the Multi Cargo Pod caption "provides a 10% cloak" is 20 points, the 25%-cloak mining-robot caption is 50 points). The one-design version of the calculation is `FUN_1048_57b6` (`:28428`-`28502`); it adds a flat 40 points for a starbase chassis of a race with Improved Starbases, the same flat 300 for Super Stealth, and returns 0 when the raw total is zero, negative or above 25,000. Turn-generation step 36 runs it for every starbase design and stores the squared complement `(100 - cloak%)²`, which the visibility sweeps use to hide cloaked starbases (`turn-generation-engine.md` §1 step 36).
+
+When a fleet contains more than one ship design, the per-design ratings are combined as a **mass-weighted average** — weight equal to that design's own mass times how many of that design are present in the fleet (`stars.exe.export.c:57449`-`57480`) — not a simple sum and not just the single best-cloaked design. An uncloaked or lightly-cloaked design added to a fleet measurably drags down the whole fleet's effective cloak percentage in proportion to how much mass it contributes.
+
+The resulting raw rating (`x`) is converted to a percentage by explicit piecewise arithmetic (`stars.exe.export.c:57521`-`57541`), not a byte table:
+
+| Raw cloak rating `x` | Cloak % |
+|---|---|
+| 0–99 | `floor(x / 2)` |
+| 100–300 | `50 + floor((x−100) / 8)` |
+| 300–612 | `75 + floor((x−300) / 24)` |
+| 612–1124 | `88 + floor((x−612) / 64)` |
+| 1125–1611 | `96`, or `97` once `x−612` exceeds 767 |
+| ≥1612 | `98` (hard cap) |
+
+**This reproduces this project's own already-published "Super Stealth races carry an inherent 75% cloak" fact (`race-traits.md` §2) exactly and independently**: the PRT's flat 300-point baseline lands precisely on the formula's 300 breakpoint, which evaluates to `75 + floor((300−300)/24) = 75`. Two independently-recovered facts — the baseline's raw value and the piecewise formula's shape — cross-confirm each other through this one coincidence-free number, which is strong evidence both are read correctly. The hard cap at 98% (never 100%) also matches §9's finding that a wormhole or similar stealthed object "can go undetected even at close range" — 98% turns out to be the universal ceiling on every stealth-based detection-avoidance roll in this codebase, not a rule special to wormholes.
+
+**The Tachyon Detector's counter-cloak effect is the actual 18-entry byte table §8 previously flagged as existing-but-unrecovered.** A sibling design-stat function (`FUN_1038_337e`, in the same segment-8 per-design stat-aggregation cluster §10c already documents for Croby Sharmor's and Fielded Kelarium's secondary stats) computes each design's combined scanner range (the already-documented fourth-root combination formula from `fleet-movement-scanning-cargo.md` §3) and, as a side output, counts how many Tachyon Detectors (Electrical category, subtype 15) the design carries, clamps that count to 17, and uses it to index an 18-byte constant table. That table is addressed relative to the function's own code segment rather than through any data-segment pointer — the same CS-relative addressing idiom this project has repeatedly found miscast by the decompiler elsewhere (`ship-design-and-components.md` §15a). The table sits at segment-8 file offset `0x7f`–`0x90`: immediately before the segment's first Ghidra-numbered function (`FUN_1038_0092`) and immediately after a short, previously-unindividuated helper at the segment's true start — bounded on both sides by code, the same decisive signature this project's own method write-up (§15a) treats as confirming genuine embedded data rather than a coincidence. Segment 8 begins at absolute file offset `0x25a00` in `stars.exe` (independently re-derived from the executable's own NE segment table via this project's published `0x1000 + (segmentIndex−1)×8` synthetic-selector convention, then cross-checked against the raw file), putting the table at absolute file offset **`0x25a7f`**. Read directly from the executable, the 18 values — index = installed Tachyon Detector count, 0 through 17 — are:
+
+`100, 95, 93, 91, 90, 89, 88, 87, 86, 86, 85, 84, 84, 83, 83, 82, 82, 81`
+
+A design with no Tachyon Detectors contributes a neutral 100% multiplier; each additional detector reduces the multiplier with diminishing returns, bottoming out at 81% once 17 or more are fitted. **This multiplier reduces the *enemy's* effective cloak percentage, not the detector-carrying ship's own** — confirmed at its one real consumer, the per-turn fleet-detection pass (`stars.exe.export.c:49359`-`49364`, inside the per-race fleet-detection routine `FUN_1070_5f00`): the observing side's Tachyon-Detector multiplier is applied to the *candidate target's* raw cloak percentage before that percentage is converted to a visibility fraction and squared against scan range — exactly the `distance² ≤ scanRange² × (visibility/100)²` relationship `fleet-movement-scanning-cargo.md` §3 already documents, now shown to have the target's effective cloak% itself adjustable downward by the observer's own equipment rather than being a fixed property of the target alone.
+
+This resolves the item in full: the design cloak-percentage curve is the piecewise formula above (not a table), the innate Super-Stealth bonus is a flat 300-point rating baseline, and the "18-entry lookup table" is real, is specifically the Tachyon Detector's diminishing-returns counter-cloak multiplier, and its individual values are now recovered directly from the binary rather than left unread.
+
+---
+
+### Worked Examples
+
+The following examples illustrate the mechanics above. **As of this pass they use real recovered
+component values** (§10) rather than the placeholder numbers earlier versions of this document had
+to substitute. The mechanics being demonstrated (initiative ordering, shield-then-armor depletion,
+beam range falloff, torpedo hit/miss/shield-split, capital-missile double damage) are the documented
+parts; the specific hit/miss outcomes are of course still chosen for illustration, since those are
+random rolls.
+
+#### Example 1 — Single beam ship vs. single beam ship (no shields)
+
+Both ships are built from real hulls and real components (§10). Hull and computer contributions to
+initiative are identical on both sides here, so the weapons' own initiative decides the order.
+
+- **Ship A**: one **Destroyer** (hull base armor 200). Its two weapon slots (capacity 1 each) each
+  carry one **Colloidal Phaser** — 26 dp, max range 3, initiative 5. Its armor slot (capacity 2)
+  carries 2 × **Tritanium** (50 each). Total armor **300**, no shields, no deflectors.
+- **Ship B**: one **Frigate** (hull base armor 45). Its general-purpose slot (capacity 3) carries
+  3 × **Laser** — 10 dp each, max range 1, initiative 9. Its shield/armor slot (capacity 2) carries
+  2 × Tritanium. Total armor **145**, no shields, no deflectors.
+- Both are each other's only legitimate primary target; both use a closing tactic.
+
+Round 1 (opening at range 3): only Ship A can fire — the Colloidal Phaser reaches range 3, the Laser
+only range 1.
+- Each of A's two slots fires separately: `1 weapon × 1 ship × 26 dp = 26 dp` base, dissipated by the
+  full 10% because it is firing at its own maximum range → ~23 dp per slot, ~47 dp total.
+- Ship B: 145 − 47 = **98 armor** remaining. B cannot answer.
+
+Round 2 (B has closed to range 1):
+- Firing order: B's laser slot (weapon initiative 9) fires before either of A's phaser slots
+  (initiative 5). The long-ranged beam firing *late* is the general pattern visible in §10a.
+- B's shot: `3 lasers × 1 ship × 10 dp = 30 dp` base, at range 1 of a max range 1 → full 10%
+  dissipation → ~27 dp. Ship A: 300 − 27 = **273 armor**.
+- A's two slots then fire in turn: at range 1 of a max range 3 the dissipation is only about a third
+  of 10%, so ~25 dp each. Ship B: 98 − 25 = 73, then 73 − 25 = **48 armor**.
+
+Round 3 (both at range 0, no dissipation for either):
+- B fires first: `3 × 10 = 30 dp`. Ship A: 273 − 30 = **243 armor**.
+- A's first slot fires: 26 dp. Ship B: 48 − 26 = 22 armor.
+- A's second slot fires: 26 dp against a current per-ship armor of 22 → `floor(26 / 22) = 1` whole
+  ship destroyed. B's token is removed.
+- Battle ends (last race standing), assuming no other tokens were present.
+
+This demonstrates: a range advantage buying a free opening round, weapon initiative rather than hull
+size determining who fires first, per-slot rather than per-ship shot resolution, linear beam range
+dissipation scaled to each weapon's *own* maximum range, and the whole-ship-kill division.
+
+#### Example 2 — Torpedo ship vs. shielded target
+
+- **Ship C**: one **Battle Cruiser**. One of its capacity-3 weapon slots carries 3 × **Rho Torpedo**
+  — 90 dp per hit, 75% base accuracy, max range 5, initiative 2. No computers fitted, so the base
+  75% is also the effective accuracy (§6's formula collapses to the base when both jam and computer
+  bonus are zero).
+- **Ship D**: one **Cruiser** (hull base armor 700). Its two shield/electrical/mechanical slots carry
+  one **Bear Neutrino Barrier** each (100 shield points apiece) → **200 shields**; its capacity-2
+  shield/armor slot carries 2 × **Tritanium** → total armor **800**. Ship D is left unarmed here to
+  isolate the torpedo resolution.
+
+Round 1, Ship C fires its 3-torpedo salvo at Ship D (torpedoes do not dissipate with range — only
+beams do, per §6):
+- Each of the 3 torpedoes is resolved independently at 75%. Suppose 2 hit and 1 misses.
+- The missed torpedo deals `90 / 8 ≈ 11 dp` to shields only. Shields: 200 − 11 = **189**.
+- Each hit deals up to half its damage to shields and the rest to armor while shields remain:
+  45 dp to shields and 45 dp to armor per hit. Two hits: shields 189 − 90 = **99**, armor
+  800 − 90 = **710**.
+
+Round 2, same salvo, suppose this time all 3 hit:
+- Total shot damage = `3 × 90 = 270 dp`. The shield-eligible half would be 135, but only 99 shield
+  points remain, so shields absorb 99 and drop to **0**; the remaining `270 − 99 = 171 dp` falls
+  through to armor. Armor: 710 − 171 = **539**.
+
+Round 3, same salvo, suppose 2 of 3 hit. Shields are already at 0, so the miss has nothing left to
+affect and contributes nothing:
+- `2 × 90 = 180 dp` straight to armor. Armor: 539 − 180 = **359**.
+
+Ship D is still alive after three full salvos — which is the realistic outcome for a
+mid-tech torpedo boat against a well-armoured Cruiser, and is exactly the kind of judgement the
+placeholder numbers in earlier versions of this document could not support.
+
+This demonstrates: independent per-torpedo hit/miss resolution, the 1/8-damage-to-shields-only rule
+for misses, the half-to-shields split for hits while shields remain, and overflow correctly falling
+through to armor once the shield pool is exhausted mid-shot.
+
+#### Example 3 — Capital missile vs. a shielded target, illustrating the post-shield double-damage rule
+
+- **Ship E**: one **Battle Cruiser** with a capacity-3 weapon slot carrying 3 × **Jihad Missile**
+  — 85 dp per hit, **20% base accuracy** — plus a **Battle Super Computer** in an electrical slot.
+  Applying §6's confirmed accuracy formula with the recovered component values: jam is 0 and the
+  computer bonus is 30, so the computer branch applies with a residual of 30 →
+  `(100 − 30) × (20 − 100) / 100 + 100 = 44%`. This is the same 44% figure §6 cites from community
+  play data, now reproduced from the stored stats rather than solved for.
+- **Ship F**: one **Destroyer** (hull base armor 200). Its general-purpose slot carries a single
+  **Mole-skin Shield** → **25 shields**; its capacity-2 armor slot carries 2 × Tritanium → total
+  armor **300**.
+
+Round 1: Ship E's 3 missiles each resolve at 44%; suppose 2 hit and 1 misses.
+- The miss deals `85 / 8 ≈ 10 dp` to shields only. Shields: 25 − 10 = **15**.
+- The 2 hits total `2 × 85 = 170 dp`. The shield-eligible half would be 85, but only 15 shield points
+  remain, so shields absorb 15 and drop to **0**. The remaining **155 dp** lands on armor *after* the
+  shield pool was fully depleted, so the capital-missile rule doubles it to **310 dp**.
+- Ship F's 300 armor is exceeded (310 ≥ 300) → Ship F's ship is destroyed in a single salvo.
+
+The contrast is now quantitative rather than hypothetical. Had the same two hits come from
+**Rho Torpedoes** — a *higher* per-hit damage (90 vs. 85) but no doubling — the shield pool would
+have absorbed 15 and 165 dp would have reached armor, leaving the Destroyer alive on 135 of its 300
+armor. The doubling, not the raw damage, is what kills it; that is why capital missiles are
+documented as able to one-shot shield-reliant designs once the shield pool is gone, and why a thin
+shield buys very little against them.
+
+## Open Questions / Uncertainties
+
+- ~~**Exact accuracy formula.**~~ **Resolved.** Confirmed by inspection of the exported client and arithmetically cross-checked against all three of this document's own worked numbers (44%/16%/28%) — see §6 and §8. The formula combines base accuracy, computer bonus, and jam by first letting jam and computer bonus cancel subtractively, then applying one of two branches to whatever residual remains (a simple proportional reduction for residual jam, or a diminishing-return climb toward 100% for residual computer bonus). This closes the "William Butler article" gap functionally, if not by locating that specific article.
+- ~~**Energy capacitor beam-damage bonus.**~~ **FULLY RESOLVED.** The stacking rule was already confirmed (a per-component compounding multiplier, `accum = accum × (rate+100)/100`, clamped at 255%, applied as a direct multiplier to base beam damage) — see §6 and §8. The missing *rate* is now recovered along with the rest of the component table: **Energy Capacitor 10%, Flux Capacitor 20%** (§10d). Combined with the stacking rule, the 255% clamp is reached at roughly ten Energy Capacitors or five Flux Capacitors.
+- **Beam APN range modifier — re-attempted with a full read of the owning function; still not found, now a stronger negative result.** The article proposing `RangeModifier = 1 - 0.1*(Range/MaxRange)` inside the targeting-attractiveness formula explicitly flags this term as an inference the author had not been able to test directly, distinct from the (separately well-documented) beam range-dissipation rule that reduces actual damage dealt. An earlier pass located the APN computation's home (inlined inside `FUN_10f0_4326`, segment 31) but only traced part of it. This pass read the **entire function body line-by-line** (`stars.exe.export.c:101501`-`102037`, all ~536 lines, both the outer per-enemy-token attractiveness scan and the subsequent per-slot damage-application code) rather than a fragment. The beam-branch APN denominator (reached when the packed category word equals `0x10`/beam, at `stars.exe.export.c:101818`-`101843` for the non-sapper case and the adjoining sapper branch) is built entirely from the target's summed armor+shield fields (record offsets `0x2a`/`0x2e`, read at `101710`-`101713`) and the deflector-stacking percentage (fed in via the `puVar14[0x15]` term at `101728`-`101734`, matching the `(0.9)^n` deflector formula elsewhere in this document); no variable derived from either combatant's weapon range or a max-range constant appears anywhere in that arithmetic chain. The torpedo/missile branch immediately above it (`101741`-`101817`) *does* read range-like hull/component fields (`iVar5 + 0xc`, `puVar14 + 0xb`) but only as part of the documented Accuracy-based APN sub-formula, not as a beam range term. Having now read the function in full rather than a sampled portion, this is upgraded from "not found where expected" to a considered negative finding: **no beam-APN range term exists in this function as compiled**, though the possibility that `RangeModifier` was never actually implemented in the shipped game (rather than existing but being invisible to this static read) cannot be fully excluded by source inspection alone.
+
+  **Re-attempted once more with a different technique: a systematic constant search rather than a line-by-line read, still nothing found.** Rather than re-reading the function's ~536 lines again, this pass mechanically searched the same line range (`stars.exe.export.c:101501`-`102037`) for every occurrence of a literal `/10`, `*10`, `0x0a`, or `/-10` constant — the fixed-point shapes a `1 - 0.1×(...)` term would most plausibly compile to in this codebase's integer arithmetic style. Exactly three occurrences exist in the entire function, and all three were individually inspected in context and confirm they already belong to previously-documented formulas, not a new range term: two (`101730`-`101733` and `101952`-`101955`) are the deflector-stacking correction term built from `puVar14[0x15]` (already attributed to beam deflectors in the §8 bullet on this function), and one (`101886`) is a fixed-point scaling factor inside the torpedo/missile Accuracy-based APN sub-formula (dividing by the component's stored Accuracy stat at `iVar5+0x34`), not a range value. No fourth, unattributed `/10`-shaped term exists anywhere in the function. Since the function's only range-related computation is the already-identified binary in-range/out-of-range gate (which discards the distance value immediately), and no independent constant-search technique turns up a hidden range term either, this is treated as the strongest negative result reasonably obtainable by static inspection — a `RangeModifier` term in the beam APN sub-formula, if it exists at all in the shipped binary, is not reachable by any of the three distinct search techniques applied across three passes (structural, line-by-line, and constant-search).
+
+  **A related observation, offered as context rather than as new evidence for or against the APN question specifically:** the exact `1 - 0.1×(Range/MaxRange)` shape (implemented as `damage + (damage × distance / -10 × weaponRateField / 10)`, i.e. dividing by 10 twice with a sign flip) does independently exist in a *different* function, `FUN_10f0_3170` (`stars.exe.export.c:100519`-`100629`), called only from `FUN_10f0_3584`/`FUN_10f0_397c` (`stars.exe.export.c:100681`-`101081`) — a damage-estimation helper used by the movement AI's candidate-move scoring (§3's `ratio = -(damageReceived×100)/(damageDealt+1)` formula), not by the targeting/APN function `FUN_10f0_4326` at all (confirmed by an exhaustive grep of every `FUN_10f0_3170` call site — all three fall inside that helper's own caller, none inside `FUN_10f0_4326`). This is consistent with, not contradictory to, the APN negative finding: the movement AI's damage estimate legitimately needs to model range falloff to score candidate positions, while the APN/attractiveness formula apparently does not.
+
+  **A fourth, structurally different technique was tried: hunting for a range-based pre-filter or sort applied to the candidate-target list *before* `FUN_10f0_4326` ever runs**, on the theory that the game could achieve "closer targets preferred" without any range term inside the APN formula itself, simply by pruning or ordering the token list the APN scan walks. `FUN_10f0_4326` has exactly one call site in the entire executable (`stars.exe.export.c:102936`, confirmed by an exhaustive grep for the function name), inside the firing dispatcher `FUN_10f0_5950` (`stars.exe.export.c:102555`-`102974`). That dispatcher's own token list comes from `FUN_10f0_2cca` (`stars.exe.export.c:100266`-onward, called at `102714`), which walks the battle's fleet list in plain fleet-traversal order — the same array/order already documented elsewhere in this file as being fixed once per battle and only re-ordered by the Fisher-Yates initiative-tiebreak shuffle (§8), never by position or distance. `FUN_10f0_5950`'s own token loop (`stars.exe.export.c:102886`-`102954`) filters candidates by matching the target's design-record `+7`/`+8` initiative-bracket bytes against the current initiative bracket being processed (already documented in `ship-design-and-components.md` §7) — an initiative filter, not a range one. One level up, `FUN_10f0_5950`'s own caller, the master per-location driver `FUN_10f0_24c0` (`stars.exe.export.c:99811`-`99866`), only decides *whether* to invoke the round engine at all (via the legitimate-enemies bitmask builder `FUN_10f0_1af8`, `stars.exe.export.c:99250`-onward, which resolves per-race hostility relationships and contains no per-token spatial computation whatsoever) — it does not touch the token list's order or membership beyond that. **No range-based pruning or sorting of the candidate-target list exists anywhere in `FUN_10f0_4326`'s caller chain.** Combined with the three prior negative techniques (structural trace, full line-by-line read, mechanical constant search, all inside the function itself), this closes off the last plausible place such a term could live outside the formula and leaves the negative finding on the same footing as this document's other fully-closed Open Questions: a `RangeModifier` term, if it was ever implemented, is not reachable anywhere in this call graph by static inspection.
+
+  **A fifth angle was tried this pass, deliberately not a fifth code search: checking this document's own worked examples, and every other spec file, for a live-game or empirical observation that could settle the range-attractiveness question independent of finding the term in source.** None exists. This document's three Worked Examples all illustrate damage/kill resolution with a pre-agreed target (no contested target *choice* across range brackets is ever exercised), and a project-wide check of the other 17 `behavior-specs/*.md` files turned up no recorded test — empirical or code-level — of whether a shorter-ranged, otherwise-identical enemy token is preferred as a target over a longer-ranged one. The only empirical numbers this project has ever recorded for targeting come from Art Lathrop's original Cost/APN worked examples (§4's source), which do not vary range while holding cost/armor/shields fixed. With no empirical angle available anywhere in this project's existing material, and per this task's own instruction not to re-run the static code search a fifth time inside `FUN_10f0_4326`, this item is left exactly where the four prior passes left it: a strong, multi-technique negative, not provably absolute.
+- ~~**Battleship weapon-slot firing order generality — attempted, not found either way.**~~ **Fully resolved: both by data and now by re-reading the firing loop itself.** The documented top-6/bottom-6/top-2/bottom-2/center-4 firing order was reported for one specific hull. The hull-definition table has since been recovered (`ship-design-and-components.md` §15e), and the Battleship record's five weapon slots are stored, in order, with capacities **6, 6, 2, 2, 4** — the reported sequence exactly. **The residual uncertainty this document previously flagged — whether the firing loop itself actually iterates a design's slot array in stored order — is now closed.** The battle engine's firing dispatcher (`FUN_10f0_5950`, `stars.exe.export.c:102555`-`102974`) drives the round's firing phase by walking initiative brackets from the battle's highest stored value down to its lowest (`local_1a` down to `local_1c`, computed by `FUN_10f0_2cca` and consumed at `102886`-`102954`) and, for each bracket, invoking the per-slot firing function `FUN_10f0_4326` once per eligible token (`102936`). That function's own internal loop (`stars.exe.export.c:101580`-`102034`) walks the *design's* installed-component array unconditionally from its first entry to its last (`local_5e` incremented by one 4-byte entry per pass, `102031`), firing whichever entry currently matches the initiative bracket being processed and skipping the rest — i.e., for two weapon slots that share the same initiative value, the one stored earlier in the design's component list is always reached first. Combined with §2's confirmation that installed-component slots are filled in sequential index order matching the hull's own slot template, this is a direct code-level confirmation (not just an inference from the Battleship's data layout) that hulls fire their weapon slots in stored array order.
+- ~~**What happens to un-retreated ships when the 16-round cap is hit.**~~ **Resolved, confirming this document's own assumption.** The battle engine's end-of-round check was read directly: a single shared exit condition covers both "only one race's presence remains" and "round counter exceeded 15," with no branch distinguishing which one fired — both paths fall through to identical post-loop code (final log write, salvage pass, return), with no forced retreat, penalty, or token removal specific to the round-cap case. Ships simply remain present exactly as this document assumed; what the broader turn engine does with them on the following turn was not re-traced here, but nothing at the battle-function level singles out the round-cap ending as different from any other battle conclusion.
+- **Whether "one missile can only ever count toward killing one ship" is a real distinct rule — checked against the code, not found as separate logic.** The targeting-attractiveness article asserts the attractiveness formula "doesn't take into account the one missile one kill rule" as the explanation for chaff's effectiveness, implying such a rule exists in the damage/kill-accounting model. A follow-up pass traced the actual missile/torpedo damage-application path (`FUN_10f0_4326` resolving hits, handing an aggregated damage figure to `FUN_10f0_52c4`'s kill-division loop — see §6/§8) and found the same `floor(damage/currentArmorPerShip)` division applied uniformly, with no additional per-shot cap tied to missile or hit count. The whole-ship-kill division in §6 appears to be the complete kill-accounting story for missiles as well as beams in the code path traced; this is treated as resolved in the "division formula is the whole story" direction, though the possibility of a cap existing somewhere in code not traced this pass cannot be fully excluded.
+
+  **Re-checked once more, this time reading the missile/torpedo-specific per-shot resolution loop itself line by line** (`stars.exe.export.c:101894`-`102030`, inside `FUN_10f0_4326`'s torpedo/missile branch) rather than only the aggregation hand-off into `FUN_10f0_52c4` as the prior pass did. This loop resolves a salvo's individual hits/misses and calls `FUN_10f0_52c4` up to twice per iteration — once for a miss's shields-only 1/8-damage chip (flagged via a `0x80` bit, `stars.exe.export.c:102010`-`102012`) and once for a hit's shield/armor split (`102017`-`102018`) — with each call independently running the same whole-ship-kill division. The only counter local to this loop, `local_46`, increments once per such `FUN_10f0_52c4` call that actually applied damage (`101909`, `102013`, `102019`) and is written to the token's own status field purely to report whether *anything* fired/hit this slot (`*(int*)(iVar12+2) = local_46; return local_46 != 0;`, `102035`-`102036`) — it is never compared against a kill count or used to gate or limit the division loop's output in any way. No missile-count-keyed or per-shot kill ceiling exists in this loop either. This is a second, independent confirmation (via a different code region than the prior pass checked) of the same negative result — the whole-ship-kill division remains the complete story for missiles as well as beams in every code path traced so far.
+
+  **A third angle was tried this pass, deliberately external rather than a third pass over the same code: checking whether a community or manual source describes "one missile, one kill" as conditional on a specific tactic or movement state rather than as an unconditional rule.** A general web check turned up only the same folklore already cited in this document and its Sources list (the rule stated flatly, with chaff-fielding and dedicated "beamer" counter-tactics described as its consequence), reproduced without qualification by multiple independent tertiary sources (a TV Tropes summary and general community write-ups) — none of them attach any tactical, movement, or range condition to the rule; all state it as an unconditional property of missile/torpedo weapons generally. This search sharpens, rather than resolves, the existing tension: community belief in an unconditional rule remains strong and unqualified, while two independent code passes across two different code regions find no such rule (conditional or otherwise) in the traced damage/kill-accounting path. No genuinely new angle — conditional or otherwise — was found. Per this task's own instruction, this item is left as the well-evidenced negative the two prior code passes already established, without a further code search.
+- ~~**Per-design cloak-percentage lookup table's individual values.**~~ **RESOLVED — see §11.** Applying this project's established CS-relative-constant-data technique (§15a of `ship-design-and-components.md`) to the cloak-percentage consumer in the same per-design stat-aggregation cluster (segment 8) that §10c's Croby Sharmor/Fielded Kelarium secondary stats already come from turned up the actual 18-entry table: it is the Tachyon Detector's counter-cloak multiplier (indexed 0–17 by installed-detector count), reading `100, 95, 93, 91, 90, 89, 88, 87, 86, 86, 85, 84, 84, 83, 83, 82, 82, 81` directly from `stars.exe` at file offset `0x25a7f`. A design's own base cloak percentage, separately recovered in the same pass, turned out to be a piecewise formula rather than a table, and reproduces this project's independently-published "Super Stealth races carry an inherent 75% cloak" fact exactly, cross-confirming both findings.
+- ~~**Exact canonical weapon/armor/shield numeric stat tables**~~ **RESOLVED — see §10.** The tables were recovered directly from the executable, not from an external source: all 24 beam weapons, 12 torpedoes/capital missiles, 10 shields, 12 armors, 17 electrical components and 37 hulls/chassis, each with its tech prerequisites, mass, four-way cost and category-specific combat stats, plus every hull's per-slot allowed-category mask and capacity. `ship-design-and-components.md` §15 documents the segment-addressing fix that unblocked this (the far pointer's segment half turned out to be a code-segment-relative constant-data reference in the resolver's own segment, not the failed relocation several prior passes assumed) and the general method, which should be reusable for any other unresolved static table in this project. The full dataset is in `extracted-game-data/component-stats.tsv`. The worked examples above have been rebuilt on these values. **Residual gaps, narrowed by later passes:** ship scanners' *penetrating* ranges are not stored in the record (only a small penetrating-capability class) — a follow-up pass (`ship-design-and-components.md` §15c) traced the scanner-combination code to a conclusion instead: a penetrating scanner simply uses its ordinary `+52` range value, there is no separate larger figure anywhere in the client. ~~The combined armor-plus-shield components store only their own category's stat in the record; a secondary-stat application site was traced for two of the four (Langston Shell, Mega Poly Shell), with the other two (Croby Sharmor, Fielded Kelarium) untraced.~~ **Fully resolved, see §10c**: Croby Sharmor's and Fielded Kelarium's own secondary-stat sites were subsequently found in two sibling design-stat functions (`FUN_1038_2df8` and `FUN_1038_0a0e` respectively), neither of which is the aggregate-stats function §10c originally checked — all four combined items now have at least one traced, quantified secondary contribution. The historical note below is retained for context.
+
+  The original entry: these values were not captured from any source in the earlier research pass — the official Player's Guide PDF's detailed combat chapters (referenced in its own table of contents as "The Guts of Combat", "Movement, Initiative and Firing in Battle", "Armor, Shields and Damage") could not be extracted as readable text with the tools available in this session. These numbers should be sourced separately (e.g., from an accessible copy of the manual's tech-level tables or a community-maintained tech spreadsheet) before finalizing implementation constants; the worked examples above intentionally used clearly-labeled placeholder numbers instead of guessing at real ones. **A follow-up pass traced this all the way to the code that reads these values** (`ship-design-and-components.md` §11): the per-component base-stat table exists as one contiguous ~19.3 KB, 16-category, fixed-stride lookup block referenced by `FUN_1008_5194` (segment 2) via a computed far pointer, and its exact per-category base offset/record stride/subtype count is now known for all 16 categories — but the pointer's segment half resolves to a literal constant with no backing `DAT_` symbol, and directly inspecting the raw executable at the naively-computed target address lands inside unrelated function code rather than data, indicating the constant is most likely an unresolved decompiler/fixup placeholder. That pass did not recover the block's real on-disk location; a resource-table scan also correctly confirmed the data isn't a separate Win16 resource. Both of those findings were sound as far as they went — the wrong step was assuming the constant *named* a segment at all. See §10 and `ship-design-and-components.md` §15 for the resolution.
+
+## Sources
+
+- **The executable's own component data tables** — the source for every number in §10 and for the
+  rebuilt worked examples. Recovered directly from `stars.exe` by a corrected NE segment-table
+  calculation, cross-validated against the decompile's own segment numbering and against a
+  constraint-driven search of the whole file; see `ship-design-and-components.md` §15 for the method
+  and `extracted-game-data/component-stats.tsv` for the data. This supersedes the several published
+  and manual sources previously listed as *needed but unavailable* for these figures.
+- [Guts of the Battle Engine — The Stars! FAQ (starsfaq.com)](http://starsfaq.com/battleengine.htm) — primary source for battle triggering, grid/tokens, round/movement structure, the six movement tactics, initiative firing order, and damage/shield/armor resolution.
+- [Guts (Advanced/Technical FAQ), §4.7 Beam Deflectors, §4.14 Targeting, §4.14.1 Battleship slot order — starsfaq.com](http://www.starsfaq.com/advfaq/guts2.htm)
+- [Stars! Advanced and Technical FAQ, table of contents — starsfaq.com](http://www.starsfaq.com/advfaq/contents.htm)
+- [Targeting Order in Battles (Target = Attractiveness), by Art Lathrop — Stars!-R-Us article, starsfaq.com](http://starsfaq.com/articles/sru/art201.htm) — attractiveness/APN formulas.
+- ["Frigates vs. Cruisers...which are better?" — Stars!-R-Us article, starsfaq.com](http://starsfaq.com/articles/sru/art104.htm) — worked real accuracy numbers for computers/jammers vs. capital missiles and torpedoes.
+- ["When should you NOT use the maximum number of computers?" by Robert Croson, Jr. — Stars!-R-Us article, starsfaq.com](http://starsfaq.com/articles/sru/art172.htm) — jammer-stacking diminishing-returns data, capital missile vs. torpedo jamming resistance, energy capacitor/beam-ship notes.
+- [STARS! The Premiere Space Strategy Game — Player's Guide (official manual PDF, hosted at archive.org)](https://ia800508.us.archive.org/14/items/manual_Stars/Stars.pdf) — table of contents confirms official chapter structure ("The Guts of Combat," "Movement, Initiative and Firing in Battle," "Armor, Shields and Damage," "Battle Plans"); full chapter text could not be extracted with available tooling in this session, so it was not used as a factual source beyond confirming section titles/organization.
+
+Not used as sources (attempted but inaccessible during this research session): `wiki.starsautohost.org` (blocked by an active bot-detection challenge page at fetch time) and `web.archive.org` (fetch tool declined to retrieve archive.org Wayback Machine pages in this environment).

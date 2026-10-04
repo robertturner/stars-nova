@@ -34,6 +34,7 @@ namespace Nova.Tests.UnitTests
             public bool IsSkipped(Star star) => false;
             public bool Construct(Star star) => true;
             public int? CurrentCount(Star star) => null;
+            public int? SupportableCount(Star star) => null;
             public XmlElement ToXml(XmlDocument xmldoc) => xmldoc.CreateElement("FixedCostUnit");
         }
 
@@ -90,6 +91,7 @@ namespace Nova.Tests.UnitTests
             public bool IsSkipped(Star star) => true;
             public bool Construct(Star star) => false;
             public int? CurrentCount(Star star) => null;
+            public int? SupportableCount(Star star) => null;
             public XmlElement ToXml(XmlDocument xmldoc) => xmldoc.CreateElement("BlockedUnit");
         }
 
@@ -100,6 +102,18 @@ namespace Nova.Tests.UnitTests
         private class CountedUnit : IProductionUnit
         {
             public int Built;
+
+            /// <summary>Null means "no population-scaled cap" (matches Alchemy/Defense/Ship/
+            /// Terraform's real SupportableCount); set to simulate Factory/Mine's real
+            /// star.GetOperableFactories()/GetOperableMines() throttle.</summary>
+            public int? Supportable;
+
+            /// <summary>Null means "no build cap" (matches Ship/Alchemy/Terraform); set to
+            /// simulate Factory/Mine/Defense's real maximum-population-based BuildCap.</summary>
+            public int? Cap;
+
+            public int? BuildCap(Star star) => Cap;
+
             public Resources Cost => new Resources(1, 0, 0, 0);
             public Resources RemainingCost => Cost;
             public string Name => "Counted";
@@ -112,47 +126,177 @@ namespace Nova.Tests.UnitTests
             }
 
             public int? CurrentCount(Star star) => Built;
+            public int? SupportableCount(Star star) => Supportable;
             public XmlElement ToXml(XmlDocument xmldoc) => xmldoc.CreateElement("CountedUnit");
         }
 
+        // behavior-specs-8/production-queue.md section 10h (live test, Stars! v2.70j): the "up to N"
+        // figure on an auto-build Mines/Factories/Defenses order is the most it may buy EACH TURN,
+        // not a total the planet is topped up to. The built count is never subtracted from N.
+
         [Test]
-        public void AutoBuildTarget_BuildsOnlyTheShortfall_AndNeverExhaustsQuantity()
+        public void AutoBuild_BuysItsFullPerTurnQuantity_EvenWhenThatMayAlreadyBeBuilt()
         {
-            var unit = new CountedUnit { Built = 7 };
-            var order = new ProductionOrder(10, unit, true); // "Up to 10", 7 already built
+            var unit = new CountedUnit { Built = 10 };
+            var order = new ProductionOrder(2, unit, true); // "Up to 2" with 10 already built
 
             int done = order.Process(star);
 
-            Assert.AreEqual(3, done, "Should build exactly the shortfall (10 - 7), not the full target");
-            Assert.AreEqual(10, unit.Built);
-            Assert.AreEqual(10, order.Quantity, "Quantity is the standing target, never decremented by Process");
+            Assert.AreEqual(2, done, "A total-target reading would buy nothing (10 >= 2); the live test bought N every year");
+            Assert.AreEqual(12, unit.Built);
+            Assert.AreEqual(2, order.Quantity, "The auto entry itself is never edited");
         }
 
         [Test]
-        public void AutoBuildTarget_StaysQueuedAndIdle_OnceSatisfied()
+        public void AutoBuild_KeepsBuyingTheSameQuantityEveryTurn_AndNeverLeavesTheQueue()
         {
             var unit = new CountedUnit { Built = 10 };
-            var order = new ProductionOrder(10, unit, true);
+            var order = new ProductionOrder(3, unit, true);
 
-            int done = order.Process(star);
+            Assert.AreEqual(3, order.Process(star));
+            Assert.AreEqual(3, order.Process(star));
+            Assert.AreEqual(3, order.Process(star));
 
-            Assert.AreEqual(0, done, "Nothing left to build - target already met");
-            Assert.AreEqual(10, order.Quantity, "Still non-zero, so Manufacture.Items never removes it from the queue");
+            Assert.AreEqual(19, unit.Built);
+            Assert.AreEqual(3, order.Quantity, "Still non-zero, so Manufacture.Items never removes it from the queue");
         }
 
         [Test]
-        public void AutoBuildTarget_ResumesBuilding_AfterTheCountLaterDrops()
+        public void AutoBuild_IsClampedToTheOperableRoom_SupportableMinusBuilt()
         {
-            var unit = new CountedUnit { Built = 10 };
-            var order = new ProductionOrder(10, unit, true);
-            order.Process(star); // satisfied, goes idle
+            // Population can operate 15 and 10 are built: room for 5, even though N is 20.
+            var unit = new CountedUnit { Built = 10, Supportable = 15 };
+            var order = new ProductionOrder(20, unit, true);
 
-            unit.Built = 6; // e.g. bombing destroyed 4 factories
             int done = order.Process(star);
 
-            Assert.AreEqual(4, done, "The now-idle order should automatically resume to close the new gap");
-            Assert.AreEqual(10, unit.Built);
+            Assert.AreEqual(5, done, "min(N=20, operable 15 - built 10)");
+            Assert.AreEqual(15, unit.Built);
+            Assert.AreEqual(20, order.Quantity);
+        }
+
+        [Test]
+        public void AutoBuild_WithNoRoomUnderTheOperableCap_GoesIdleButStaysQueued()
+        {
+            var unit = new CountedUnit { Built = 15, Supportable = 15 };
+            var order = new ProductionOrder(5, unit, true);
+
+            Assert.AreEqual(0, order.Process(star));
+            Assert.AreEqual(5, order.Quantity);
+
+            unit.Supportable = 18; // population grew
+            Assert.AreEqual(3, order.Process(star), "Resumes as soon as the operable cap leaves room again");
+        }
+
+        [Test]
+        public void AutoBuild_WhenNThrottlesBeforeTheCap_BuysExactlyN()
+        {
+            var unit = new CountedUnit { Built = 0, Supportable = 50 };
+            var order = new ProductionOrder(4, unit, true);
+
+            Assert.AreEqual(4, order.Process(star), "Run 2 of the live test: exactly N a turn although nowhere near the cap");
+        }
+
+        [Test]
+        public void AutoBuild_ForAUnitWithNoPopulationScaledCap_BuysNEveryTurnToo()
+        {
+            var unit = new CountedUnit { Built = 0 };
+            var order = new ProductionOrder(10, unit, true);
+
+            Assert.AreEqual(10, order.Process(star));
+            Assert.AreEqual(10, order.Process(star));
             Assert.AreEqual(10, order.Quantity);
+        }
+
+        [Test]
+        public void AutoBuildShipOrder_KeepsTheLegacyOneOffBehaviour()
+        {
+            // The original has no auto-build ship item; flipping a ship order to auto-build must
+            // not turn it into an endless standing order.
+            var unit = new OneOffUnit();
+            var order = new ProductionOrder(3, unit, true);
+
+            Assert.AreEqual(3, order.Process(star));
+            Assert.AreEqual(0, order.Quantity, "Consumed and eligible for removal like a manual order");
+        }
+
+        private class OneOffUnit : IProductionUnit
+        {
+            public Resources Cost => new Resources(1, 0, 0, 0);
+            public Resources RemainingCost => Cost;
+            public string Name => "OneOff";
+            public bool IsSkipped(Star star) => false;
+            public bool Construct(Star star) => true;
+            public int? CurrentCount(Star star) => null;
+            public int? SupportableCount(Star star) => null;
+            public bool AutoBuildIsStandingOrder => false;
+            public XmlElement ToXml(XmlDocument xmldoc) => xmldoc.CreateElement("OneOffUnit");
+        }
+
+        [Test]
+        public void AutoBuildPerTurnLimitOverride_ReplacesTheOrdersOwnQuantity()
+        {
+            var unit = new LimitedUnit();
+            var order = new ProductionOrder(1, unit, true);
+
+            // Mirrors auto Mineral Alchemy: the entry's own quantity is ignored and it buys as many
+            // as it can afford (limit 1,000) every turn.
+            int done = order.Process(star);
+
+            Assert.AreEqual(1000, done);
+            Assert.AreEqual(1, order.Quantity);
+        }
+
+        private class LimitedUnit : IProductionUnit
+        {
+            public Resources Cost => new Resources(1, 0, 0, 0);
+            public Resources RemainingCost => Cost;
+            public string Name => "Limited";
+            public bool IsSkipped(Star star) => false;
+            public bool Construct(Star star) => true;
+            public int? CurrentCount(Star star) => null;
+            public int? SupportableCount(Star star) => null;
+            public int? AutoBuildPerTurnLimit => 1000;
+            public XmlElement ToXml(XmlDocument xmldoc) => xmldoc.CreateElement("LimitedUnit");
+        }
+
+        [Test]
+        public void ManualOrder_IsCutToTheBuildCapMinusWhatIsBuilt()
+        {
+            // production-queue.md section 10a: a manual Factory/Mine/Defenses quantity is cut to
+            // build cap - built.
+            var unit = new CountedUnit { Built = 8, Cap = 10 };
+            var order = new ProductionOrder(5, unit, false);
+
+            int done = order.Process(star);
+
+            Assert.AreEqual(2, done);
+            Assert.AreEqual(10, unit.Built);
+            Assert.AreEqual(0, order.Quantity);
+        }
+
+        [Test]
+        public void ManualOrder_WithNoRoomUnderTheBuildCap_IsZeroedSoTheQueueDropsIt()
+        {
+            var unit = new CountedUnit { Built = 12, Cap = 10 };
+            var order = new ProductionOrder(5, unit, false);
+
+            int done = order.Process(star);
+
+            Assert.AreEqual(0, done);
+            Assert.AreEqual(0, order.Quantity, "Deleted in the original when the room is zero or negative");
+            Assert.AreEqual(12, unit.Built);
+        }
+
+        [Test]
+        public void AutoBuildOrder_IsNotCutByTheManualBuildCap()
+        {
+            // The build cap applies to manual orders; an auto-build entry is clamped by the operable
+            // count instead (and the operable count never exceeds the cap).
+            var unit = new CountedUnit { Built = 8, Cap = 10, Supportable = 100 };
+            var order = new ProductionOrder(5, unit, true);
+
+            Assert.AreEqual(5, order.Process(star));
         }
 
         [Test]

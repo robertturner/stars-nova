@@ -53,10 +53,75 @@ namespace Nova.Server
         public Dictionary<long, Wormhole>       AllWormholes    = new Dictionary<long, Wormhole>();
         public List<Message>                    AllMessages     = new List<Message>(); // All messages generated this turn.
 
+        /// <summary>
+        /// The Mystery Traders now in the galaxy, keyed by MysteryTrader.Key (several can be alive
+        /// at once: the spawn never checks for an existing one, behavior-specs-10/
+        /// turn-generation-engine.md §5a). See MysteryTraderStep.
+        /// </summary>
+        public Dictionary<long, MysteryTrader> AllMysteryTraders = new Dictionary<long, MysteryTrader>();
+
+        /// <summary>
+        /// Keys of fleets given out by a Mystery Trader (the original's per-fleet "Trader-given"
+        /// flag, §5a): such a fleet is not told off with message 264 when it meets a Trader with
+        /// too few minerals. Keys of fleets that no longer exist are pruned by MysteryTraderStep.
+        /// </summary>
+        public HashSet<long> MysteryTraderGiftFleets = new HashSet<long>();
+
+        /// <summary>
+        /// The mineral packets in flight, keyed by MineralPacket.Key (owner in the high bits).
+        /// Launched by Manufacture (PacketLaunch), moved by PacketMovementStep, decayed by
+        /// PacketDecayStep (behavior-specs-10/production-queue.md §10b, §10k item 4).
+        /// </summary>
+        public Dictionary<long, MineralPacket> AllMineralPackets = new Dictionary<long, MineralPacket>();
+
+        /// <summary>
+        /// Decaying deep-space mineral concentrations left by battle salvage that didn't happen
+        /// over a planet - keyed by NovaPoint.ToHashString() so a second battle at the same exact
+        /// point merges into the existing concentration rather than creating a duplicate. See
+        /// docs/behavior-specs-5/combat-resolution.md §7 and BattleEngine.Run.
+        /// </summary>
+        public Dictionary<string, DeepSpaceMinerals> AllDeepSpaceMinerals = new Dictionary<string, DeepSpaceMinerals>();
+
+        /// <summary>Every race's score for each of the most recent 100 turns
+        /// (save-turn-file-format.md section 3), recorded by TurnGenerator.</summary>
+        public ScoreHistory ScoreHistory = new ScoreHistory();
+
         public bool GameInProgress      = false;
         public int TurnYear             = Global.StartingYear;
         public string GameFolder        = null; // The path&folder where client files are held.
         public string StatePathName     = null; // path&file name to the saved state data
+
+        /// <summary>
+        /// The game's master random seed (the resolved GameSettings.Seed, set by
+        /// Gameinitializer), persisted with the state so a saved and reloaded game draws exactly
+        /// the same numbers as one that kept running. Every random draw of turn generation comes
+        /// from a stream derived from it - see <see cref="CreateRandom"/>. Null (a state built by
+        /// hand, or a save from before seeds were stored) keeps the old unseeded behaviour.
+        /// </summary>
+        public int? Seed                = null;
+
+        /// <summary>
+        /// This game's own settings (map size, game options, victory conditions...), saved
+        /// inside the state, so turn generation reads the game's settings rather than whatever
+        /// the process-wide GameSettings.Data holds (another game, the New Game screen, a test).
+        /// TurnGenerator.Generate installs them for the generation (<see cref="UseSettings"/>).
+        /// Set by Gameinitializer; a save from before this was stored adopts the game folder's
+        /// .settings file the first time it is needed, else stays null (the old behaviour).
+        /// </summary>
+        public GameSettings Settings    = null;
+
+        /// <summary>The year random streams are derived from during a generation (fixed at its
+        /// start by <see cref="BeginRandomTurn"/>, so the mid-generation year increment does not
+        /// re-key the late steps); null outside a generation (then TurnYear is used).</summary>
+        [NonSerialized]
+        private int? randomEpochYear = null;
+
+        /// <summary>How many streams of each (year, name, sub key) were handed out this epoch,
+        /// so asking twice for the same stream gives two different but reproducible sequences.
+        /// Transient: reset at the start of every generation, so it never depends on process
+        /// history.</summary>
+        [NonSerialized]
+        private Dictionary<string, int> randomStreamUses = new Dictionary<string, int>();
 
         private Dictionary<string, Star> starPositionDictionary = null;
         
@@ -80,7 +145,7 @@ namespace Nova.Server
             {
                 try
                 {
-                    switch (xmlnode.Name.ToLower())
+                    switch (xmlnode.Name.ToLowerInvariant())
                     {
                         case "root":
                             xmlnode = xmlnode.FirstChild;
@@ -101,7 +166,15 @@ namespace Nova.Server
                         case "statepathname":
                             StatePathName = xmlnode.FirstChild.Value;
                             break;
-                        
+
+                        case "seed":
+                            Seed = int.Parse(xmlnode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
+                            break;
+
+                        case "gamesettings":
+                            Settings = GameSettings.FromXmlText(xmlnode.OuterXml);
+                            break;
+
                         // The collections are retrieved via loops: we trust
                         // they are in the correct format.
                         
@@ -181,11 +254,63 @@ namespace Nova.Server
                             }
                             break;
 
+                        case "allmysterytraders":
+                            textNode = xmlnode.FirstChild;
+                            while (textNode != null)
+                            {
+                                MysteryTrader trader = new MysteryTrader(textNode);
+                                AllMysteryTraders.Add(trader.Key, trader);
+                                textNode = textNode.NextSibling;
+                            }
+                            break;
+
+                        case "allmineralpackets":
+                            textNode = xmlnode.FirstChild;
+                            while (textNode != null)
+                            {
+                                MineralPacket packet = new MineralPacket(textNode);
+                                AllMineralPackets[packet.Key] = packet;
+                                textNode = textNode.NextSibling;
+                            }
+                            break;
+
+                        case "mysterytradergiftfleets":
+                            textNode = xmlnode.FirstChild;
+                            while (textNode != null)
+                            {
+                                MysteryTraderGiftFleets.Add(long.Parse(textNode.FirstChild.Value, System.Globalization.NumberStyles.HexNumber));
+                                textNode = textNode.NextSibling;
+                            }
+                            break;
+
                         case "allmessages":
                             textNode = xmlnode.FirstChild;
                             while (textNode != null)
                             {
                                 AllMessages.Add(new Message(textNode));
+                                textNode = textNode.NextSibling;
+                            }
+                            break;
+
+                        case "scorehistory":
+                            ScoreHistory = new ScoreHistory(xmlnode);
+                            break;
+
+                        case "alldeepspaceminerals":
+                            textNode = xmlnode.FirstChild;
+                            while (textNode != null)
+                            {
+                                DeepSpaceMinerals deepSpaceMinerals = new DeepSpaceMinerals(textNode);
+
+                                // Several wreckage objects can share one spot (each holds at most
+                                // 30,000 kT, BattleEngine.AddWreckage): later ones get "#n" keys.
+                                string wreckageKey = deepSpaceMinerals.Position.ToHashString();
+                                for (int slot = 1; AllDeepSpaceMinerals.ContainsKey(wreckageKey); slot++)
+                                {
+                                    wreckageKey = deepSpaceMinerals.Position.ToHashString() + "#" + slot;
+                                }
+
+                                AllDeepSpaceMinerals[wreckageKey] = deepSpaceMinerals;
                                 textNode = textNode.NextSibling;
                             }
                             break;
@@ -235,14 +360,21 @@ namespace Nova.Server
                         AllStars        = restoredState.AllStars;
                         AllMinefields   = restoredState.AllMinefields;
                         AllWormholes    = restoredState.AllWormholes;
+                        AllMysteryTraders = restoredState.AllMysteryTraders;
+                        MysteryTraderGiftFleets = restoredState.MysteryTraderGiftFleets;
+                        AllMineralPackets = restoredState.AllMineralPackets;
                         AllMessages     = restoredState.AllMessages;
+                        AllDeepSpaceMinerals = restoredState.AllDeepSpaceMinerals;
+                        ScoreHistory    = restoredState.ScoreHistory;
         
                         GameInProgress    = restoredState.GameInProgress;
                         TurnYear          = restoredState.TurnYear;
                         GameFolder        = restoredState.GameFolder; // The path&folder where client files are held.
                         StatePathName     = restoredState.StatePathName;
-                
-                        LinkServerStateReferences(); 
+                        Seed              = restoredState.Seed;
+                        Settings          = restoredState.Settings;
+
+                        LinkServerStateReferences();
                     }
                     waitForFile = false;
                 }
@@ -307,7 +439,18 @@ namespace Nova.Server
             Global.SaveData(xmldoc, xmlelServerState, "TurnYear", TurnYear.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Global.SaveData(xmldoc, xmlelServerState, "GameFolder", GameFolder);
             Global.SaveData(xmldoc, xmlelServerState, "StatePathName", StatePathName);
-            
+            if (Seed.HasValue)
+            {
+                Global.SaveData(xmldoc, xmlelServerState, "Seed", Seed.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            if (Settings != null)
+            {
+                XmlDocument settingsDocument = new XmlDocument();
+                settingsDocument.LoadXml(Settings.ToXmlText());
+                xmlelServerState.AppendChild(xmldoc.ImportNode(settingsDocument.DocumentElement, true));
+            }
+
             // Store the players
             XmlElement xmlelAllPlayers = xmldoc.CreateElement("AllPlayers");
             foreach (PlayerSettings playerSettings in AllPlayers)
@@ -377,6 +520,29 @@ namespace Nova.Server
             }
             xmlelServerState.AppendChild(xmlelAllWormholes);
 
+            // Store the Mystery Traders and the Trader-given fleet flags
+            XmlElement xmlelAllMysteryTraders = xmldoc.CreateElement("AllMysteryTraders");
+            foreach (MysteryTrader trader in AllMysteryTraders.Values)
+            {
+                xmlelAllMysteryTraders.AppendChild(trader.ToXml(xmldoc));
+            }
+            xmlelServerState.AppendChild(xmlelAllMysteryTraders);
+
+            XmlElement xmlelGiftFleets = xmldoc.CreateElement("MysteryTraderGiftFleets");
+            foreach (long fleetKey in MysteryTraderGiftFleets)
+            {
+                Global.SaveData(xmldoc, xmlelGiftFleets, "Fleet", fleetKey.ToString("X"));
+            }
+            xmlelServerState.AppendChild(xmlelGiftFleets);
+
+            // Store the mineral packets in flight
+            XmlElement xmlelAllMineralPackets = xmldoc.CreateElement("AllMineralPackets");
+            foreach (MineralPacket packet in AllMineralPackets.Values)
+            {
+                xmlelAllMineralPackets.AppendChild(packet.ToXml(xmldoc));
+            }
+            xmlelServerState.AppendChild(xmlelAllMineralPackets);
+
             // Store the Messages
             XmlElement xmlelAllMessages = xmldoc.CreateElement("AllMessages");
             foreach (Message message in AllMessages)
@@ -384,7 +550,17 @@ namespace Nova.Server
                 xmlelAllMessages.AppendChild(message.ToXml(xmldoc));
             }
             xmlelServerState.AppendChild(xmlelAllMessages);
-            
+
+            // Store the deep-space mineral concentrations
+            XmlElement xmlelAllDeepSpaceMinerals = xmldoc.CreateElement("AllDeepSpaceMinerals");
+            foreach (DeepSpaceMinerals deepSpaceMinerals in AllDeepSpaceMinerals.Values)
+            {
+                xmlelAllDeepSpaceMinerals.AppendChild(deepSpaceMinerals.ToXml(xmldoc));
+            }
+            xmlelServerState.AppendChild(xmlelAllDeepSpaceMinerals);
+
+            xmlelServerState.AppendChild(ScoreHistory.ToXml(xmldoc));
+
             xmldoc.Save(StatePathName);
         }
   
@@ -406,11 +582,14 @@ namespace Nova.Server
                 // Star reference to the Race that owns it
                 if (star.ThisRace != null)
                 {
-                    // Redundant, but works to check if race is valid...
-                    if (star.Owner == AllEmpires[star.Owner].Id)
+                    // A star that lost its owner (Owner 0, Nobody) can still carry its old race
+                    // name: that used to throw here (no empire 0) and made the save unloadable.
+                    // It has no race now (CompactCollections does the same in memory).
+                    if (AllEmpires.TryGetValue(star.Owner, out EmpireData starOwner) && star.Owner == starOwner.Id
+                        && AllRaces.TryGetValue(star.ThisRace.Name, out Race ownerRace))
                     {
-                        star.ThisRace = AllRaces[star.ThisRace.Name];
-                        star.EnergyTechLevel = AllEmpires[star.Owner].ResearchLevels[TechLevel.ResearchField.Energy];
+                        star.ThisRace = ownerRace;
+                        star.EnergyTechLevel = starOwner.ResearchLevels[TechLevel.ResearchField.Energy];
                     }
                     else
                     {
@@ -491,12 +670,167 @@ namespace Nova.Server
             AllStars.Clear();
             AllMinefields.Clear();
             AllWormholes.Clear();
+            AllMysteryTraders.Clear();
+            MysteryTraderGiftFleets.Clear();
+            AllMineralPackets.Clear();
             AllMessages.Clear();
-            
+            AllDeepSpaceMinerals.Clear();
+            ScoreHistory.Clear();
+
             GameFolder     = null;
             GameInProgress = false;
-            TurnYear       = Global.StartingYear;            
-            StatePathName  = null;  
+            TurnYear       = Global.StartingYear;
+            StatePathName  = null;
+            Seed           = null;
+            Settings       = null;
+            randomEpochYear = null;
+            randomStreamUses = new Dictionary<string, int>();
+        }
+
+        /// <summary>
+        /// Puts every collection of the game into the order (and keys) a save and reload would
+        /// give it - see Nova.Common.CanonicalOrder. TurnGenerator.Generate calls it last, so a
+        /// server kept in memory between turns (NovaConsole, a simulation harness) plays on
+        /// exactly like one that reloads the saved state every turn (TurnHost).
+        /// </summary>
+        public void CompactCollections()
+        {
+            CanonicalOrder.Compact(AllCommands);
+            CanonicalOrder.Compact(AllTechLevels);
+            CanonicalOrder.Compact(AllEmpires);
+            CanonicalOrder.Compact(AllRaces);
+            CanonicalOrder.Compact(AllStars);
+            CanonicalOrder.Compact(AllMinefields);
+            CanonicalOrder.Compact(AllWormholes);
+            CanonicalOrder.Compact(AllMysteryTraders);
+            CanonicalOrder.Compact(MysteryTraderGiftFleets);
+            CanonicalOrder.Compact(AllMineralPackets);
+
+            foreach (Minefield minefield in AllMinefields.Values)
+            {
+                CanonicalOrder.CompactSorted(minefield.VisibleTo);
+            }
+
+            foreach (Wormhole wormhole in AllWormholes.Values)
+            {
+                CanonicalOrder.CompactSorted(wormhole.UsedBy);
+            }
+
+            foreach (MysteryTrader trader in AllMysteryTraders.Values)
+            {
+                CanonicalOrder.Compact(trader.ServedRaces);
+            }
+
+            // Wreckage is re-keyed exactly as the loader keys it (position, then "#n" for later
+            // objects at the same spot), so a slot freed by decay is not kept in memory only.
+            List<DeepSpaceMinerals> wreckage = new List<DeepSpaceMinerals>(AllDeepSpaceMinerals.Values);
+            AllDeepSpaceMinerals.Clear();
+            foreach (DeepSpaceMinerals deepSpaceMinerals in wreckage)
+            {
+                string wreckageKey = deepSpaceMinerals.Position.ToHashString();
+                for (int slot = 1; AllDeepSpaceMinerals.ContainsKey(wreckageKey); slot++)
+                {
+                    wreckageKey = deepSpaceMinerals.Position.ToHashString() + "#" + slot;
+                }
+
+                AllDeepSpaceMinerals[wreckageKey] = deepSpaceMinerals;
+            }
+
+            foreach (EmpireData empire in AllEmpires.Values)
+            {
+                empire.CompactCollections();
+            }
+
+            // Star.EnergyTechLevel is not saved: loading re-derives it from the owner's current
+            // research (LinkServerStateReferences). Do the same here, or a star kept in memory
+            // keeps the level it had when it was last linked (Alternate Reality resources).
+            // A star with no owning empire has no race after loading either.
+            foreach (Star star in AllStars.Values)
+            {
+                if (star.ThisRace == null)
+                {
+                    continue;
+                }
+
+                if (AllEmpires.TryGetValue(star.Owner, out EmpireData owner) && AllRaces.ContainsKey(star.ThisRace.Name))
+                {
+                    star.EnergyTechLevel = owner.ResearchLevels[TechLevel.ResearchField.Energy];
+                }
+                else
+                {
+                    star.ThisRace = null;
+                }
+            }
+
+            foreach (EmpireData empire in AllEmpires.Values)
+            {
+                foreach (Star star in empire.OwnedStars.Values)
+                {
+                    if (star.ThisRace != null && star.Owner == empire.Id)
+                    {
+                        star.EnergyTechLevel = empire.ResearchLevels[TechLevel.ResearchField.Energy];
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Installs this game's <see cref="Settings"/> as GameSettings.Data until the returned
+        /// scope is disposed (see GameSettings.Use). A state saved before settings were stored
+        /// adopts its game folder's .settings file (the state file's name with the .settings
+        /// extension, as Gameinitializer names it) the first time; with neither, Data is left
+        /// alone, exactly as before.
+        /// </summary>
+        public IDisposable UseSettings()
+        {
+            if (Settings == null && !string.IsNullOrEmpty(StatePathName))
+            {
+                Settings = GameSettings.TryLoad(Path.ChangeExtension(StatePathName, Global.SettingsExtension));
+            }
+
+            return GameSettings.Use(Settings);
+        }
+
+        /// <summary>
+        /// Starts a generation's random epoch (TurnGenerator.Generate calls it first): streams
+        /// are keyed on the current (pre-increment) year until the next call, and the per-stream
+        /// use counts start again from zero - so the draws of a generation depend only on the
+        /// seed, the year and the stream keys, never on what ran earlier in this process.
+        /// </summary>
+        public void BeginRandomTurn()
+        {
+            randomEpochYear = TurnYear;
+            randomStreamUses = new Dictionary<string, int>();
+        }
+
+        /// <summary>
+        /// A random stream for one consumer of this game: derived from <see cref="Seed"/>, the
+        /// epoch year, the stream name and <paramref name="subKey"/> (a fleet key, an empire id,
+        /// a step key...), and the number of times that same stream was already asked for this
+        /// epoch (GameRandom.DeriveSeed). Separate names give independent streams, so an extra
+        /// draw in one step never shifts another's. With no seed (hand-built states, older
+        /// saves) it is an unseeded Random, the old behaviour.
+        /// </summary>
+        public Random CreateRandom(string stream, long subKey = 0)
+        {
+            if (!Seed.HasValue)
+            {
+                return new Random();
+            }
+
+            int year = randomEpochYear ?? TurnYear;
+            string useKey = year.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + stream + "|"
+                + subKey.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            int index;
+            if (randomStreamUses == null)
+            {
+                randomStreamUses = new Dictionary<string, int>();
+            }
+
+            randomStreamUses.TryGetValue(useKey, out index);
+            randomStreamUses[useKey] = index + 1;
+
+            return GameRandom.Create(Seed.Value, year, stream, subKey, index);
         }
         
         
@@ -508,8 +842,50 @@ namespace Nova.Server
         {
             return AllEmpires.Values.SelectMany(empire => empire.OwnedFleets.Values);
         }
-        
-        
+
+        /// <summary>
+        /// This turn's empire processing order, reshuffled once per turn by TurnGenerator before
+        /// fleet movement - behavior-specs-7/ai-opponent-behavior.md §8 and turn-generation-engine.md
+        /// §1 both confirm a genuine Fisher-Yates shuffle of player-slot indices in the original
+        /// game's master turn routine, run immediately before per-player turn-generation dispatch,
+        /// rather than always processing empires in the same fixed (dictionary) order every turn.
+        /// Transient, per-turn scratch state - not persisted, recomputed at the start of every
+        /// Generate() call. Falls back to AllEmpires.Values' own order if never set (e.g. tests
+        /// that construct a ServerData and call a turn step directly without going through
+        /// TurnGenerator.Generate()).
+        /// </summary>
+        public List<EmpireData> ShuffledEmpireOrder;
+
+        /// <summary>
+        /// Fisher-Yates shuffle of this turn's empires - see <see cref="ShuffledEmpireOrder"/>.
+        /// </summary>
+        public List<EmpireData> ComputeShuffledEmpireOrder(Random random)
+        {
+            List<EmpireData> order = AllEmpires.Values.ToList();
+            for (int i = order.Count - 1; i > 0; i--)
+            {
+                int j = random.Next(i + 1);
+                (order[i], order[j]) = (order[j], order[i]);
+            }
+
+            return order;
+        }
+
+        /// <summary>
+        /// Iterates through all Fleets in all Empires, in this turn's shuffled empire order (see
+        /// <see cref="ShuffledEmpireOrder"/>) rather than the fixed dictionary order
+        /// <see cref="IterateAllFleets"/> uses - for the specific turn-processing passes where
+        /// which empire's fleet is considered first can affect a shared, contested outcome (e.g.
+        /// RemoteMiningStep's per-star mining order). Falls back to <see cref="IterateAllFleets"/>'s
+        /// own order if no shuffle has been computed yet this turn.
+        /// </summary>
+        public IEnumerable<Fleet> IterateAllFleetsInShuffledOrder()
+        {
+            IEnumerable<EmpireData> order = ShuffledEmpireOrder != null ? (IEnumerable<EmpireData>)ShuffledEmpireOrder : AllEmpires.Values;
+            return order.SelectMany(empire => empire.OwnedFleets.Values);
+        }
+
+
         /// <summary>
         /// Iterates through all Designs in all Empires, in order.
         /// </summary>
@@ -564,7 +940,9 @@ namespace Nova.Server
             }
             foreach (string key in destroyedStations)
             {
-                AllStars[key].Starbase = null;
+                Star station = AllStars[key];
+                station.Starbase = null;
+                DepopulateAlternateRealityPlanet(station);
             }
 
             // Get fleets out of limbo.
@@ -576,8 +954,41 @@ namespace Nova.Server
                     {
                         empire.AddOrUpdateFleet(newFleet);
                     }
+
+                    // Promoted: drop them from limbo, or every later cleanup this turn (and every
+                    // later turn) would re-add them - bringing back a split-off fleet that has
+                    // since merged away, been destroyed or scrapped.
+                    empire.TemporaryFleets.Clear();
                 }
             }
+        }
+
+        /// <summary>
+        /// Losing its starbase depopulates an Alternate Reality planet: its whole population lived
+        /// in that orbital habitat, so the owner is cleared and the population set to 0
+        /// (behavior-specs-9/population-growth.md section 3; messages 141/142 to the owner - 142 when
+        /// under 1,001 population units - and 324 to the destroyer). The destroyer is not tracked
+        /// here, so only the owner is told.
+        /// </summary>
+        private void DepopulateAlternateRealityPlanet(Star star)
+        {
+            EmpireData owner;
+            if (star.Owner == Global.Nobody || !AllEmpires.TryGetValue(star.Owner, out owner)
+                || owner.Race == null || !owner.Race.HasTrait("AR"))
+            {
+                return;
+            }
+
+            Message message = new Message();
+            message.Audience = star.Owner;
+            message.Text = "The orbital habitat at " + star.Name + " has been destroyed; its colony of "
+                + star.Colonists + " colonists did not survive.";
+            AllMessages.Add(message);
+
+            owner.OwnedStars.Remove(star);
+            star.ManufacturingQueue.Clear();
+            star.Colonists = 0;
+            star.Owner = Global.Nobody;
         }
 
         // See if the fleet is orbiting a star

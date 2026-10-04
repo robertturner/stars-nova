@@ -109,7 +109,7 @@ namespace Nova.Common.Commands
             
             while (subnode != null)
             {
-                switch (subnode.Name.ToLower())
+                switch (subnode.Name.ToLowerInvariant())
                 {
                     case "fleetkey":
                       FleetKey = long.Parse(subnode.FirstChild.Value, System.Globalization.NumberStyles.HexNumber);

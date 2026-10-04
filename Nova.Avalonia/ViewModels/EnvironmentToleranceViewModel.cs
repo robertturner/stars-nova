@@ -100,4 +100,15 @@ public class EnvironmentToleranceViewModel : ObservableObject
     public string FormattedMin => formatValue(MinValue);
 
     public string FormattedMax => formatValue(MaxValue);
+
+    /// <summary>Re-reads every value after the draft changed underneath (a preset, the Random
+    /// generator or a section revert in Race Designer).</summary>
+    public void Refresh()
+    {
+        OnPropertyChanged(nameof(MinValue));
+        OnPropertyChanged(nameof(MaxValue));
+        OnPropertyChanged(nameof(FormattedMin));
+        OnPropertyChanged(nameof(FormattedMax));
+        OnPropertyChanged(nameof(Immune));
+    }
 }

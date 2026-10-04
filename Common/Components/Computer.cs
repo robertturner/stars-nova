@@ -112,9 +112,21 @@ namespace Nova.Common.Components
             Computer sum = new Computer(op1);
             sum.Initiative = op1.Initiative + op2.Initiative;
             // Sum of two independant probabilities: (1 - ( (1-Accuracy1 ) * (1-Accuracy2) )
-            // Using 100.0 as Accuracy is on a 1 to 100 (%) scale not 0 to 1 (normalised) scale
-            sum.Accuracy = 100.0 - ((100.0 - op1.Accuracy) * (100.0 - op2.Accuracy) / 100.0);
-            return op1;
+            // Using 100.0 as Accuracy is on a 1 to 100 (%) scale not 0 to 1 (normalised) scale.
+            // This is the diminishing-returns stacking behavior-specs-9/combat-resolution.md §7a
+            // output (b) gives for the computer accuracy bonus: each computer closes its own
+            // rate's share of the remaining gap to 100, no explicit cap.
+            // behavior-specs-10 §7a: each step is bonus + (100 - bonus) x rate / 100,
+            // truncated - integer arithmetic (ShipDesign.ComputerAccuracy walks the parts unit by
+            // unit, which is the exact battle value; this summary is for display).
+            int first = (int)Math.Floor(op1.Accuracy + 1e-6);
+            int second = (int)Math.Floor(op2.Accuracy + 1e-6);
+            sum.Accuracy = first + ((100 - first) * second / 100);
+
+            // Previously returned op1, discarding the sum just built - so computers in two
+            // different hull slots never stacked at all (neither accuracy nor initiative); only
+            // the first slot's computer counted (behavior-specs-9 coverage, combat row 30).
+            return sum;
         }
 
 
@@ -130,8 +142,16 @@ namespace Nova.Common.Components
         {
             Computer sum = new Computer(op1);
             sum.Initiative = op1.Initiative * scalar;
-            // Sum of independant probabilities: (1 - ( (1-Accuracy1 )^scalar )
-            sum.Accuracy = (1.0 - Math.Pow(1.0 - (op1.Accuracy / 100.0), scalar)) * 100.0;
+            // Diminishing returns per unit, truncating at every step (behavior-specs-10/
+            // combat-resolution.md §7a): one Battle Computer 20, two 36, three 48 (not 48.8).
+            int rate = (int)Math.Floor(op1.Accuracy + 1e-6);
+            int bonus = 0;
+            for (int i = 0; i < scalar; i++)
+            {
+                bonus += (100 - bonus) * rate / 100;
+            }
+
+            sum.Accuracy = bonus;
             return sum;
         }
 
@@ -154,11 +174,11 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "initiative")
+                    if (subnode.Name.ToLowerInvariant() == "initiative")
                     {
                         Initiative = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    if (subnode.Name.ToLower() == "accuracy")
+                    if (subnode.Name.ToLowerInvariant() == "accuracy")
                     {
                         Accuracy = double.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }

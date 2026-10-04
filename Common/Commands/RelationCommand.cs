@@ -99,7 +99,7 @@ namespace Nova.Common.Commands
 
             while (subnode != null)
             {
-                switch (subnode.Name.ToLower())
+                switch (subnode.Name.ToLowerInvariant())
                 {
                     case "targetempireid":
                         TargetEmpireId = ushort.Parse(subnode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);

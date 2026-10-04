@@ -68,6 +68,25 @@ public partial class OpenGameView : UserControl
 
     public event Action<ClientData>? GameOpened;
 
+    /// <summary>Jumps straight to a startup sub-screen - the desktop game window's File > New
+    /// ("new"), Open ("open") and Custom Race Wizard ("race") use this; anything else leaves the
+    /// startup choices showing (File > Close).</summary>
+    public void ShowStartupChoice(string startupChoice)
+    {
+        switch (startupChoice)
+        {
+            case "new":
+                viewModel.NewGameCommand.Execute(null);
+                break;
+            case "open":
+                viewModel.ShowOpenGameCommand.Execute(null);
+                break;
+            case "race":
+                viewModel.RaceDesignerCommand.Execute(null);
+                break;
+        }
+    }
+
     /// <summary>Steps back from the "browse for a race's .intel file" sub-screen to the initial
     /// Continue/Open/New Game choices, same as the on-screen "&lt; Back" button - see
     /// PlatformHooks.TryHandleBackRequest for why a host needs to be able to trigger this itself

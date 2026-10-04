@@ -146,11 +146,11 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "penetratingscan")
+                    if (subnode.Name.ToLowerInvariant() == "penetratingscan")
                     {
                         PenetratingScan = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    if (subnode.Name.ToLower() == "normalscan")
+                    if (subnode.Name.ToLowerInvariant() == "normalscan")
                     {
                         NormalScan = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }

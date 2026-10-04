@@ -82,6 +82,20 @@ public class ResearchViewModel : Tool
         }
     }
 
+    private static readonly List<KeyValuePair<string, int>> NextFieldChoices = ResearchNextField.Choices();
+
+    /// <summary>The "next field to research" combo (research-tech-tree.md section 4; Nova.Client.
+    /// ResearchNextField): the field research moves to once the current target gains a level.</summary>
+    public IReadOnlyList<string> NextFieldOptions { get; } = NextFieldChoices.Select(choice => choice.Key).ToList();
+
+    private int selectedNextFieldIndex;
+
+    public int SelectedNextFieldIndex
+    {
+        get => selectedNextFieldIndex;
+        set => SetProperty(ref selectedNextFieldIndex, Math.Clamp(value, 0, NextFieldChoices.Count - 1));
+    }
+
     /// <summary>Total energy resources this empire's owned stars generate each turn - the same
     /// figure ResearchDialog.CountEnergy computes, before any research budget percentage is
     /// applied to it.</summary>
@@ -159,6 +173,12 @@ public class ResearchViewModel : Tool
         RefreshFromEmpireState();
     }
 
+    private int loadedBudget;
+
+    private string loadedTargetField = "";
+
+    private int loadedNextFieldIndex;
+
     private void RefreshFromEmpireState()
     {
         EmpireData empire = clientState.EmpireState;
@@ -183,6 +203,12 @@ public class ResearchViewModel : Tool
         AvailableEnergy = CountEnergy();
         EditableBudget = empire.ResearchBudget;
         SelectedTargetField = currentTarget.ToString();
+        SelectedNextFieldIndex = ResearchNextField.IndexOf(empire.ResearchNextField);
+
+        // What the editor opened with - Apply writes only when one of these was changed.
+        loadedBudget = EditableBudget;
+        loadedTargetField = SelectedTargetField;
+        loadedNextFieldIndex = SelectedNextFieldIndex;
 
         // EditableBudget/SelectedTargetField's setters already call RefreshPreview() when their
         // value actually changes - but if it happens to already equal the field's initial default
@@ -224,9 +250,16 @@ public class ResearchViewModel : Tool
             CompletionResourcesText = resourcesRequired.ToString(CultureInfo.InvariantCulture);
         }
 
-        if (EditableBudget != 0 && BudgetedEnergy > 0 && currentLevel[targetField] < TechLevel.MaxLevel)
+        // A GR race's target field only actually receives half of BudgetedEnergy per turn (see
+        // Research.TargetFieldContributionFraction) - the forecast must divide by that effective
+        // rate, not the full budgeted total (which is what BudgetedEnergy's own displayed figure
+        // correctly still shows in full, since that IS the whole per-turn research contribution,
+        // just not all of it landing on this one field).
+        int targetFieldRate = (int)(BudgetedEnergy * Research.TargetFieldContributionFraction(clientState.EmpireState.Race));
+
+        if (EditableBudget != 0 && targetFieldRate > 0 && currentLevel[targetField] < TechLevel.MaxLevel)
         {
-            int yearsToComplete = (int)Math.Ceiling((double)resourcesRequired / BudgetedEnergy);
+            int yearsToComplete = (int)Math.Ceiling((double)resourcesRequired / targetFieldRate);
             CompletionTimeText = yearsToComplete.ToString(CultureInfo.InvariantCulture);
         }
         else
@@ -234,7 +267,7 @@ public class ResearchViewModel : Tool
             CompletionTimeText = "Never";
         }
 
-        Benefits = BuildBenefits(targetField, currentLevel);
+        Benefits = BuildBenefits(targetField, currentLevel, clientState.EmpireState.Race, clientState.EmpireState.ResearchResources);
     }
 
     /// <summary>
@@ -243,8 +276,10 @@ public class ResearchViewModel : Tool
     /// the very next level. Ports WinForms ResearchDialog.PopulateResearchBenefits exactly,
     /// including its rule that a component needing a higher level in some OTHER, unrelated field
     /// too is omitted, since researching targetField alone will never unlock it.
+    /// Each row also carries the detail card's single status line (unavailable / available /
+    /// resources still needed / thousands with "k") - see Nova.Client.TechStatusLine.
     /// </summary>
-    private static IReadOnlyList<ResearchBenefitRowViewModel> BuildBenefits(TechLevel.ResearchField targetField, TechLevel currentLevel)
+    private static IReadOnlyList<ResearchBenefitRowViewModel> BuildBenefits(TechLevel.ResearchField targetField, TechLevel currentLevel, Race race, TechLevel bankedResources)
     {
         var allComponents = new AllComponents();
         int currentFieldLevel = currentLevel[targetField];
@@ -295,7 +330,12 @@ public class ResearchViewModel : Tool
             }
 
             string text = component.Name + " " + component.Type;
-            benefits.Add((levelsAway, new ResearchBenefitRowViewModel(text, color)));
+            int stillNeeded = TechStatusLine.ForComponent(component, race, currentLevel, bankedResources);
+            benefits.Add((levelsAway, new ResearchBenefitRowViewModel(
+                text,
+                color,
+                TechStatusLine.Format(stillNeeded),
+                TechStatusLine.KindOf(stillNeeded) == TechStatusLine.Kind.Unavailable)));
         }
 
         return benefits
@@ -326,11 +366,21 @@ public class ResearchViewModel : Tool
         var command = new ResearchCommand
         {
             Budget = EditableBudget,
+            NextField = NextFieldChoices[selectedNextFieldIndex].Value,
         };
         command.Topics.Zero();
         command.Topics[Enum.Parse<TechLevel.ResearchField>(SelectedTargetField)] = 1;
 
-        if (!command.IsValid(clientState.EmpireState))
+        // ResearchCommand.IsValid's own "nothing changed" test compares the two TechLevel Topics
+        // with ==, which TechLevel does not overload (reference equality, so never equal) - an
+        // unchanged Apply used to queue an order anyway. Compare field by field here so the
+        // editor writes only when something changed (race-designer-ui-and-availability.md,
+        // research-preference accept).
+        // Also nothing to write when the editor still shows what it opened with (a brand-new
+        // empire stores no target field; the editor shows the first field, which is not a change
+        // the player made).
+        bool editedSinceLoad = EditableBudget != loadedBudget || SelectedTargetField != loadedTargetField || selectedNextFieldIndex != loadedNextFieldIndex;
+        if (!editedSinceLoad || !command.IsValid(clientState.EmpireState) || !ChangesSomething(command, clientState.EmpireState))
         {
             StatusMessage = "No changes to apply.";
             return;
@@ -340,5 +390,20 @@ public class ResearchViewModel : Tool
         command.ApplyToState(clientState.EmpireState);
         RefreshFromEmpireState();
         StatusMessage = "Applied.";
+    }
+
+    private static bool ChangesSomething(ResearchCommand command, EmpireData empire)
+    {
+        if (command.Budget != empire.ResearchBudget)
+        {
+            return true;
+        }
+
+        if (command.NextField.HasValue && command.NextField.Value != empire.ResearchNextField)
+        {
+            return true;
+        }
+
+        return Enum.GetValues<TechLevel.ResearchField>().Any(field => command.Topics[field] != empire.ResearchTopics[field]);
     }
 }

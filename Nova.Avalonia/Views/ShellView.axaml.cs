@@ -48,6 +48,7 @@ public partial class ShellView : UserControl
         switch (ContentHost.Content)
         {
             case AboutView:
+            case RaceDesignerView:
                 ShowMain();
                 return true;
 
@@ -90,6 +91,7 @@ public partial class ShellView : UserControl
         }
 
         viewModel.AboutRequested += ShowAbout;
+        viewModel.RaceViewRequested += ShowRace;
         viewModel.TurnAdvanced += OnTurnAdvanced;
         viewModel.GameCloseRequested += ShowOpenGame;
 
@@ -102,6 +104,15 @@ public partial class ShellView : UserControl
         var aboutView = new AboutView();
         aboutView.CloseRequested += ShowMain;
         ContentHost.Content = aboutView;
+    }
+
+    /// <summary>The menu's View Race: the race wizard on the player's own race, read-only
+    /// (RaceDesignerView with isEditable false); its Close (or the back button) returns.</summary>
+    private void ShowRace(Race race)
+    {
+        var raceView = new RaceDesignerView(race, isEditable: false);
+        raceView.RaceSavedOrCancelled += ShowMain;
+        ContentHost.Content = raceView;
     }
 
     private void ShowMain()

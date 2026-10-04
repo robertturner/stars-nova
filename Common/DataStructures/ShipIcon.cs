@@ -158,7 +158,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "shipicon")
+                    if (subnode.Name.ToLowerInvariant() == "shipicon")
                     {
                         Source = subnode.FirstChild.Value;
                     }

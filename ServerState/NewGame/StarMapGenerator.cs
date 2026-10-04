@@ -23,7 +23,7 @@ namespace Nova.Server.NewGame
 {
     using System;
     using System.Collections.Generic;
-    
+    using System.Linq;
 
     /// <summary>
     /// This class is used to generate stars map.
@@ -103,25 +103,230 @@ namespace Nova.Server.NewGame
 
             this.density = new double[mapWidth, mapHeight];
         }
-        
-        
+
+
+        /// <summary>
+        /// When set, ordinary stars are placed by the discrete wizard algorithm of
+        /// behavior-specs-11/new-game-setup.md section 3 instead of the density function: this
+        /// many stars in all (home worlds included, since in the original the home worlds are
+        /// picked from the galaxy's own stars), from count + count / 7 candidate positions
+        /// (capped at 999) sorted by x and swept at the fixed <see cref="PresetStarSeparation"/>,
+        /// then trimmed at random to the count - see PlaceStarsByCount. Null keeps the free
+        /// density-function generator.
+        /// </summary>
+        public int? TargetStarCount { get; set; }
+
+        /// <summary>
+        /// The wizard galaxy's minimum star separation in light-years (behavior-specs-11/
+        /// new-game-setup.md section 3): a fixed 12, not derived from the diameter and not the
+        /// free map's StarSeparation setting. Candidates at a squared distance of 144 or less
+        /// from a survivor are removed, so surviving stars are more than 12 ly apart (squared
+        /// distance 145 or more) before clumping.
+        /// </summary>
+        public const int PresetStarSeparation = 12;
+
+        /// <summary>
+        /// "Galaxy Clumping": run the single relaxation pass (RelaxStars) after placement.
+        /// </summary>
+        public bool Clumping { get; set; }
+
+
         /// <summary>
         /// Generate stars and homeworlds.
         /// Note that the number of generated stars will be a random value.
         /// </summary>
         public void Generate(int numPlayers)
         {
-            this.numPlayers = numPlayers;            
+            this.numPlayers = numPlayers;
             // Initial uniform density
             this.SetStandardDensity();
             this.SetHomeworldReducer();
             this.PlaceHomeworlds();
-            // Reset the density for Star generation
-            this.SetStandardDensity();
-            this.SetStandardReducer();
-            // Account for already placed homeworlds in the density function.
-            this.AccountHomeworlds();
-            this.PlaceStars();
+
+            if (this.TargetStarCount.HasValue)
+            {
+                this.PlaceStarsByCount(this.TargetStarCount.Value);
+            }
+            else
+            {
+                // Reset the density for Star generation
+                this.SetStandardDensity();
+                this.SetStandardReducer();
+                // Account for already placed homeworlds in the density function.
+                this.AccountHomeworlds();
+                this.PlaceStars();
+            }
+
+            if (this.Clumping)
+            {
+                RelaxStars(this.stars, this.homeworlds, this.random);
+            }
+        }
+
+
+        /// <summary>
+        /// The wizard galaxy's star placement (behavior-specs-11/new-game-setup.md section 3,
+        /// `:50307`-`50363`): count + count / 7 candidate positions (capped at 999) are drawn,
+        /// sorted by x and swept in that order - a later candidate at a squared distance of at
+        /// most 144 (<see cref="PresetStarSeparation"/> squared) from a surviving earlier one is
+        /// removed. If more candidates survive than wanted, random survivors are removed one at
+        /// a time until exactly the wanted number remain; if fewer survive, the galaxy simply has
+        /// fewer stars. The home worlds already placed count toward the total.
+        /// </summary>
+        /// <remarks>
+        /// Port choices: the original chooses its home worlds among the placed stars, this port
+        /// places them first, so the wanted number is the total less the home worlds and a
+        /// candidate within the separation of a home world is swept away too. The original
+        /// draws coordinates 10 .. D - 10; this port keeps its EdgeMargin of 20 for the map
+        /// view's sake (see the constant's own comment).
+        /// </remarks>
+        private void PlaceStarsByCount(int totalStars)
+        {
+            int ordinaryStars = Math.Max(0, totalStars - this.homeworlds.Count);
+            int candidateCount = Math.Min(Nova.Common.GameSettings.MaximumStars, totalStars + (totalStars / 7));
+            const long maximumRemovedSquared = PresetStarSeparation * PresetStarSeparation;
+
+            List<int[]> candidates = new List<int[]>(candidateCount);
+            for (int i = 0; i < candidateCount; i++)
+            {
+                int x = NextCoordinate(this.mapWidth);
+                int y = NextCoordinate(this.mapHeight);
+                candidates.Add(new int[] { x, y });
+            }
+
+            List<int[]> survivors = new List<int[]>(candidateCount);
+            foreach (int[] candidate in SortedByX(candidates))
+            {
+                if (IsWithin(candidate[0], candidate[1], survivors, maximumRemovedSquared)
+                    || IsWithin(candidate[0], candidate[1], this.homeworlds, maximumRemovedSquared))
+                {
+                    continue;
+                }
+
+                survivors.Add(candidate);
+            }
+
+            while (survivors.Count > ordinaryStars)
+            {
+                survivors.RemoveAt(this.random.Next(survivors.Count));
+            }
+
+            this.stars.AddRange(survivors);
+        }
+
+        /// <summary>A stable sort by x (ties keep their order), as the original's x-sort of the candidates.</summary>
+        private static List<int[]> SortedByX(List<int[]> positions)
+        {
+            return positions.OrderBy(position => position[0]).ToList();
+        }
+
+        /// <summary>True when (x, y) is at a squared distance of at most <paramref name="maximumSquared"/> from any of <paramref name="positions"/>.</summary>
+        private static bool IsWithin(int x, int y, List<int[]> positions, long maximumSquared)
+        {
+            foreach (int[] position in positions)
+            {
+                long dx = position[0] - x;
+                long dy = position[1] - y;
+                if ((dx * dx) + (dy * dy) <= maximumSquared)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+
+        /// <summary>
+        /// The "Galaxy Clumping" relaxation pass (behavior-specs-11/new-game-setup.md section 3,
+        /// `:50364`-`50441`): one pass of exactly as many steps as there are stars to move. Each
+        /// step picks a random star (with replacement, so some stars move several times and some
+        /// never), finds its nearest other star by squared distance on the current positions
+        /// (ties go to the lower index) and moves only the picked star, by truncating integer
+        /// division, according to that squared distance d: d &lt;= 144 no move; 145-324
+        /// (4 x own + neighbour) / 5; 325-625 (2 x own + neighbour) / 3; 626-1,600
+        /// (own + neighbour) / 2; 1,601 or more (own + 2 x neighbour) / 3, with no outer limit.
+        /// The stars are then re-sorted by x. Clumping can bring stars closer than 12 ly.
+        /// </summary>
+        /// <param name="stars">The stars to move; re-sorted by x (stable) on return.</param>
+        /// <param name="fixedStars">
+        /// Further stars that count as neighbours but are never moved (this port's home worlds,
+        /// which are placed separately from the ordinary stars and so are never picked). May be
+        /// null. Port choice: the original clumps before its home worlds are chosen, so there
+        /// every star can move.
+        /// </param>
+        /// <param name="random">Draws the picked star's index, one draw per step.</param>
+        /// <remarks>A picked star with no neighbour at all is left alone.</remarks>
+        public static void RelaxStars(List<int[]> stars, List<int[]> fixedStars, Random random)
+        {
+            int steps = stars.Count;
+            for (int step = 0; step < steps; step++)
+            {
+                int i = random.Next(stars.Count);
+                int[] self = stars[i];
+                int[] nearest = null;
+                long nearestSquared = long.MaxValue;
+
+                for (int j = 0; j < stars.Count; j++)
+                {
+                    if (j != i)
+                    {
+                        Consider(self, stars[j], ref nearest, ref nearestSquared);
+                    }
+                }
+                if (fixedStars != null)
+                {
+                    foreach (int[] other in fixedStars)
+                    {
+                        Consider(self, other, ref nearest, ref nearestSquared);
+                    }
+                }
+
+                if (nearest == null)
+                {
+                    continue;
+                }
+
+                if (nearestSquared <= 144)
+                {
+                    // No move.
+                }
+                else if (nearestSquared <= 324)
+                {
+                    self[0] = ((4 * self[0]) + nearest[0]) / 5;
+                    self[1] = ((4 * self[1]) + nearest[1]) / 5;
+                }
+                else if (nearestSquared <= 625)
+                {
+                    self[0] = ((2 * self[0]) + nearest[0]) / 3;
+                    self[1] = ((2 * self[1]) + nearest[1]) / 3;
+                }
+                else if (nearestSquared <= 1600)
+                {
+                    self[0] = (self[0] + nearest[0]) / 2;
+                    self[1] = (self[1] + nearest[1]) / 2;
+                }
+                else
+                {
+                    self[0] = (self[0] + (2 * nearest[0])) / 3;
+                    self[1] = (self[1] + (2 * nearest[1])) / 3;
+                }
+            }
+
+            List<int[]> sorted = SortedByX(stars);
+            stars.Clear();
+            stars.AddRange(sorted);
+        }
+
+        private static void Consider(int[] self, int[] other, ref int[] nearest, ref long nearestSquared)
+        {
+            long dx = other[0] - self[0];
+            long dy = other[1] - self[1];
+            long squared = (dx * dx) + (dy * dy);
+            if (squared < nearestSquared)
+            {
+                nearestSquared = squared;
+                nearest = other;
+            }
         }
            
         

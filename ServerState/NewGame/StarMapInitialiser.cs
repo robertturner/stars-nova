@@ -52,6 +52,16 @@ namespace Nova.Server.NewGame
             this.serverState = serverState;
             this.random = random ?? new Random();
             this.nameGenerator = new NameGenerator(this.random);
+
+            // The wizard's discrete Galaxy Size / Star Density (behavior-specs-10/
+            // new-game-setup.md section 3): a square (size + 1) x 400 ly map and a formula star
+            // count. Re-applied here so the map size always matches the chosen preset.
+            GameSettings settings = GameSettings.Data;
+            if (settings.UseGalaxyPresets)
+            {
+                settings.ApplyGalaxyPreset(settings.GalaxySizeSetting, settings.StarDensitySetting);
+            }
+
             this.map = new StarMapGenerator(
                 GameSettings.Data.MapWidth,
                 GameSettings.Data.MapHeight,
@@ -59,6 +69,12 @@ namespace Nova.Server.NewGame
                 GameSettings.Data.StarDensity,
                 GameSettings.Data.StarUniformity,
                 this.random);
+
+            if (settings.UseGalaxyPresets)
+            {
+                this.map.TargetStarCount = settings.NumberOfStars;
+            }
+            this.map.Clumping = settings.GalaxyClumping;
         }
 
 
@@ -85,22 +101,183 @@ namespace Nova.Server.NewGame
 
                 star.Name = nameGenerator.NextStarName;
 
-                star.MineralConcentration.Boranium = random.Next(1, 99);
-                star.MineralConcentration.Ironium = random.Next(1, 99);
-                star.MineralConcentration.Germanium = random.Next(1, 99);
-
                 // The following values are percentages of the permissable range of
                 // each environment parameter expressed as a percentage.
-                star.Radiation = random.Next(1, 99);
-                star.Gravity = random.Next(1, 99);
-                star.Temperature = random.Next(1, 99);
-                
-                star.OriginalRadiation = star.Radiation;
-                star.OriginalGravity = star.Gravity;
-                star.OriginalTemperature = star.Temperature;
+                // behavior-specs-9/population-growth.md section 2: Gravity and Temperature are
+                // 1 + U(0..89) + U(0..9) (a trapezoid over 1-99) and Radiation 1 + U(0..98) (uniform).
+                // Rolled before the concentrations because the high-radiation concentration raise
+                // (behavior-specs-10/new-game-setup.md section 3) reads the planet's radiation.
+                RollEnvironment(star, random);
 
+                // behavior-specs-10/new-game-setup.md section 3: 31-119, then the high-radiation
+                // raise, the Accelerated BBS +5 and the low-concentration roll.
+                RollMineralConcentrations(star, random);
+
+                // Ordinary planets start with no surface minerals (behavior-specs-11/
+                // new-game-setup.md section 3, raw `0x1855` and `0x18db`): the per-planet loop
+                // zeroes all three stocks, and the tonnage roll after it indexes only the
+                // home-world template (RollHomeSurfaceStock). Only home worlds (template copy)
+                // and the Packet Physics / Interstellar Traveler second planets (100-299 kT
+                // each) start with any. A fresh Star's stocks are already zero.
                 serverState.AllStars[star.Name] = star;
             }
+        }
+
+        /// <summary>
+        /// Rolls a planet's environment (current and original copies alike).
+        /// behavior-specs-9/population-growth.md section 2: Gravity and Temperature are
+        /// 1 + U(0..89) + U(0..9) and Radiation 1 + U(0..98).
+        /// </summary>
+        public static void RollEnvironment(Star star, Random random)
+        {
+            star.Radiation = 1 + random.Next(0, 99);
+            star.Gravity = 1 + random.Next(0, 90) + random.Next(0, 10);
+            star.Temperature = 1 + random.Next(0, 90) + random.Next(0, 10);
+
+            star.OriginalRadiation = star.Radiation;
+            star.OriginalGravity = star.Gravity;
+            star.OriginalTemperature = star.Temperature;
+        }
+
+        /// <summary>
+        /// Rolls an ordinary planet's three mineral concentrations, in the order of
+        /// behavior-specs-10/new-game-setup.md section 3 (raw segment 16 `0x184c`-`0x19b1`):
+        /// <list type="number">
+        /// <item>two independent 0-44 rolls plus 31 (31-119), per mineral in Ironium, Boranium,
+        /// Germanium order;</item>
+        /// <item>on a planet whose current radiation is 90 or more, each concentration c gains
+        /// half of a random 0 to (98 - c), rounded down;</item>
+        /// <item>Accelerated BBS Play adds 5 to each concentration under 40;</item>
+        /// <item>one low-concentration roll of 0-26 per planet: 18-26 nothing, 9-17 and 7-8 one
+        /// replacement, 3-6 two, 1-2 three, 0 four - each replacement sets a freshly (and
+        /// possibly repeatedly) chosen mineral's concentration to a random 1-30.</item>
+        /// </list>
+        /// The radiation must already be rolled. The template planet the home worlds copy runs
+        /// through exactly the same steps. Under "Beginner: Maximum Minerals"
+        /// (GameSettings.MaximumMinerals, option bit 0x01, `:50533`-`50586`) every concentration
+        /// is a flat 100 and the radiation raise and low-concentration roll are skipped; no
+        /// random draws are made.
+        /// </summary>
+        /// <remarks>
+        /// The spec says "a planet at 99 or more gets nothing" for the radiation raise. The
+        /// random range 0 to (98 - c) is empty once c reaches 99, so this reads it as "a
+        /// concentration of 99 or more is not raised" (per mineral), not as a radiation test.
+        /// The order of the two draws inside one replacement (mineral, then value) is not given
+        /// by the spec; mineral first is assumed.
+        /// </remarks>
+        public static void RollMineralConcentrations(Star star, Random random)
+        {
+            if (GameSettings.Data.MaximumMinerals)
+            {
+                star.MineralConcentration.Ironium = MaximumMineralsConcentration;
+                star.MineralConcentration.Boranium = MaximumMineralsConcentration;
+                star.MineralConcentration.Germanium = MaximumMineralsConcentration;
+                return;
+            }
+
+            star.MineralConcentration.Ironium = random.Next(0, 45) + random.Next(0, 45) + 31;
+            star.MineralConcentration.Boranium = random.Next(0, 45) + random.Next(0, 45) + 31;
+            star.MineralConcentration.Germanium = random.Next(0, 45) + random.Next(0, 45) + 31;
+
+            if (star.Radiation >= 90)
+            {
+                star.MineralConcentration.Ironium = RaiseForHighRadiation(star.MineralConcentration.Ironium, random);
+                star.MineralConcentration.Boranium = RaiseForHighRadiation(star.MineralConcentration.Boranium, random);
+                star.MineralConcentration.Germanium = RaiseForHighRadiation(star.MineralConcentration.Germanium, random);
+            }
+
+            if (GameSettings.Data.AcceleratedStart)
+            {
+                if (star.MineralConcentration.Ironium < 40)
+                {
+                    star.MineralConcentration.Ironium += 5;
+                }
+                if (star.MineralConcentration.Boranium < 40)
+                {
+                    star.MineralConcentration.Boranium += 5;
+                }
+                if (star.MineralConcentration.Germanium < 40)
+                {
+                    star.MineralConcentration.Germanium += 5;
+                }
+            }
+
+            int replacements = LowConcentrationReplacements(random.Next(0, 27));
+            for (int i = 0; i < replacements; i++)
+            {
+                int mineral = random.Next(0, 3);
+                int value = random.Next(1, 31);
+                switch (mineral)
+                {
+                    case 0:
+                        star.MineralConcentration.Ironium = value;
+                        break;
+                    case 1:
+                        star.MineralConcentration.Boranium = value;
+                        break;
+                    default:
+                        star.MineralConcentration.Germanium = value;
+                        break;
+                }
+            }
+        }
+
+        /// <summary>Every concentration under "Beginner: Maximum Minerals" (new-game-setup.md section 1).</summary>
+        public const int MaximumMineralsConcentration = 100;
+
+        /// <summary>
+        /// How many concentrations the low-concentration roll (0-26) replaces with 1-30 -
+        /// behavior-specs-10/new-game-setup.md section 3: 18-26 none, 9-17 one, 7-8 one, 3-6
+        /// two, 1-2 three, 0 four.
+        /// </summary>
+        public static int LowConcentrationReplacements(int roll)
+        {
+            if (roll >= 18)
+            {
+                return 0;
+            }
+            if (roll >= 7)
+            {
+                return 1;
+            }
+            if (roll >= 3)
+            {
+                return 2;
+            }
+            if (roll >= 1)
+            {
+                return 3;
+            }
+            return 4;
+        }
+
+        private static int RaiseForHighRadiation(int concentration, Random random)
+        {
+            if (concentration >= 99)
+            {
+                return concentration;
+            }
+            return concentration + (random.Next(0, 99 - concentration) / 2);
+        }
+
+        /// <summary>
+        /// The template home-world surface stock for one mineral - behavior-specs-10/
+        /// new-game-setup.md section 3 (`:50589`-`50619`): a random 0 to 10 x concentration - 1,
+        /// plus 10; if that is under 200, plus 155 + a random 0-149; then +25% (rounded down)
+        /// under Accelerated BBS Play.
+        /// </summary>
+        public static int RollHomeSurfaceStock(int concentration, Random random)
+        {
+            int stock = random.Next(0, 10 * Math.Max(1, concentration)) + 10;
+            if (stock < 200)
+            {
+                stock += 155 + random.Next(0, 150);
+            }
+            if (GameSettings.Data.AcceleratedStart)
+            {
+                stock += stock / 4;
+            }
+            return stock;
         }
 
         /// <summary>
@@ -195,12 +372,15 @@ namespace Nova.Server.NewGame
         /// </summary>
         public void GeneratePlayerAssets()
         {
+            // One template for the whole game: every home world copies the same surface stocks
+            // and (floored) concentrations - behavior-specs-10/new-game-setup.md section 3.
+            PrepareResources();
+
             foreach (EmpireData empire in serverState.AllEmpires.Values)
             {
                 string player = empire.Race.Name;
-                
+
                 PrepareDesigns(empire, player);
-                PrepareResources();
                 InitializeHomeStar(empire, player);
             }
 
@@ -261,26 +441,81 @@ namespace Nova.Server.NewGame
                 colonyShipEngine = engine;
             }
 
-            ShipDesign cs = new ShipDesign(empire.GetNextDesignKey());
-            cs.Blueprint = colonyShipHull;
-            foreach (HullModule module in cs.Hull.Modules)
+            // Scout pass first, then the colonizer (behavior-specs-10/new-game-setup.md section
+            // 5a): a player's design slot 0 - the first ship design created, see SlotZeroShipDesign
+            // - is always its first scout, which is the extra ship stationed at the Packet
+            // Physics / Interstellar Traveler second home planet.
+            if (empire.Race.HasTrait("HE") || empire.Race.HasTrait("WM"))
             {
-                if (module.ComponentType == "Engine")
+                // "One armed scout" (HE, p 20-3; WM, p 20-5) - the same Scout hull, with a
+                // Laser (needs no tech, same as every other starting weapon in this method) in
+                // the otherwise-empty General Purpose slot, which accepts anything except an
+                // Engine - see ShipDesignViewModel.IsCompatible's own comment.
+                ShipDesign armedScout = new ShipDesign(empire.GetNextDesignKey());
+                // A fresh Fetch(), not a reuse of the outer scoutHull - Component.Fetch()
+                // deep-clones a hull's Modules list per call (see Hull.Clone()), but Blueprint
+                // is a plain reference assignment, so reusing one already-fetched Component
+                // across two ShipDesigns would make them share (and clobber) the same
+                // HullModule objects. Confirmed live: this was originally shared with the
+                // unconditional "Scout" design below, and building this one afterwards
+                // silently turned that "Scout" design's own slots into an armed scout too.
+                armedScout.Blueprint = components.Fetch("Scout");
+                foreach (HullModule module in armedScout.Hull.Modules)
                 {
-                    module.AllocatedComponent = colonyShipEngine;
-                    module.ComponentCount = 1;
+                    if (module.ComponentType == "Engine")
+                    {
+                        module.AllocatedComponent = engine;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "Scanner")
+                    {
+                        module.AllocatedComponent = scaner;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "General Purpose")
+                    {
+                        module.AllocatedComponent = laser;
+                        module.ComponentCount = 1;
+                    }
                 }
-                else if (module.ComponentType == "Mechanical")
-                {
-                    module.AllocatedComponent = colonizer;
-                    module.ComponentCount = 1;
-                }
+                armedScout.Icon = new ShipIcon(scoutHull.ImageFile, scoutHull.ComponentImage);
+                armedScout.Type = ItemType.Ship;
+                armedScout.Name = "Armed Scout";
+                armedScout.Update();
+                empire.Designs[armedScout.Key] = armedScout;
             }
-            cs.Icon = new ShipIcon(colonyShipHull.ImageFile, colonyShipHull.ComponentImage);
 
-            cs.Type = ItemType.Ship;
-            cs.Name = "Santa Maria";
-            cs.Update();
+            if (empire.Race.HasTrait("PP"))
+            {
+                // "Two shielded scouts" (p 20-8) - the same Scout hull again, with a Mole-skin
+                // Shield in the General Purpose slot instead of a weapon.
+                ShipDesign shieldedScout = new ShipDesign(empire.GetNextDesignKey());
+                // A fresh Fetch() - see the identical comment on armedScout.Blueprint above.
+                shieldedScout.Blueprint = components.Fetch("Scout");
+                foreach (HullModule module in shieldedScout.Hull.Modules)
+                {
+                    if (module.ComponentType == "Engine")
+                    {
+                        module.AllocatedComponent = engine;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "Scanner")
+                    {
+                        module.AllocatedComponent = scaner;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "General Purpose")
+                    {
+                        module.AllocatedComponent = shield;
+                        module.ComponentCount = 1;
+                    }
+                }
+                shieldedScout.Icon = new ShipIcon(scoutHull.ImageFile, scoutHull.ComponentImage);
+                shieldedScout.Type = ItemType.Ship;
+                shieldedScout.Name = "Shielded Scout";
+                shieldedScout.Update();
+                empire.Designs[shieldedScout.Key] = shieldedScout;
+            }
 
             ShipDesign scout = new ShipDesign(empire.GetNextDesignKey());
             scout.Blueprint = scoutHull;
@@ -302,6 +537,38 @@ namespace Nova.Server.NewGame
             scout.Type = ItemType.Ship;
             scout.Name = "Scout";
             scout.Update();
+            empire.Designs[scout.Key] = scout;
+
+            ShipDesign cs = new ShipDesign(empire.GetNextDesignKey());
+            cs.Blueprint = colonyShipHull;
+            foreach (HullModule module in cs.Hull.Modules)
+            {
+                if (module.ComponentType == "Engine")
+                {
+                    module.AllocatedComponent = colonyShipEngine;
+                    module.ComponentCount = 1;
+                }
+                else if (module.ComponentType == "Mechanical")
+                {
+                    module.AllocatedComponent = colonizer;
+                    module.ComponentCount = 1;
+                }
+            }
+            cs.Icon = new ShipIcon(colonyShipHull.ImageFile, colonyShipHull.ComponentImage);
+
+            cs.Type = ItemType.Ship;
+            cs.Name = "Santa Maria";
+            cs.Update();
+            empire.Designs[cs.Key] = cs;
+
+            // Starbase designs. Alternate Reality's starbase slot 0 is the bare "Starter Colony"
+            // (Orbital Fort hull) a won colonisation installs, and its homeworld's full "Starbase"
+            // is slot 1 (behavior-specs-10/new-game-setup.md section 5b, population-growth.md
+            // section 3), so the Starter Colony is created first.
+            if (empire.Race.HasTrait("AR"))
+            {
+                StarterColony.EnsureDesign(empire);
+            }
 
             ShipDesign starbase = new ShipDesign(empire.GetNextDesignKey());
             starbase.Name = "Starbase";
@@ -371,8 +638,6 @@ namespace Nova.Server.NewGame
             starbase.Update();
 
             empire.Designs[starbase.Key] = starbase;
-            empire.Designs[cs.Key] = cs;
-            empire.Designs[scout.Key] = scout;
 
             // Interstellar Traveler and Packet Physics both start with a SECOND, smaller
             // starbase design for their second starting planet (see InitializeHomeStar's own
@@ -432,83 +697,6 @@ namespace Nova.Server.NewGame
             // on already having granted the tech a bonus component needs (e.g. CA's Orbital
             // Adjuster requires Biotechnology 6, which ProcessPrimaryTraits already sets for CA
             // before GeneratePlayerAssets - and therefore this method - ever runs).
-            //
-            // The scout variations (HE/WM's armed scout, PP's two shielded scouts, JOAT's
-            // second plain scout) are built here but actually assigned to a starting fleet in
-            // AllocateHomeStarOrbitalInstallations, which needs to pick the right design name
-            // per PRT instead of always "Scout".
-            if (empire.Race.HasTrait("HE") || empire.Race.HasTrait("WM"))
-            {
-                // "One armed scout" (HE, p 20-3; WM, p 20-5) - the same Scout hull, with a
-                // Laser (needs no tech, same as every other starting weapon in this method) in
-                // the otherwise-empty General Purpose slot, which accepts anything except an
-                // Engine - see ShipDesignViewModel.IsCompatible's own comment.
-                ShipDesign armedScout = new ShipDesign(empire.GetNextDesignKey());
-                // A fresh Fetch(), not a reuse of the outer scoutHull - Component.Fetch()
-                // deep-clones a hull's Modules list per call (see Hull.Clone()), but Blueprint
-                // is a plain reference assignment, so reusing one already-fetched Component
-                // across two ShipDesigns would make them share (and clobber) the same
-                // HullModule objects. Confirmed live: this was originally shared with the
-                // unconditional "Scout" design above, and building this one afterwards
-                // silently turned that "Scout" design's own slots into an armed scout too.
-                armedScout.Blueprint = components.Fetch("Scout");
-                foreach (HullModule module in armedScout.Hull.Modules)
-                {
-                    if (module.ComponentType == "Engine")
-                    {
-                        module.AllocatedComponent = engine;
-                        module.ComponentCount = 1;
-                    }
-                    else if (module.ComponentType == "Scanner")
-                    {
-                        module.AllocatedComponent = scaner;
-                        module.ComponentCount = 1;
-                    }
-                    else if (module.ComponentType == "General Purpose")
-                    {
-                        module.AllocatedComponent = laser;
-                        module.ComponentCount = 1;
-                    }
-                }
-                armedScout.Icon = new ShipIcon(scoutHull.ImageFile, scoutHull.ComponentImage);
-                armedScout.Type = ItemType.Ship;
-                armedScout.Name = "Armed Scout";
-                armedScout.Update();
-                empire.Designs[armedScout.Key] = armedScout;
-            }
-
-            if (empire.Race.HasTrait("PP"))
-            {
-                // "Two shielded scouts" (p 20-8) - the same Scout hull again, with a Mole-skin
-                // Shield in the General Purpose slot instead of a weapon.
-                ShipDesign shieldedScout = new ShipDesign(empire.GetNextDesignKey());
-                // A fresh Fetch() - see the identical comment on armedScout.Blueprint above.
-                shieldedScout.Blueprint = components.Fetch("Scout");
-                foreach (HullModule module in shieldedScout.Hull.Modules)
-                {
-                    if (module.ComponentType == "Engine")
-                    {
-                        module.AllocatedComponent = engine;
-                        module.ComponentCount = 1;
-                    }
-                    else if (module.ComponentType == "Scanner")
-                    {
-                        module.AllocatedComponent = scaner;
-                        module.ComponentCount = 1;
-                    }
-                    else if (module.ComponentType == "General Purpose")
-                    {
-                        module.AllocatedComponent = shield;
-                        module.ComponentCount = 1;
-                    }
-                }
-                shieldedScout.Icon = new ShipIcon(scoutHull.ImageFile, scoutHull.ComponentImage);
-                shieldedScout.Type = ItemType.Ship;
-                shieldedScout.Name = "Shielded Scout";
-                shieldedScout.Update();
-                empire.Designs[shieldedScout.Key] = shieldedScout;
-            }
-
             if (empire.Race.HasTrait("CA"))
             {
                 // "Every race with the Claim Adjuster trait starts out with one ship outfitted
@@ -755,20 +943,266 @@ namespace Nova.Server.NewGame
                 miner.Update();
                 empire.Designs[miner.Key] = miner;
             }
+
+            // Advanced Remote Mining without Only Basic Remote Mining: the Potato Bug template
+            // (Midget Miner hull, Quick Jump 5, two Robo-Midget Miners) - behavior-specs-10/
+            // new-game-setup.md section 5a (`:51544`-`51549`) and 5b. Two ships are stationed in
+            // AllocateHomeStarOrbitalInstallations.
+            if (HasPotatoBugs(empire.Race))
+            {
+                Component midgetMinerHull = components.Fetch("Midget Miner");
+                Component midgetRobot = components.Fetch("Robo-Midget Miner");
+
+                ShipDesign potatoBug = new ShipDesign(empire.GetNextDesignKey());
+                potatoBug.Blueprint = midgetMinerHull;
+                foreach (HullModule module in potatoBug.Hull.Modules)
+                {
+                    if (module.ComponentType == "Engine")
+                    {
+                        module.AllocatedComponent = engine;
+                        module.ComponentCount = 1;
+                    }
+                    else if (module.ComponentType == "Mining Robot")
+                    {
+                        module.AllocatedComponent = midgetRobot;
+                        module.ComponentCount = 2;
+                    }
+                }
+                potatoBug.Icon = new ShipIcon(midgetMinerHull.ImageFile, midgetMinerHull.ComponentImage);
+                potatoBug.Type = ItemType.Ship;
+                potatoBug.Name = PotatoBugDesignName;
+                potatoBug.Update();
+                empire.Designs[potatoBug.Key] = potatoBug;
+            }
+
+            // Last, the starting tech-upgrade pass over every starting ship design.
+            ApplyStartingTechUpgrades(empire);
         }
 
+        /// <summary>The Advanced Remote Mining starting miner's design name (template 15).</summary>
+        public const string PotatoBugDesignName = "Potato Bug";
+
+        /// <summary>
+        /// A race with Advanced Remote Mining and without Only Basic Remote Mining starts with
+        /// two Potato Bugs (behavior-specs-10/new-game-setup.md section 5a).
+        /// </summary>
+        public static bool HasPotatoBugs(Race race)
+        {
+            return race.HasTrait("ARM") && !race.HasTrait("OBRM");
+        }
+
+        /// <summary>
+        /// The starting tech-upgrade candidates of behavior-specs-10/new-game-setup.md section 5b
+        /// (`:51551`-`51664`): for each listed starting part, the replacements tried best first.
+        /// Parts not listed (Settler's Delight, cloaks, computers, fuel tanks, mine dispensers,
+        /// speed traps, Orbital Adjusters, colonisation modules, ...) are never replaced.
+        /// </summary>
+        private static readonly Dictionary<string, string[]> StartingUpgradeCandidates = BuildStartingUpgradeCandidates();
+
+        private static Dictionary<string, string[]> BuildStartingUpgradeCandidates()
+        {
+            string[] engines = { "Radiating Hydro-Ram Scoop", "Alpha Drive 8", "Daddy Long Legs 7", "Fuel Mizer", "Long Hump 6" };
+            string[] scanners = { "Possum Scanner", "Mole Scanner", "Rhino Scanner" };
+            string[] shields = { "Wolverine Diffuse Shield", "Cow-hide Shield" };
+            string[] armour = { "Carbonic Armor", "Crobmnium" };
+            string[] beams = { "Yakimora Light Phaser", "X-Ray Laser" };
+            string[] torpedoes = { "Beta Torpedo" };
+            string[] bombs = { "Black Cat Bomb" };
+            string[] robots = { "Robo-Miner", "Robo-Midget Miner" };
+
+            return new Dictionary<string, string[]>
+            {
+                { "Quick Jump 5", engines },
+                { "Bat Scanner", scanners },
+                { "Rhino Scanner", scanners },
+                { "Mole-skin Shield", shields },
+                { "Cow-hide Shield", shields },
+                { "Tritanium", armour },
+                { "Crobmnium", armour },
+                { "Laser", beams },
+                { "X-Ray Laser", beams },
+                { "Alpha Torpedo", torpedoes },
+                { "Lady Finger Bomb", bombs },
+                { "Robo-Midget Miner", robots },
+                { "Robo-Mini Miner", robots },
+            };
+        }
+
+        /// <summary>
+        /// The starting tech-upgrade pass (behavior-specs-10/new-game-setup.md section 5b): every
+        /// installed part of every starting ship design that appears in the candidate table is
+        /// swapped for the first candidate the empire can build right now (its AvailableComponents:
+        /// tech levels and trait gates, one-time gifts excluded); the quantity is kept, and the
+        /// part stays when no candidate qualifies. The Radiating Hydro-Ram Scoop is skipped for a
+        /// Colony-Ship-hulled design unless the race is radiation-immune or its radiation centre
+        /// is above 84.
+        /// </summary>
+        /// <remarks>
+        /// Only Ship designs are walked: the original's pass runs over the per-race ship-design
+        /// array, and starbases come from a separate starbase template table. Does nothing when
+        /// the empire has no AvailableComponents.
+        /// </remarks>
+        public static void ApplyStartingTechUpgrades(EmpireData empire)
+        {
+            if (empire.AvailableComponents == null)
+            {
+                return;
+            }
+
+            AllComponents components = new AllComponents();
+
+            foreach (ShipDesign design in empire.Designs.Values)
+            {
+                if (design.Type != ItemType.Ship || design.Hull == null)
+                {
+                    continue;
+                }
+
+                bool changed = false;
+                foreach (HullModule module in design.Hull.Modules)
+                {
+                    string candidate = StartingUpgradeFor(module.AllocatedComponent, design, empire);
+                    if (candidate != null)
+                    {
+                        module.AllocatedComponent = components.Fetch(candidate);
+                        changed = true;
+                    }
+                }
+
+                if (changed)
+                {
+                    design.Update();
+                }
+            }
+        }
+
+        /// <summary>
+        /// The replacement the starting tech-upgrade pass picks for one installed part, or null
+        /// to keep it.
+        /// </summary>
+        public static string StartingUpgradeFor(Component installed, ShipDesign design, EmpireData empire)
+        {
+            if (installed == null || !StartingUpgradeCandidates.TryGetValue(installed.Name, out string[] candidates))
+            {
+                return null;
+            }
+
+            foreach (string candidate in candidates)
+            {
+                if (candidate == "Radiating Hydro-Ram Scoop" && design.Blueprint != null && design.Blueprint.Name == "Colony Ship"
+                    && !empire.Race.RadiationTolerance.Immune && empire.Race.RadiationTolerance.OptimumLevel <= 84)
+                {
+                    continue;
+                }
+
+                if (empire.AvailableComponents.Contains(candidate))
+                {
+                    return candidate == installed.Name ? null : candidate;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Rolls the home-world template - behavior-specs-10/new-game-setup.md section 3. The
+        /// old "100-299" concentration and 300-499 surface rolls never existed: the original
+        /// uses its first planet record as a template rolled like any ordinary planet (so its
+        /// concentrations go through RollMineralConcentrations, high-radiation raise and
+        /// low-concentration roll included), and that template alone gets surface minerals
+        /// (RollHomeSurfaceStock). Here the template is a scratch Star that is never placed on
+        /// the map, since this port's home stars are separate objects from GenerateStars' planets.
+        /// </summary>
         private void PrepareResources()
         {
-            this.homeStarDefaultSurfaceMinerals.Boranium = random.Next(300, 500);
-            this.homeStarDefaultSurfaceMinerals.Ironium = random.Next(300, 500);
-            this.homeStarDefaultSurfaceMinerals.Germanium = random.Next(300, 500);
+            Star template = new Star();
+            RollEnvironment(template, random);
+            RollMineralConcentrations(template, random);
 
-            // docs/behavior-specs-3/new-game-setup.md §3 confirms (via decompile of the exported
-            // client) home-world mineral concentrations randomize to 100-299 inclusive, not the
-            // previous 50-99 - Random.Next's upper bound is exclusive, hence 300 here.
-            this.homeStarDefaultMineralConcentration.Boranium = random.Next(100, 300);
-            this.homeStarDefaultMineralConcentration.Ironium = random.Next(100, 300);
-            this.homeStarDefaultMineralConcentration.Germanium = random.Next(100, 300);
+            this.homeStarDefaultMineralConcentration = new Resources(template.MineralConcentration);
+
+            this.homeStarDefaultSurfaceMinerals.Ironium = RollHomeSurfaceStock(template.MineralConcentration.Ironium, random);
+            this.homeStarDefaultSurfaceMinerals.Boranium = RollHomeSurfaceStock(template.MineralConcentration.Boranium, random);
+            this.homeStarDefaultSurfaceMinerals.Germanium = RollHomeSurfaceStock(template.MineralConcentration.Germanium, random);
+        }
+
+        /// <summary>Every home world's concentration floor (25 only in the built-in tutorial
+        /// galaxy, which this port does not have) - behavior-specs-10/new-game-setup.md section 3.</summary>
+        public const int HomeWorldConcentrationFloor = 30;
+
+        /// <summary>The installations every home world starts with before the leftover-point
+        /// bonus - behavior-specs-10/new-game-setup.md section 5b (`:50939`-`50950`).</summary>
+        public const int HomeWorldStartingInstallations = 10;
+
+        /// <summary>
+        /// Copies the home-world template onto a home star: the template's surface stocks, and
+        /// each concentration floored at 30 - behavior-specs-10/new-game-setup.md section 3
+        /// (`FUN_1078_1334`, `:50967`-`50987`).
+        /// </summary>
+        public static void ApplyHomeWorldTemplate(Star star, Resources templateConcentration, Resources templateSurface)
+        {
+            star.ResourcesOnHand.Ironium = templateSurface.Ironium;
+            star.ResourcesOnHand.Boranium = templateSurface.Boranium;
+            star.ResourcesOnHand.Germanium = templateSurface.Germanium;
+
+            star.MineralConcentration.Ironium = Math.Max(HomeWorldConcentrationFloor, templateConcentration.Ironium);
+            star.MineralConcentration.Boranium = Math.Max(HomeWorldConcentrationFloor, templateConcentration.Boranium);
+            star.MineralConcentration.Germanium = Math.Max(HomeWorldConcentrationFloor, templateConcentration.Germanium);
+        }
+
+        /// <summary>
+        /// Packet Physics / Interstellar Traveler second home planet - behavior-specs-10/
+        /// new-game-setup.md, "Starting population, exact order" step 4: the second planet gets
+        /// 2/5 of the home planet's population (as it stands after steps 1-3) and the home planet
+        /// is then reduced to 4/5 of it, each truncated, in units of 100 colonists.
+        /// </summary>
+        public static void SplitStartingPopulation(Star home, Star second, Race race, bool expertComputerPlayer = false)
+        {
+            int units = race.GetStartingPopulation(expertComputerPlayer) / 100;
+            second.Colonists = (units * 2 / 5) * 100;
+            home.Colonists = (units * 4 / 5) * 100;
+        }
+
+        /// <summary>The computer skill tier whose players get the +10% starting population: Expert (PlayerSettings.AiSkill 3, "a skill field above 2").</summary>
+        public const int ExpertAiSkill = 3;
+
+        /// <summary>
+        /// This empire's slot settings, or null when the slot has none (hand-built states).
+        /// </summary>
+        private PlayerSettings SettingsOf(EmpireData empire)
+        {
+            foreach (PlayerSettings settings in serverState.AllPlayers)
+            {
+                if (settings.PlayerNumber == empire.Id)
+                {
+                    return settings;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Whether this empire's slot is a computer player: PlayerSettings.AiProgram is "Human"
+        /// for a person (a null/empty value, as left by tests and older callers, is treated as
+        /// human).
+        /// </summary>
+        private bool IsComputerPlayer(EmpireData empire)
+        {
+            PlayerSettings settings = SettingsOf(empire);
+            return settings != null && !string.IsNullOrEmpty(settings.AiProgram) && settings.AiProgram != "Human";
+        }
+
+        /// <summary>
+        /// Whether this empire's slot is a computer player at the Expert tier - the test of
+        /// behavior-specs-11/new-game-setup.md "Starting population, exact order" step 2: the
+        /// computer-player bit together with a skill field above 2 (PlayerSettings.AiSkill, -1
+        /// when not recorded). A human slot with a skill recorded is still human.
+        /// </summary>
+        private bool IsExpertComputerPlayer(EmpireData empire)
+        {
+            PlayerSettings settings = SettingsOf(empire);
+            return IsComputerPlayer(empire) && settings.AiSkill >= ExpertAiSkill;
         }
         
         /// <summary>
@@ -787,6 +1221,9 @@ namespace Nova.Server.NewGame
                 Star star = new Star();
                 star.Owner = empire.Id;
 
+                // The home-world flag (mining yield floor of 30, Star.IsHomeWorld).
+                star.IsHomeWorld = true;
+
                 star.Position.X = starPosition[0];
                 star.Position.Y = starPosition[1];
                 
@@ -794,33 +1231,27 @@ namespace Nova.Server.NewGame
 
                 star.Name = nameGenerator.NextStarName;
 
-                AllocateHomeStarResources(star, empire);
+                bool isComputerPlayer = IsComputerPlayer(empire);
+                bool isExpertComputerPlayer = IsExpertComputerPlayer(empire);
+                AllocateHomeStarResources(star, empire, isComputerPlayer, isExpertComputerPlayer);
                 AllocateHomeStarOrbitalInstallations(star, empire, player);
 
                 serverState.AllStars[star.Name] = star;
 
-                // Packet Physics and Interstellar Traveler both start with a second
-                // homeworld-tier planet - see docs/behavior-specs/race-traits.md §2 ("PP:
-                // Starts with a second homeworld-tier planet"; "IT: Starts with two
-                // Stargate-equipped planets"). This deliberately does NOT draw from
-                // map.Homeworlds, which StarMapGenerator sizes to exactly numPlayers - taking a
-                // second slot here would leave a later player with no home star at all and hit
-                // the FatalError below. Instead it grants the nearest currently-unowned regular
-                // star generated by GenerateStars(), converted to the same habitability/
-                // population/resources treatment as a real homeworld, plus a starbase (see
-                // AllocateStarbase below) - the small dedicated "Stargate"/"Mass Driver Base"
-                // Design from PrepareDesigns, not the full combat starbase the primary home star
-                // gets. PP's "(non-tiny universes)" qualifier is still not checked - an open
-                // follow-up; see PROJECT-STATUS.md.
-                if (empire.Race.HasTrait("PP") || empire.Race.HasTrait("IT"))
+                // Packet Physics and Interstellar Traveler both start with a second planet
+                // (behavior-specs-11/new-game-setup.md section 3, "The second planet's own
+                // state", `:51420`-`51537`), only on a galaxy-size index of at least 1, i.e.
+                // not Tiny (section 5a, `:51405`, `:51541`). This deliberately does NOT draw
+                // from map.Homeworlds, which StarMapGenerator sizes to exactly numPlayers -
+                // taking a second slot here would leave a later player with no home star at all
+                // and hit the FatalError below. It takes one of the ordinary stars of
+                // GenerateStars() instead, as the original does (see AllocateSecondPlanet).
+                if (HasSecondHomePlanet(empire.Race, GameSettings.Data.GalaxySizeIndex))
                 {
-                    Star secondStar = FindNearestUnownedStar(star.Position);
+                    Star secondStar = ChooseSecondPlanet(star.Position, GameSettings.Data.MapWidth);
                     if (secondStar != null)
                     {
-                        AllocateHomeStarResources(secondStar, empire);
-
-                        string secondBaseDesignName = empire.Race.HasTrait("IT") ? "Stargate" : "Mass Driver Base";
-                        AllocateStarbase(secondStar, empire, secondBaseDesignName);
+                        AllocateSecondPlanet(secondStar, star, empire, isExpertComputerPlayer);
                     }
                 }
 
@@ -833,31 +1264,218 @@ namespace Nova.Server.NewGame
         }
 
         /// <summary>
-        /// Find the closest star to the given position that isn't owned by any empire yet.
-        /// Used to grant Packet Physics/Interstellar Traveler their second starting planet
-        /// without disturbing the reserved map.Homeworlds allocation (see InitializeHomeStar).
+        /// Packet Physics and Interstellar Traveler get a second home planet, but only when the
+        /// galaxy-size index is at least 1 (not Tiny) - behavior-specs-10/new-game-setup.md
+        /// section 5a.
         /// </summary>
-        private Star FindNearestUnownedStar(NovaPoint position)
+        public static bool HasSecondHomePlanet(Race race, int galaxySizeIndex)
         {
+            return (race.HasTrait("PP") || race.HasTrait("IT")) && galaxySizeIndex >= 1;
+        }
+
+        /// <summary>The second planet's candidate band, as hundredths of the galaxy diameter: 15 to 23 inclusive.</summary>
+        public const int SecondPlanetBandInnerPercent = 15;
+        public const int SecondPlanetBandOuterPercent = 23;
+
+        /// <summary>
+        /// The second planet's choice (behavior-specs-11/new-game-setup.md section 3, "The
+        /// second planet's own state", step 1): among the planets still unowned, those at a
+        /// squared distance from the home world between (15D / 100)^2 and (23D / 100)^2
+        /// inclusive (D the galaxy diameter, divisions truncating) are the candidates and one
+        /// is kept uniformly at random; with no candidate the nearest unowned planet is used.
+        /// Null only when no planet is unowned at all.
+        /// </summary>
+        /// <remarks>
+        /// D is the map width: the preset diameter when the wizard galaxy is in use, and the
+        /// free map's width otherwise (the same reading GameSettings.GalaxySizeIndex uses).
+        /// Candidates are taken in the galaxy's own planet order, so the uniform pick is
+        /// reproducible from the seed.
+        /// </remarks>
+        private Star ChooseSecondPlanet(NovaPoint home, int diameter)
+        {
+            long inner = SecondPlanetBandInnerPercent * diameter / 100;
+            long outer = SecondPlanetBandOuterPercent * diameter / 100;
+            long innerSquared = inner * inner;
+            long outerSquared = outer * outer;
+
+            List<Star> candidates = new List<Star>();
             Star nearest = null;
-            double nearestDistance = double.MaxValue;
+            long nearestSquared = long.MaxValue;
 
             foreach (Star candidate in serverState.AllStars.Values)
             {
-                if (candidate.Owner != 0)
+                if (candidate.Owner != Global.Nobody)
                 {
                     continue;
                 }
 
-                double distance = PointUtilities.Distance(position, candidate.Position);
-                if (distance < nearestDistance)
+                long dx = candidate.Position.X - home.X;
+                long dy = candidate.Position.Y - home.Y;
+                long squared = (dx * dx) + (dy * dy);
+
+                if (squared >= innerSquared && squared <= outerSquared)
                 {
-                    nearestDistance = distance;
+                    candidates.Add(candidate);
+                }
+
+                if (squared < nearestSquared)
+                {
+                    nearestSquared = squared;
                     nearest = candidate;
                 }
             }
 
+            if (candidates.Count > 0)
+            {
+                return candidates[random.Next(candidates.Count)];
+            }
+
             return nearest;
+        }
+
+        /// <summary>The second planet's re-rolls before the home world's environment is copied instead.</summary>
+        public const int SecondPlanetEnvironmentRerolls = 100;
+
+        /// <summary>
+        /// The second planet's environment (behavior-specs-11/new-game-setup.md section 3, "The
+        /// second planet's own state", step 2; race-traits.md section 2a): while the race's
+        /// habitability value for the planet (Race.HabPercent) is below 10, all three
+        /// environment values (current and original copies) are re-rolled to 2 + a random 0-96,
+        /// gravity, temperature then radiation; if a 100th re-roll would be needed, the home
+        /// world's three values are copied instead - in that case even a passing 100th roll is
+        /// overwritten. A planet that is habitable enough as rolled makes no draw.
+        /// </summary>
+        /// <remarks>
+        /// Read as: up to 100 re-rolls are made; once the 100th has been made the home world's
+        /// values are copied whatever it gave. Only the number of draws (replay) would differ
+        /// under the other reading (99 re-rolls, then the copy).
+        /// </remarks>
+        public static void RollSecondPlanetEnvironment(Star second, Star home, Race race, Random random)
+        {
+            int rerolls = 0;
+            while (race.HabPercent(second) < 10 && rerolls < SecondPlanetEnvironmentRerolls)
+            {
+                second.Gravity = 2 + random.Next(0, 97);
+                second.Temperature = 2 + random.Next(0, 97);
+                second.Radiation = 2 + random.Next(0, 97);
+                rerolls++;
+            }
+
+            if (rerolls == SecondPlanetEnvironmentRerolls)
+            {
+                second.Gravity = home.Gravity;
+                second.Temperature = home.Temperature;
+                second.Radiation = home.Radiation;
+            }
+
+            second.OriginalGravity = second.Gravity;
+            second.OriginalTemperature = second.Temperature;
+            second.OriginalRadiation = second.Radiation;
+        }
+
+        /// <summary>The second planet's installations: 10 mines and 4 factories, defences left at 0.</summary>
+        public const int SecondPlanetMines = 10;
+        public const int SecondPlanetFactories = 4;
+
+        /// <summary>
+        /// The second planet's planetary scanner, "type 0": the first of the planetary scanner
+        /// subtypes 0-8 (behavior-specs-11/production-queue.md 10d: Viewer 50, Viewer 90,
+        /// Scoper 150, ...). Installed whatever the race can build.
+        /// </summary>
+        public const string SecondPlanetScanner = "Viewer 50";
+
+        /// <summary>One of the second planet's surface stocks: 100 + a random 0-199 kT, no Accelerated BBS bonus.</summary>
+        public static int RollSecondPlanetSurfaceStock(Random random)
+        {
+            return 100 + random.Next(0, 200);
+        }
+
+        /// <summary>
+        /// Gives an ordinary star the second planet's own state (behavior-specs-11/
+        /// new-game-setup.md section 3, "The second planet's own state", steps 2-7): the
+        /// environment re-rolled until habitable (RollSecondPlanetEnvironment); the owner set;
+        /// a starbase of the race's starbase design slot 1 (this port's small "Stargate" /
+        /// "Mass Driver Base" design, the second starbase design PrepareDesigns creates); the
+        /// artifact flag cleared; 10 mines, 4 factories and 0 defences; the planetary scanner
+        /// type 0; 2/5 of the home world's starting population (the home world keeping 4/5);
+        /// each surface stock 100 + a random 0-199 kT drawn independently (Ironium, Boranium,
+        /// Germanium); its own rolled concentrations, with no floor of 30 and no leftover-point
+        /// bonus (the home-world template is not copied); not a home world (Star.IsHomeWorld
+        /// stays false, so the concentration-30 mining floor does not apply); and one ship of
+        /// the race's design slot 0 as a new one-ship fleet.
+        /// </summary>
+        /// <remarks>
+        /// The "three-bit field of the packet-destination word set to 1" has no identified
+        /// meaning and no counterpart here (spec gap). Fleet names: this port numbers starting
+        /// fleets per design ("Scout #1", "Santa Maria #1"...), not with the original's
+        /// per-owner fleet number, so the extra ship is "&lt;design&gt; #&lt;next number of that
+        /// design&gt;" - a Packet Physics race's "Shielded Scout #3", an Interstellar Traveler's
+        /// "Scout #2".
+        /// </remarks>
+        private void AllocateSecondPlanet(Star second, Star home, EmpireData empire, bool isExpertComputerPlayer)
+        {
+            RollSecondPlanetEnvironment(second, home, empire.Race, random);
+
+            second.Owner = empire.Id;
+            second.ThisRace = empire.Race;
+            second.EnergyTechLevel = empire.ResearchLevels[TechLevel.ResearchField.Energy];
+            second.IsHomeWorld = false;
+            second.HasArtifact = false;
+
+            second.Mines = SecondPlanetMines;
+            second.Factories = SecondPlanetFactories;
+            second.Defenses = 0;
+
+            second.ScannerType = SecondPlanetScanner;
+            Component scanner = new AllComponents().Fetch(SecondPlanetScanner);
+            Scanner scannerProperty = scanner != null && scanner.Properties.ContainsKey("Scanner") ? scanner.Properties["Scanner"] as Scanner : null;
+            if (scannerProperty != null)
+            {
+                // As StarUpdateStep ranges a newly installed planetary scanner.
+                second.ScanRange = empire.Race.HasTrait("NAS") ? scannerProperty.NormalScan * 2 : scannerProperty.NormalScan;
+            }
+
+            // 2/5 to the second planet, 4/5 left on the home planet.
+            SplitStartingPopulation(home, second, empire.Race, isExpertComputerPlayer);
+
+            second.ResourcesOnHand.Ironium = RollSecondPlanetSurfaceStock(random);
+            second.ResourcesOnHand.Boranium = RollSecondPlanetSurfaceStock(random);
+            second.ResourcesOnHand.Germanium = RollSecondPlanetSurfaceStock(random);
+
+            home.ResourcesOnHand.Energy = home.GetResourceRate();
+            second.ResourcesOnHand.Energy = second.GetResourceRate();
+
+            string secondBaseDesignName = empire.Race.HasTrait("IT") ? "Stargate" : "Mass Driver Base";
+            AllocateStarbase(second, empire, secondBaseDesignName);
+
+            ShipDesign slotZero = SlotZeroShipDesign(empire);
+            if (slotZero != null)
+            {
+                AddShipFleet(second, empire, slotZero, NextFleetName(empire, slotZero));
+            }
+        }
+
+        /// <summary>
+        /// "&lt;design&gt; #n", n being one more than the number of this empire's fleets led by
+        /// that design (the home world's starting fleets of the same design, whatever they were
+        /// named: this port names a Packet Physics race's two Shielded Scouts "Scout #1/#2").
+        /// </summary>
+        private static string NextFleetName(EmpireData empire, ShipDesign design)
+        {
+            int existing = 0;
+            foreach (Fleet fleet in empire.OwnedFleets.Values)
+            {
+                foreach (ShipToken token in fleet.Composition.Values)
+                {
+                    if (token.Design != null && token.Design.Key == design.Key)
+                    {
+                        existing++;
+                        break;
+                    }
+                }
+            }
+
+            return design.Name + " #" + (existing + 1);
         }
   
         
@@ -911,6 +1529,35 @@ namespace Nova.Server.NewGame
 
             AllocateStarbase(star, empire);
             AllocateBonusStartingShips(star, empire, primaryCode);
+
+            // Any PRT with Advanced Remote Mining and not Only Basic Remote Mining: two Potato
+            // Bugs (behavior-specs-10/new-game-setup.md section 5a, one design-creating call
+            // plus one repeat).
+            ShipDesign potatoBug = FindDesign(empire, PotatoBugDesignName);
+            if (potatoBug != null)
+            {
+                AddShipFleet(star, empire, potatoBug, PotatoBugDesignName + " #1");
+                AddShipFleet(star, empire, potatoBug, PotatoBugDesignName + " #2");
+            }
+        }
+
+        /// <summary>
+        /// The empire's design slot 0: its first-created ship design (starbase designs live in a
+        /// separate table in the original). PrepareDesigns creates the scout pass first, so this
+        /// is the race's first scout (behavior-specs-10/new-game-setup.md section 5a). Null when
+        /// the empire has no ship design.
+        /// </summary>
+        public static ShipDesign SlotZeroShipDesign(EmpireData empire)
+        {
+            ShipDesign first = null;
+            foreach (ShipDesign design in empire.Designs.Values)
+            {
+                if (design.Type == ItemType.Ship && (first == null || design.Key < first.Key))
+                {
+                    first = design;
+                }
+            }
+            return first;
         }
 
         /// <summary>
@@ -1014,7 +1661,7 @@ namespace Nova.Server.NewGame
         /// </summary>
         /// <param name="sender">The source of the event.</param>
         /// <param name="e">A <see cref="EventArgs"/> that contains the event data.</param>
-        private void AllocateHomeStarResources(Star star, EmpireData empire)
+        private void AllocateHomeStarResources(Star star, EmpireData empire, bool isComputerPlayer, bool isExpertComputerPlayer)
         {
             // Set the owner of the home star in order to obtain proper
             // starting resources.
@@ -1024,33 +1671,47 @@ namespace Nova.Server.NewGame
 
             // Set the habital values for this star to the optimum for each race.
             // This should allTurnedIn in a planet value of 100% for this race's home
-            // world.            
+            // world.
             star.Radiation = empire.Race.RadiationTolerance.OptimumLevel;
             star.Temperature = empire.Race.TemperatureTolerance.OptimumLevel;
             star.Gravity = empire.Race.GravityTolerance.OptimumLevel;
-            
+
             star.OriginalRadiation = star.Radiation;
             star.OriginalGravity = star.Gravity;
             star.OriginalTemperature = star.Temperature;
-            
-            star.Colonists = empire.Race.GetStartingPopulation();
 
-            star.ResourcesOnHand.Boranium = this.homeStarDefaultSurfaceMinerals.Boranium; // ToDo: leftover advantage points
-            star.ResourcesOnHand.Ironium = this.homeStarDefaultSurfaceMinerals.Ironium;
-            star.ResourcesOnHand.Germanium = this.homeStarDefaultSurfaceMinerals.Germanium;
-            star.Mines = 10;
-            star.Factories = 10;
-            star.ResourcesOnHand.Energy = star.GetResourceRate();
+            // behavior-specs-11/new-game-setup.md "Starting population, exact order": an
+            // Expert-tier computer player gets +10% (step 2) before Accelerated BBS (step 3).
+            star.Colonists = empire.Race.GetStartingPopulation(isExpertComputerPlayer);
 
-            star.MineralConcentration.Boranium = this.homeStarDefaultMineralConcentration.Boranium;
-            star.MineralConcentration.Ironium = this.homeStarDefaultMineralConcentration.Ironium;
-            star.MineralConcentration.Germanium = this.homeStarDefaultMineralConcentration.Germanium;
+            // The shared template's surface stocks and concentrations floored at 30, then 10
+            // mines, 10 factories and 10 defences (behavior-specs-10/new-game-setup.md sections
+            // 3 and 5b) - defences were previously never set at all.
+            ApplyHomeWorldTemplate(star, this.homeStarDefaultMineralConcentration, this.homeStarDefaultSurfaceMinerals);
+            star.Mines = HomeWorldStartingInstallations;
+            star.Factories = HomeWorldStartingInstallations;
+            star.Defenses = HomeWorldStartingInstallations;
 
-            star.ScannerType = "Scoper 150"; // TODO (priority 4) get from component list
+            if (empire.Race.HasTrait("AR"))
+            {
+                // An Alternate Reality home world starts without a planetary scanner (its
+                // five-bit scanner field is put back to "none", behavior-specs-10/
+                // new-game-setup.md section 5b, `:51666`-`51670`). Its innate scan range is
+                // population-derived, as StarUpdateStep recomputes every turn.
+                star.ScannerType = "None";
+                star.ScanRange = (int)Math.Sqrt(star.Colonists / 10.0);
+            }
+            else
+            {
+                star.ScannerType = "Scoper 150"; // TODO (priority 4) get from component list
+                star.ScanRange = empire.Race.HasTrait("NAS") ? 100 : 50; // TODO (priority 4) get from component list
+            }
             star.DefenseType = "SDI"; // TODO (priority 4) get from component list
-            star.ScanRange = empire.Race.HasTrait("NAS") ? 100 : 50; // TODO (priority 4) get from component list
 
-            HomeStarLeftoverpointsAdjuster.Adjust(star, empire.Race);
+            // Leftover points (and, for Alternate Reality, zeroing the installations).
+            HomeStarLeftoverpointsAdjuster.Adjust(star, empire.Race, isComputerPlayer);
+
+            star.ResourcesOnHand.Energy = star.GetResourceRate();
         }
     }
 }

@@ -84,7 +84,7 @@ namespace Nova.Ai
         public static int? GetCreationTurn(ShipDesign design)
         {
             Match match = TurnSuffixPattern.Match(design.Name);
-            return match.Success ? int.Parse(match.Groups[1].Value) : (int?)null;
+            return match.Success ? int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : (int?)null;
         }
 
         public static string NameWithTurnSuffix(string baseName, int currentTurn)

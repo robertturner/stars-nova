@@ -113,37 +113,69 @@ namespace Nova.Server
                         // stack for the turn pops the oldest commands first, thus applying them in the correct order.                    
                         while (subnode != null)
                         {
-                            switch (subnode.Attributes["Type"].Value.ToString().ToLower())
+                            // Isolated per-record, not one shared try/catch around this whole
+                            // loop (see the outer catch below) - a single malformed order must
+                            // only cost that one order, not silently discard every other command
+                            // already read from this file and every one still to come after it.
+                            try
                             {
-                                case "research":
-                                    commands.Push(new ResearchCommand(subnode));
-                                    break;
+                                switch (subnode.Attributes["Type"].Value.ToString().ToLowerInvariant())
+                                {
+                                    case "research":
+                                        commands.Push(new ResearchCommand(subnode));
+                                        break;
 
-                                case "waypoint":
-                                    commands.Push(new WaypointCommand(subnode));
-                                    break;
+                                    case "waypoint":
+                                        commands.Push(new WaypointCommand(subnode));
+                                        break;
 
-                                case "design":
-                                    commands.Push(new DesignCommand(subnode));
-                                    break;
+                                    case "design":
+                                        commands.Push(new DesignCommand(subnode));
+                                        break;
 
-                                case "production":
-                                    commands.Push(new ProductionCommand(subnode));
-                                    break;
-                                    
-                                case "renamefleet":
-                                    commands.Push(new RenameFleetCommand(subnode));
-                                    break;
+                                    case "production":
+                                        commands.Push(new ProductionCommand(subnode));
+                                        break;
 
-                                case "relation":
-                                    commands.Push(new RelationCommand(subnode));
-                                    break;
+                                    case "renamefleet":
+                                        commands.Push(new RenameFleetCommand(subnode));
+                                        break;
 
-                                default:
-                                    Report.Error("The command \"" + subnode.Attributes["Type"].Value.ToString() + "\" was not recognised by the console.");
-                                    Report.Debug("Unrecognised Command in OrderReader.cs ReadPlayerTurn().");
-                                    break;
+                                    case "repeatorders":
+                                        commands.Push(new RepeatOrdersCommand(subnode));
+                                        break;
+
+                                    case "relation":
+                                        commands.Push(new RelationCommand(subnode));
+                                        break;
+
+                                    case "packetdestination":
+                                        commands.Push(new PacketDestinationCommand(subnode));
+                                        break;
+
+                                    case "detonate":
+                                        commands.Push(new DetonateCommand(subnode));
+                                        break;
+
+                                    case "productiontemplate":
+                                        commands.Push(new ProductionTemplateCommand(subnode));
+                                        break;
+
+                                    case "battleplans":
+                                        commands.Push(new BattlePlansCommand(subnode));
+                                        break;
+
+                                    default:
+                                        Report.Error("The command \"" + subnode.Attributes["Type"].Value.ToString() + "\" was not recognised by the console.");
+                                        Report.Debug("Unrecognised Command in OrderReader.cs ReadPlayerTurn().");
+                                        break;
+                                }
                             }
+                            catch (Exception e)
+                            {
+                                Report.Error(Environment.NewLine + "There was a problem reading one order for " + empire.Race.Name + Environment.NewLine + "Details: " + e.Message);
+                            }
+
                             subnode = subnode.NextSibling;
                         }
                     }
@@ -166,6 +198,10 @@ namespace Nova.Server
                 }
                 catch (Exception e)
                 {
+                    // Genuinely file-level failures only now (the file won't load as XML, or its
+                    // ROOT/Turn / ROOT/Id header is missing/malformed) - a single bad ORDER node
+                    // inside an otherwise-good file is caught per-record above instead, and
+                    // doesn't reach here.
                     Report.Error(Environment.NewLine + "There was a problem reading in the orders for " + empire.Race.Name + Environment.NewLine + "Details: " + e.Message);
                     return;
                 }

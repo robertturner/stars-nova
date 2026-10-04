@@ -96,11 +96,32 @@ namespace Nova.Common
        public const double  PopulationFactorHyperExpansion          = 0.5;
        public const double  GrowthFactorHyperExpansion              = 2;
        public const double  PopulationFactorJackOfAllTrades         = 1.2;
+
+       // behavior-specs-9/population-growth.md section 3 withdraws the spec-7/8 reading that tied this
+       // +10% population-capacity bonus to Inner Strength: the accessor reads the LESSER-trait word
+       // (bits 0-13 at race offset 0x4e) and bit 9 of it is Only Basic Remote Mining, confirmed by
+       // the race wizard binding checkbox i to bit i. Inner Strength is a primary trait and has no
+       // population bonus. (The "bomb exclusion" link that justified the Inner Strength reading was
+       // a misread of the mining-robot category.)
        public const double  PopulationFactorOnlyBasicRemoteMining   = 1.1;
 
        // Combat
        public const int MaxWeaponRange  = 7; // Doom/Armegeddon on station.
        public const int MaxDefenses     = 100;
+
+       // Movement
+       public const int MaxWarp = 10;
+
+       /// <summary>Fuel (mg) per ship per year made by a Fuel Transport or Super-Fuel Transport
+       /// hull while not refuelling at a friendly starbase (turn-generation-engine.md step 22).</summary>
+       public const int FuelTransportFuelPerShip = 200;
+       /// <summary>Sentinel Waypoint.WarpFactor value meaning "use a Stargate for this leg" -
+       /// one beyond the highest real warp speed, matching the original game's 11th speed-dial
+       /// position. Only ever attempted when both this exact value is ordered AND the origin/
+       /// destination stars both have an operational Stargate - an ordinary warp speed (1-10)
+       /// never gates even if one exists. See TurnGenerator.TryStargateJump and docs/behavior-
+       /// specs-4/fleet-movement-scanning-cargo.md §5 "Stargates".</summary>
+       public const int StargateWarpFactor = MaxWarp + 1;
        
        // Environment
        public const double GravityMinimum       = 0; // FIXME (priority 3) - Stars! gravity range is 0.2 - 6.0 with 1.0 in the middle! Will need to revise all current race builds once changed.
@@ -116,17 +137,27 @@ namespace Nova.Common
        public const int ColonistsPerOperableMiningUnit      = 10000;
        public const int MinesPerMineProductionUnit          = 10;
 
-       // docs/behavior-specs-4/production-queue.md's Overview: "mines, defenses, and terraforming
-       // typically need only resources" - defenses previously (and incorrectly) also charged
-       // minerals here. The exact no-trait resource total is a genuine open discrepancy in that
-       // same spec (the exported client's decompiled cost calculator shows three race-derived
-       // branches of 25/44/48 resources, none matching this 15 - but which branch is the
-       // no-trait default wasn't determined, so 15 is left as-is rather than guessing).
-       public const int DefenseIroniumCost = 0;
-       public const int DefenseBoraniumCost = 0;
-       public const int DefenseGermaniumCost = 0;
+       // behavior-specs-8/production-queue.md §5-§6 (segment-24 sweep) corrects the previous
+       // revision's "25/44/48 resources" Defenses and "70/110/120" Terraforming figures: those were
+       // Mineral Packet kilotonnages read off the wrong case group of the cost calculator. The real
+       // Defenses item is priced as the SDI component's own cost record.
+       /// <summary>Defenses cost 15 resources plus 5 kT each of Ironium, Boranium and Germanium
+       /// (the SDI component's record), whatever defense technology the race has learned.</summary>
+       public const int DefenseIroniumCost = 5;
+       public const int DefenseBoraniumCost = 5;
+       public const int DefenseGermaniumCost = 5;
        public const int DefenseEnergyCost = 15;
-        
+
+       /// <summary>Base resources-per-1% terraform cost. Total Terraforming lowers it to
+       /// <see cref="TerraformResourceCostTotalTerraforming"/>; Claim Adjuster halves whichever
+       /// applies (a one-bit right shift). No minerals.</summary>
+       public const int TerraformResourceCost = 100;
+       public const int TerraformResourceCostTotalTerraforming = 70;
+
+       /// <summary>Resources for one Genesis Device (component category 0x8000 subtype 14 in the
+       /// original's component table), no minerals.</summary>
+       public const int GenesisDeviceResourceCost = 5000;
+
        // Research constants
        public const int DefaultResearchPercentage = 10;
 
@@ -167,20 +198,20 @@ namespace Nova.Common
 
        #region Xml
 
-       private static readonly Random StochasticRoundingRandom = new Random();
-
        /// <summary>Random proportional rounding: the fractional remainder becomes the
        /// probability of rounding up by one, rather than always being truncated away - the
        /// long-run expected value stays equal to the exact (fractional) input instead of
        /// systematically under-delivering every time this is applied. Confirmed by inspection of
        /// the exported client for both planetary bombing (docs/behavior-specs-4/combat-resolution.md
        /// §9) and mineral mining (docs/behavior-specs-4/population-growth.md) as "the same...
-       /// shape as other percentage-based mechanics" in the original game.</summary>
+       /// shape as other percentage-based mechanics" in the original game. The draw comes from
+       /// the ambient game stream (GameRandom.Current: the running turn step's seeded stream on
+       /// the server), not a process-wide static, so turn generation is repeatable.</summary>
        public static int StochasticRound(double value)
        {
            int whole = (int)value;
            double remainder = value - whole;
-           return StochasticRoundingRandom.NextDouble() < remainder ? whole + 1 : whole;
+           return GameRandom.Current.NextDouble() < remainder ? whole + 1 : whole;
        }
 
        /// <summary>

@@ -99,7 +99,11 @@ namespace Nova.Common
             // 10 PRTs
             "HE", "SS", "WM", "CA", "IS", "SD", "PP", "IT", "AR", "JOAT",
             // 14 LRTs
-            "IFE", "TT", "ARM", "ISB", "GR", "UR", "MA", "NRS", "OBRM", "CE", "NAS", "LSP", "BET", "RS"
+            // In the original's lesser-trait bit order (behavior-specs-10/race-traits.md section 3:
+            // 0 IFE ... 7 NRSE, 8 CE, 9 OBRM ... 13 RS), which is also TraitString's order -
+            // RaceRestriction.ToString pairs the two by index, so OBRM listed before CE printed a
+            // robot's "not available with Only Basic Remote Mining" as "Cheap Engines".
+            "IFE", "TT", "ARM", "ISB", "GR", "UR", "MA", "NRS", "CE", "OBRM", "NAS", "LSP", "BET", "RS"
         };
 
         /// <summary>

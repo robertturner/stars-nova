@@ -39,10 +39,24 @@ namespace Nova.Server.TurnSteps
     /// </summary>
     public class WormholeDriftStep : ITurnStep
     {
-        private readonly Random random = new Random();
+        // The injected test random, or null: each Process then takes the game's seeded
+        // "WormholeDrift" stream (ServerData.CreateRandom), so the drift is repeatable.
+        private readonly Random injectedRandom;
+
+        public WormholeDriftStep() : this(null)
+        {
+        }
+
+        /// <summary>Overload for deterministic testing.</summary>
+        public WormholeDriftStep(Random random)
+        {
+            injectedRandom = random;
+        }
 
         public void Process(ServerData serverState)
         {
+            Random random = injectedRandom ?? serverState.CreateRandom("WormholeDrift");
+
             foreach (Wormhole wormhole in serverState.AllWormholes.Values)
             {
                 int driftChancePercent = Math.Min(70, (wormhole.StabilityTier + 1) * 10);

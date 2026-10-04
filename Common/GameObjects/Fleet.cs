@@ -58,7 +58,15 @@ namespace Nova.Common
         public double FuelAvailable = 0;
         public double TargetDistance = 100;
         public string BattlePlan = "Default";
-       
+
+        /// <summary>
+        /// The Repeat Orders flag (fleet byte 5 bit 0x02, order record type 10): each waypoint the
+        /// fleet reaches is re-appended, task included, to the end of its route, so the route
+        /// cycles (behavior-specs-10/fleet-movement-scanning-cargo.md §5; see
+        /// TurnGenerator.UpdateFleet). A reached fleet-targeted (intercept) leg is never recycled.
+        /// </summary>
+        public bool RepeatOrders = false;
+
         public enum TravelStatus 
         { 
             Arrived, InTransit 
@@ -262,22 +270,82 @@ namespace Nova.Common
         }
 
         /// <summary>
-        /// Return the the number of mines this fleet can lay.
+        /// Return the number of mines (all three field types together) this fleet lays in a
+        /// year while stationary. Zero means no ship carries a mine-laying part (message 191).
         /// </summary>
         public int NumberOfMines
         {
             get
             {
-                int mineCount = 0;
-
-                foreach (ShipToken token in tokens.Values)
-                {
-                    mineCount += token.Design.MineCount * token.Quantity;
-                }
-
-                return mineCount;
+                return MinesPerYear(MinefieldType.Standard) + MinesPerYear(MinefieldType.Heavy) + MinesPerYear(MinefieldType.SpeedBump);
             }
         }
+
+        /// <summary>
+        /// The mines of one field type this fleet lays in a full (stationary) year:
+        /// behavior-specs-10/turn-generation-engine.md section 3, "Mine laying, exact rule".
+        /// The fleet total is the sum of ship count x design figure. A design's figure is the sum
+        /// over its parts of quantity x the part's mines per year (Mine Dispensers and the Multi
+        /// Contained Munition lay Standard, Heavy Dispensers Heavy, Speed Traps Speed Bump; a
+        /// Munition counts as 40 standard mines), doubled on the Mini Mine Layer and Super Mine
+        /// Layer hulls (their "Mine Layer Efficiency" property).
+        /// </summary>
+        public int MinesPerYear(MinefieldType fieldType)
+        {
+            int total = 0;
+            foreach (ShipToken token in tokens.Values)
+            {
+                total += DesignMinesPerYear(token.Design, fieldType) * token.Quantity;
+            }
+
+            return total;
+        }
+
+        /// <summary>One ship's yearly mines of the given type (see <see cref="MinesPerYear"/>).</summary>
+        public static int DesignMinesPerYear(ShipDesign design, MinefieldType fieldType)
+        {
+            if (design == null || design.Blueprint == null || !design.Blueprint.Properties.ContainsKey("Hull"))
+            {
+                return 0;
+            }
+
+            design.Update();
+
+            int figure;
+            switch (fieldType)
+            {
+                case MinefieldType.Heavy:
+                    figure = design.HeavyMines.LayerRate;
+                    break;
+                case MinefieldType.SpeedBump:
+                    figure = design.SpeedBumbMines.LayerRate;
+                    break;
+                default:
+                    figure = design.StandardMines.LayerRate;
+                    foreach (HullModule module in design.Hull.Modules)
+                    {
+                        if (module.AllocatedComponent != null && module.AllocatedComponent.Name == MultiContainedMunitionName)
+                        {
+                            figure += MultiContainedMunitionMines * module.ComponentCount;
+                        }
+                    }
+                    break;
+            }
+
+            if (design.Summary.Properties.TryGetValue("Mine Layer Efficiency", out ComponentProperty efficiency)
+                && efficiency is DoubleProperty efficiencyValue
+                && efficiencyValue.Value > 1)
+            {
+                figure = (int)(figure * efficiencyValue.Value);
+            }
+
+            return figure;
+        }
+
+        /// <summary>The Multi Contained Munition counts as this many standard mines per unit.</summary>
+        public const int MultiContainedMunitionMines = 40;
+
+        public const string MultiContainedMunitionName = "Multi Contained Munition";
 
         /// <summary>Total remote-mining capacity (mine-equivalents) this fleet contributes this
         /// turn, capped at Global.MaxRemoteMiningEquivalents per fleet -
@@ -443,7 +511,95 @@ namespace Nova.Common
             }
         }
 
-        
+        /// <summary>The Pick Pocket Scanner's component name.</summary>
+        public const string PickPocketScannerName = "Pick Pocket Scanner";
+
+        /// <summary>The Robber Baron Scanner's component name (components.xml spells it
+        /// "Robber Barron Scanner"; both spellings are recognised).</summary>
+        public const string RobberBaronScannerName = "Robber Baron Scanner";
+
+        /// <summary>
+        /// The cargo-theft scanner ability against fleets: some ship in the fleet carries a Pick
+        /// Pocket or Robber Baron Scanner (the scanner-class flag of the fleet's combined scan
+        /// result is an OR over its stacks; behavior-specs-10/fleet-movement-scanning-cargo.md §4
+        /// "Caps on a load" and "Theft").
+        /// </summary>
+        public bool CanStealFromFleets
+        {
+            get { return CarriesComponent(PickPocketScannerName) || CarriesRobberBaron(); }
+        }
+
+        /// <summary>
+        /// The cargo-theft ability against another race's planet's surface minerals: a Robber
+        /// Baron Scanner (the in-game help: the Pick Pocket sees and steals fleet cargo, the
+        /// Robber Baron also planets' surface minerals).
+        /// </summary>
+        public bool CanStealFromPlanets
+        {
+            get { return CarriesRobberBaron(); }
+        }
+
+        private bool CarriesRobberBaron()
+        {
+            return CarriesComponent(RobberBaronScannerName) || CarriesComponent("Robber Barron Scanner");
+        }
+
+        /// <summary>True when some ship design in the fleet mounts the named component.</summary>
+        public bool CarriesComponent(string componentName)
+        {
+            foreach (ShipToken token in tokens.Values)
+            {
+                ShipDesign design = token.Design;
+                if (token.Quantity <= 0 || design?.Blueprint == null || !design.Blueprint.Properties.ContainsKey("Hull"))
+                {
+                    continue;
+                }
+
+                foreach (HullModule module in design.Hull.Modules)
+                {
+                    if (module.AllocatedComponent != null && module.ComponentCount > 0
+                        && module.AllocatedComponent.Name == componentName)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// The fuel (mg) the fleet needs for the rest of its route: from its position through
+        /// waypoints <paramref name="fromIndex"/> onward, each leg at its own warp at the fleet's
+        /// current consumption rate (Load Optimal, §4). Warp 0 and Stargate legs need none.
+        /// </summary>
+        public int FuelRequiredForRoute(Race race, int fromIndex)
+        {
+            double need = 0;
+            NovaPoint from = Position;
+
+            for (int i = Math.Max(0, fromIndex); i < Waypoints.Count; i++)
+            {
+                Waypoint leg = Waypoints[i];
+                if (leg.Position == null)
+                {
+                    continue;
+                }
+
+                int warp = leg.WarpFactor;
+                if (warp > 0 && warp <= 10 && from != null)
+                {
+                    double distance = PointUtilities.Distance(from, leg.Position);
+                    need += FuelConsumption(warp, race) * distance / (warp * warp);
+                }
+
+                from = leg.Position;
+            }
+
+            return (int)Math.Ceiling(need);
+        }
+
+
         /// <summary>
         /// Placeholder constructor - Fleet should be replaced by a reference to the fleet with the same Key.
         /// </summary>
@@ -595,8 +751,14 @@ namespace Nova.Common
             // now have available.
 
             availableTime -= travelTime;
-            int fuelUsed = (int)(fuelConsumptionRate * travelTime);
-            FuelAvailable -= fuelUsed;
+
+            // The usage figure is kept in tenths of a mg and the tenths are rounded up ("adds 9
+            // and then divides by 10"), and the result is subtracted from the tank, clamped at
+            // zero (behavior-specs-10/fleet-movement-scanning-cargo.md section 2, steps 5 and the
+            // caller-side note). Truncating charged 37.8 mg as 37.
+            long fuelTenths = (long)Math.Floor((fuelConsumptionRate * travelTime * 10) + 1e-9);
+            int fuelUsed = (int)((fuelTenths + 9) / 10);
+            FuelAvailable = Math.Max(0, FuelAvailable - fuelUsed);
 
             double distanceTravelled = speed * travelTime;
             FuelAvailable += FuelGeneration(warpFactor, distanceTravelled);
@@ -637,9 +799,12 @@ namespace Nova.Common
             }
 
 
+            // Each design's figure counts once per ship: the calculator sums "the design's mass
+            // times its ship count" (behavior-specs-10/fleet-movement-scanning-cargo.md section 2,
+            // step 3). A stack of ten burned the fuel of one.
             foreach (ShipToken token in tokens.Values)
             {
-                fuelConsumption += token.Design.FuelConsumption(warpFactor, race, (int)(token.Design.CargoCapacity * cargoFullness));
+                fuelConsumption += token.Design.FuelConsumption(warpFactor, race, (int)(token.Design.CargoCapacity * cargoFullness)) * token.Quantity;
             }
 
             return fuelConsumption;
@@ -657,7 +822,76 @@ namespace Nova.Common
         /// table gives specific mg values per named engine per warp speed rather than a clean
         /// formula, and isn't reproduced here — this formula is the documented general step
         /// pattern, not a verbatim per-engine table.
+        ///
+        /// Every engine - ramscoop or not - also generates exactly 1mg at warp 1 specifically
+        /// (docs/behavior-specs-7/fleet-movement-scanning-cargo.md: "every conventional
+        /// (non-scoop) engine generating exactly 1 mg at warp 1 ... the mechanical basis for
+        /// treating warp 1 as an always-available, self-sustaining crawl speed"). Without this,
+        /// a fleet with only ordinary (non-ramscoop) engines that ran out of fuel had no way to
+        /// ever generate more and could never move again, contradicting that guarantee.
         /// </remarks>
+        /// <summary>
+        /// Recomputes this fleet's effective cloak percentage (<see cref="Cloaked"/>) from its
+        /// current composition - a mass-weighted average of each installed design's raw
+        /// cloak-rating units (see ShipDesign.Update, which already folds in installed cloak
+        /// components and any Super Stealth/Improved Starbases trait baseline), run through
+        /// CloakCalculator's single piecewise curve exactly once. behavior-specs-7/
+        /// combat-resolution.md §11: "weight = design mass x count of that design in the fleet
+        /// ... not a simple sum and not just the single best-cloaked design." Nothing else in
+        /// this codebase currently recomputes Cloaked as composition changes, so ScanStep calls
+        /// this fresh for every fleet before using it as a scan target, rather than relying on a
+        /// cached value that could go stale.
+        /// </summary>
+        public void RecalculateCloak(Race race)
+        {
+            double weightedRawUnitsSum = 0;
+            double totalWeight = 0;
+
+            foreach (ShipToken token in tokens.Values)
+            {
+                token.Design.Update(race);
+
+                double rawUnits = 0;
+                if (token.Design.Summary.Properties.TryGetValue("Cloak", out ComponentProperty cloak))
+                {
+                    rawUnits = ((ProbabilityProperty)cloak).Value;
+                }
+
+                double weight = token.Design.Mass * token.Quantity;
+                weightedRawUnitsSum += rawUnits * weight;
+                totalWeight += weight;
+            }
+
+            double weightedAverageRawUnits = totalWeight > 0 ? weightedRawUnitsSum / totalWeight : 0;
+            Cloaked = CloakCalculator.PercentFromRawUnits(weightedAverageRawUnits);
+        }
+
+        /// <summary>
+        /// Fuel (mg) this fleet makes per year when it is not refuelling at a friendly starbase: 50
+        /// per Anti-matter Generator carried plus 200 per ship of the Fuel Transport and Super-Fuel
+        /// Transport hulls (behavior-specs-8/turn-generation-engine.md section 1 step 22). Ramscoop
+        /// engines play no part in this pass - their fuel comes from travelling.
+        /// </summary>
+        public double PassiveFuelGeneration
+        {
+            get
+            {
+                double generated = 0;
+
+                foreach (ShipToken token in tokens.Values)
+                {
+                    generated += token.Design.FuelGenerationPerYear * token.Quantity;
+
+                    if (token.Design.IsFuelTransportHull)
+                    {
+                        generated += Global.FuelTransportFuelPerShip * token.Quantity;
+                    }
+                }
+
+                return generated;
+            }
+        }
+
         private double FuelGeneration(int warpFactor, double distance)
         {
             double generated = 0;
@@ -665,33 +899,41 @@ namespace Nova.Common
             foreach (ShipToken token in tokens.Values)
             {
                 Engine engine = token.Design.Engine;
-                if (engine == null || !engine.RamScoop)
+                if (engine == null)
                 {
                     continue;
                 }
 
-                int belowFreeWarp = engine.FreeWarpSpeed - warpFactor;
                 double perEngineFactor;
 
-                if (belowFreeWarp < 0)
+                if (!engine.RamScoop)
                 {
-                    perEngineFactor = 0;
-                }
-                else if (belowFreeWarp == 0)
-                {
-                    perEngineFactor = 1;
-                }
-                else if (belowFreeWarp == 1)
-                {
-                    perEngineFactor = 3;
-                }
-                else if (belowFreeWarp == 2)
-                {
-                    perEngineFactor = 6;
+                    perEngineFactor = warpFactor == 1 ? 1 : 0;
                 }
                 else
                 {
-                    perEngineFactor = 10;
+                    int belowFreeWarp = engine.FreeWarpSpeed - warpFactor;
+
+                    if (belowFreeWarp < 0)
+                    {
+                        perEngineFactor = 0;
+                    }
+                    else if (belowFreeWarp == 0)
+                    {
+                        perEngineFactor = 1;
+                    }
+                    else if (belowFreeWarp == 1)
+                    {
+                        perEngineFactor = 3;
+                    }
+                    else if (belowFreeWarp == 2)
+                    {
+                        perEngineFactor = 6;
+                    }
+                    else
+                    {
+                        perEngineFactor = 10;
+                    }
                 }
 
                 generated += perEngineFactor * distance * token.Quantity;
@@ -731,7 +973,7 @@ namespace Nova.Common
             {
                 while (mainNode != null)
                 {
-                    switch (mainNode.Name.ToLower())
+                    switch (mainNode.Name.ToLowerInvariant())
                     {
                         case "fleetid":
                             Id = uint.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -757,6 +999,9 @@ namespace Nova.Common
                             break;
                         case "battleplan":
                             BattlePlan = mainNode.FirstChild.Value;
+                            break;
+                        case "repeatorders":
+                            RepeatOrders = bool.Parse(mainNode.FirstChild.Value);
                             break;
                         case "tokens":
                             XmlNode subNode = mainNode.FirstChild;
@@ -821,6 +1066,11 @@ namespace Nova.Common
             }
             
             Global.SaveData(xmldoc, xmlelFleet, "BattlePlan", this.BattlePlan);
+
+            if (RepeatOrders)
+            {
+                Global.SaveData(xmldoc, xmlelFleet, "RepeatOrders", RepeatOrders.ToString());
+            }
 
             xmlelFleet.AppendChild(Cargo.ToXml(xmldoc));
 

@@ -38,7 +38,15 @@ namespace Nova.Common.Components
     public class CapacitorProperty : ComponentProperty
     {
         public double Value = 0;
-        public static double Maximum = 250;
+
+        /// <summary>
+        /// Cap on the summed capacitor BONUS (Value is the bonus over base damage, e.g. 10 for
+        /// one Energy Capacitor). behavior-specs-9/combat-resolution.md §6/§8 caps the firer's
+        /// total beam-damage percentage at 255% of base, i.e. a bonus of at most 155 - the old
+        /// 250 here was a bonus cap, allowing 350% in total. The battle engine itself reads the
+        /// per-step integer percentage ShipDesign.CapacitorPercent, which applies the same cap.
+        /// </summary>
+        public static double Maximum = 155;
 
         #region Construction
 
@@ -146,7 +154,7 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "value")
+                    if (subnode.Name.ToLowerInvariant() == "value")
                     {
                         Value = double.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }

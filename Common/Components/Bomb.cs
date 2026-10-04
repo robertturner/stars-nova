@@ -192,19 +192,19 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "installations")
+                    if (subnode.Name.ToLowerInvariant() == "installations")
                     {
                         Installations = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    if (subnode.Name.ToLower() == "popkill")
+                    if (subnode.Name.ToLowerInvariant() == "popkill")
                     {
                         PopKill = double.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    if (subnode.Name.ToLower() == "minimumkill")
+                    if (subnode.Name.ToLowerInvariant() == "minimumkill")
                     {
                         MinimumKill = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    if (subnode.Name.ToLower() == "issmart")
+                    if (subnode.Name.ToLowerInvariant() == "issmart")
                     {
                         IsSmart = bool.Parse(((XmlText)subnode.FirstChild).Value);
                     }

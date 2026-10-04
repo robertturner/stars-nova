@@ -114,7 +114,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (subnode.Name.ToLower())
+                    switch (subnode.Name.ToLowerInvariant())
                     {
                         case "name":
                             Name = subnode.FirstChild.Value;

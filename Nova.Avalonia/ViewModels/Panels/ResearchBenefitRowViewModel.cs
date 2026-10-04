@@ -19,9 +19,26 @@ public class ResearchBenefitRowViewModel
 
     public IBrush Color { get; }
 
+    /// <summary>The detail card's one status line (behavior-specs-10/research-tech-tree.md §4):
+    /// "Unavailable", "Available", the research resources still needed, or that figure in
+    /// thousands with a "k" from 100,000 up - see Nova.Client.TechStatusLine.</summary>
+    public string StatusText { get; }
+
+    /// <summary>True for the red "unavailable" variant of the status line.</summary>
+    public bool IsUnavailable { get; }
+
+    public IBrush StatusColor => IsUnavailable ? Brushes.Red : Brushes.Gray;
+
     public ResearchBenefitRowViewModel(string text, IBrush color)
+        : this(text, color, "", false)
+    {
+    }
+
+    public ResearchBenefitRowViewModel(string text, IBrush color, string statusText, bool isUnavailable)
     {
         Text = text;
         Color = color;
+        StatusText = statusText;
+        IsUnavailable = isUnavailable;
     }
 }

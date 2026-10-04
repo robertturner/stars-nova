@@ -1,0 +1,446 @@
+# Production Queue and Resource Allocation
+
+Behavior specification for planetary production — how population and minerals become factories, mines, defenses, terraforming, and ships — in the 1995-2000 4X game *Stars!*, written for a clean-room reimplementation. Facts below are restated in original wording from public sources: the official *Stars! Player's Guide* (the published manual, read here from an OCR text transcription of the scanned book hosted at archive.org — this is the printed player-facing documentation, not any decompiled or disassembled artifact), the long-standing community site *starsfaq.com* ("Stars!-R-Us" article archive), and an unofficial HTML mirror of the original *Stars! Official Strategy Guide* chapters. Some additional figures are corroborated only through search-engine snippets of the *wiki.starsautohost.org* community wiki, whose pages could not be fetched directly in this research session (the site's Cloudflare bot-check blocked automated retrieval); those figures are marked as lower-confidence and re-listed under Open Questions. No content was derived from the original binary or any decompilation/disassembly artifact.
+
+## Overview
+
+Every inhabited planet has exactly one production queue: an ordered work list processed top to bottom, once per year (turn). Two independently-tracked economic quantities feed it:
+
+- **Resources** — an abstract unit of "work," generated each year by (a) the planet's population and (b) any operating factories. Resources pay for everything: factories, mines, defenses, terraforming, ships, and research.
+- **Minerals** (Ironium, Boranium, Germanium) — physical stockpiles extracted from the planet by mines (or received via freighters/mineral packets), consumed by items that need them (factories need Germanium; most ships need some mix of all three; mines, defenses, and terraforming typically need only resources).
+
+Each year, the game walks the queue from top to bottom, applying that year's resource and mineral income to whichever item is at the head of the queue until it either completes, is blocked by a mineral shortfall, or the planet runs out of resources for the year; any resources still unspent after satisfying the queue flow into research rather than being wasted. Items above a certain threshold of completion retain their invested progress across turns — nothing is "banked" back into a generic pool, but a specific item's percent-complete carries forward until it either finishes or is deleted (which forfeits the investment). Auto-build entries (open-ended "up to N" orders for Mines, Factories, Defenses, Mineral Alchemy, and Terraforming) behave differently from ordinary queued items: they never block the queue and are simply skipped in a year they can't be executed.
+
+Sources: [STARS! Player's Guide, Ch. 6 "Planets" and Ch. 7 "Production"](https://archive.org/details/manual_Stars); [Chapter 6: Early Resource Management — Stars! Official Strategy Guide mirror](http://www.deepsky.com/~gpeters/stars/www.anrokima.de/Strategie_Handbuch/ssg/ssg06.htm)
+
+## Mechanics
+
+### 1. Resources from population
+
+A colonist's economic productivity is a race-design setting, described in the *Player's Guide* as "resources per colonist": it defines how many colonists it takes to generate one resource per year, independent of factories. The manual's own worked description of the default setting is:
+
+> "One resource is generated each year for every 1000 [colonists]"
+
+with the same page describing the most favorable end of that design slider as roughly one resource per 700 colonists (the manual's OCR text renders this figure ambiguously as "seven," which in context — paired with the well-documented 1000-colonist default and the game's known race-wizard slider range — is almost certainly "700"; treated here as likely but not fully certain, see Open Questions). Formally, for a race using the default setting:
+
+```
+population_resources = floor(population / 1000)
+```
+
+This is the *only* resource source that requires no built infrastructure — it is what lets a freshly-colonized world (with zero factories) start producing anything at all.
+
+Source: [STARS! Player's Guide, Ch. 7, "Conditions That Affect Production" / View Race page 5](https://archive.org/details/manual_Stars); corroborated by [Chapter 6: Early Resource Management — Stars!wiki (via search index)](https://wiki.starsautohost.org/wiki/Chapter_6:Early_Resource_Management)
+
+### 2. Resources from factories
+
+Factories are described in the manual as working like "virtual colonists": once built they produce resources every year at no ongoing cost, and unlike colonists they don't need anything to keep running. Quoting the manual directly:
+
+> "Factories, along with people, create resources used to build items such as ships, mines, defenses and more factories... For a typical race, you can double the number of resources generated per year by building factories."
+
+> "Factories cost 4 kT of germanium to build or, if you selected Factories Cost 1 kT Less when defining your race, factories cost 3 kT of germanium. No minerals other than germanium are used."
+
+The resources-per-factory rate, the resource cost to build one, and the germanium cost are all race-design settings with a default and a race-customizable range. The default, confirmed directly from the strategy-guide mirror's worked description, is a 1:1 output ratio and a 10-resource build cost:
+
+> "Since new factories will cost 10 resources, it will take a ten-years for a factory to produce a copy of itself" / "With the default settings, 10 factories produce 10 resources per year. That gives you one resource per factory."
+
+So, by default:
+
+```
+factory_build_cost      = 10 resources + 4 kT Germanium   (or 3 kT with the "Factories Cost 1 kT Less" race option)
+factory_output_per_year = 1 resource / operating factory
+```
+
+The manual's own "excel at production" checklist (View Race page 5) gives the favorable extreme of the customizable range: factories that cost only 5 resources (plus 1 kT less germanium) and that each produce up to 1.5 resources/year (worded as "every 10 factories produce 15 resources"), which is also consistent with the *Official Strategy Guide*'s worked "Monster Race" example using settings like "10 produce 12" or up to 15 output with a 7-9 resource cost.
+
+Source: [STARS! Player's Guide, Ch. 6 "Planets" (Factories) and Ch. 7 (View Race page 5)](https://archive.org/details/manual_Stars); [Chapter 2: Basic Race Design — Official Strategy Guide mirror](http://www.deepsky.com/~gpeters/stars/www.anrokima.de/Strategie_Handbuch/ssg/ssg02.htm); [Chapter 3: Building a Monster Race — Official Strategy Guide mirror](http://www.deepsky.com/~gpeters/stars/www.anrokima.de/Strategie_Handbuch/ssg/ssg03.htm)
+
+### 3. Operable factories and mines (the population cap)
+
+A planet can physically *contain* more factories or mines than its current population can *run*. The manual describes a dedicated readout for exactly this distinction:
+
+> "The Minerals on Hand tile shows you the current number of mines and factories operating on a planet, and the maximum number of mines and factories the current population can operate."
+
+The maximum-operable figure scales with population in steps of 10,000 colonists — another race-design setting ("factories/mines operable per 10,000 colonists"), whose favorable extreme the manual gives directly:
+
+> "Colonists may operate 25 factories" / "Every 10,000 colonists can operate 25 mines" [worded as the best-case end of the design slider]
+
+The unmodified default for both is **10 per 10,000 colonists, confirmed directly from the binary this pass**. This was previously only a community convention. Each setting's legal range is **5–25**. Both values come from the race wizard's own per-setting bound table and the default (Humanoid) preset record; see "Race-design economic settings, recovered from the binary" under §4 below. Formally:
+
+```
+operable_factories_cap = floor(population / 10000) * factories_per_10k_setting   (default setting = 10)
+operable_mines_cap     = floor(population / 10000) * mines_per_10k_setting       (default setting = 10)
+operating_factories    = min(built_factories, operable_factories_cap)
+operating_mines        = min(built_mines,     operable_mines_cap)
+```
+
+Factories or mines built beyond the current cap are not destroyed or wasted — they simply sit idle (produce nothing) until population growth raises the cap enough to bring them online. This "grow into your infrastructure" dynamic is explicitly used as a strategy in community guides, e.g. one long-standing strategy article describes deliberately letting a homeworld's population climb until "the factories that pop can operate (858)" before changing its build orders.
+
+Source: [STARS! Player's Guide, Ch. 6 "Planets" (Mines/Factories sidebar)](https://archive.org/details/manual_Stars); ["How to Get Over 25,000 Resources by 2450" by Jason Cawley — starsfaq.com](http://starsfaq.com/articles/25k_by_2450.htm)
+
+### 4. Minerals from mines
+
+Mines extract Ironium, Boranium, and Germanium independently, based on each mineral's own surface concentration on that planet (0–100%, tracked separately per mineral). Mining decreases concentration over time (asymptotically — the manual states a planet never truly runs out, extraction just gets very slow near 1% concentration), and every player's home/starting world is guaranteed never to drop below 30% concentration in any mineral, for the life of the game, regardless of who owns it:
+
+> "You never run out of minerals on a planet, you just decrease the concentration until it reaches 1%..." / "The mineral concentration on your home, or starting world never drops below 30."
+
+Like factory output, "mine output" (kT extracted per mine at 100% concentration) and "mine build cost" (in resources) are race-design settings. A community strategy article illustrating a *customized* race spelled the underlying shape of the formula out concretely: with a mine efficiency of 1.2 kT and 24 mines/10,000 pop, a homeworld sitting at the guaranteed 30% concentration floor was reported to produce "450kt-1000kt of germanium per year." The generalized formula:
+
+```
+mineral_output(type) = operating_mines * (mine_output_setting / 10) * (concentration_percent(type) / 100)
+```
+
+**The default mine settings are now confirmed from the binary (this pass):** 5 resources to build, a mine-output setting of 10 ("every 10 mines produce up to 10 kT of each mineral every year", i.e. 1 kT per mine per year at the formula's full-concentration scale above), and 10 mines operable per 10,000 colonists. The build-cost figure also matches the live-client observation in Open Questions. Mines, unlike factories, appear to require only resources (no minerals) to build.
+
+#### Race-design economic settings, recovered from the binary
+
+The race wizard stores all seven economic settings as small integers. It validates each one against a per-setting minimum/maximum table and seeds new races from the first built-in preset (Humanoid). Both tables were read directly out of `stars.exe`. For the location, the addressing subtlety that hid them from earlier passes, and the cross-checks, see `race-designer-ui-and-availability.md` "Economic-settings stage".
+
+| Setting | Min | Max | Default |
+|---|---|---|---|
+| Colonists per 1 resource | 700 | 2,500 | 1,000 |
+| Resources produced per 10 operating factories | 5 | 15 | 10 |
+| Resources to build one factory | 5 | 25 | 10 |
+| Factories operable per 10,000 colonists | 5 | 25 | 10 |
+| Factory Germanium cost (checkbox) | 3 kT | 4 kT | 4 kT (box unchecked) |
+| kT of each mineral per 10 operating mines | 5 | 25 | 10 |
+| Resources to build one mine | **2** | 15 | 5 |
+| Mines operable per 10,000 colonists | 5 | 25 | 10 |
+
+The colonists-per-resource setting is stored as 7–25 and displayed with a "00" suffix, hence 700–2,500. Every range matches the manual's "favorable extreme" figures quoted in §2/§3 (factories costing 5, 10 factories producing 15, 25 operable per 10,000). The 2-resource mine-cost floor is lower than some community write-ups state, but the point-total formula has a dedicated branch for exactly that one sub-3 value (`race-traits.md` §1a), which only makes sense if 2 is legal. Alternate Reality races cannot change the six factory/mine settings: the wizard greys them out, and selecting AR resets them to exactly the defaults above (`stars.exe.export.c` lines 93759-93766).
+
+Source: [STARS! Player's Guide, Ch. 6 "Planets" (Mines)](https://archive.org/details/manual_Stars); ["Rapid Colony Development" by Michael Meagher — starsfaq.com](http://starsfaq.com/articles/sru/art77.htm)
+
+### 5. Defenses
+
+Planetary defenses (SDI, Missile Battery, Laser Battery, Planetary Defense, Neutron Battery, etc.) partially protect a planet against bombing, mass-driver mineral packets, and invasion. Adding a "Defenses" item to the queue increases the count of whichever defense type the planet is currently using; upgrading to a better defense *type* happens automatically and for free the instant the relevant technology is researched — it never needs to be queued.
+
+> "Adding defenses increases the number of existing defenses of the type you're currently employing... Upgrading defenses happens automatically. Whenever you learn new technology that applies to defense, all defenses on all your planets upgrade automatically and at no cost."
+
+The manual frames the operable limit on defenses the same way as factories/mines — "you can build as many defenses as you wish, you can only operate as many as your population has resources to handle" — but community sources are consistent that there is also a hard, population-independent ceiling of 100 defenses per planet (the manual's own example screenshot shows a fully-built planet at "100 of 100"). The resource cost to build one defense unit was found cited in a community wiki search snippet as approximately 15 resources, but this could not be corroborated against the primary manual text or against a mineral-cost figure, so it is listed under Open Questions rather than presented as confirmed.
+
+Source: [STARS! Player's Guide, Ch. 6 "Planets" (Building Planetary Defenses)](https://archive.org/details/manual_Stars)
+
+**Discrepancy found by inspection of the exported client.** The production-queue cost calculator's Defenses branch computes a base resource cost of **25, 44, or 48** resources (selected by a 3-way race-derived index) — none of which match the ≈15-resources figure cited above from a community wiki snippet. Which of the three branches corresponds to a race with no relevant trait was not determined, so this should be treated as an open discrepancy rather than a confirmed correction — but the ≈15 figure should no longer be treated as likely correct without further checking.
+
+**Branch selector identified and traced to its exact source, this pass.** The unnamed cost calculator is `FUN_10d0_221a` (segment `10d0`, this project's segment 27 — the same segment that hosts the queue dialog `ZIPPRODDLG` and the rest of §8-9's UI mechanics). Near the top of the function it reads the *requesting item's owning player's* Primary Racial Trait via the same generic per-race field accessor used throughout this project (`FUN_10e0_222c(&DAT_1128_59c2 + playerIndex*0x60, 0xe)`) into a local that is never reassigned before the item-type dispatch switch reaches the Defenses case. That case (`switch(itemType) { case 6: case 0x11: ...}`, the manual/auto-build pair for Defenses) then branches on that PRT value:
+
+```
+if (PRT == 6)        cost = 25   // Packet Physics
+else if (PRT == 7)    cost = 48   // Interstellar Traveler
+else                  cost = 44   // every other PRT (the "no relevant trait" default)
+```
+
+**This resolves the open item: the no-trait default is 44 resources**, not 15, and — unexpectedly — the two non-default branches are keyed to **Packet Physics** (cheaper, 25) and **Interstellar Traveler** (pricier, 48), not to any PRT with a documented defense-related bonus (Inner Strength's separately-documented "planetary defenses cost 40% less" is not implemented via this table at all — either it is applied as a downstream percentage multiplier the queue-cost calculator itself does not own, or it is not implemented as described; this was not traced further this pass). This PRT pairing is the same one found for Terraforming immediately below, from the same selector inside the same function, which is a strong indication it is one deliberate (if under-documented) design choice rather than a decoding error.
+
+### 6. Terraforming
+
+Terraforming nudges one habitability factor (Gravity, Temperature, or Radiation) by 1% per completed "Terraform Environment" unit, automatically choosing whichever factor is furthest out of the race's preferred range:
+
+> "Each 1% Terraforming task executed will modify one of the environmental factors by 1%, which will improve the overall habitability value by at least 1% and probably more."
+
+Two auto-build variants exist: **Min(imum) Terraforming**, which only fixes factors currently *outside* habitable range (and which the manual singles out as urgent — colonists start dying if a negative-value planet is left un-terraformed for more than a year) and stops once the planet value reaches zero; and **Max(imum) Terraforming**, which keeps improving already-positive factors up to a player-specified percentage ceiling and the limits of researched terraforming technology. Total possible terraforming per factor is capped by tech level, normally maxing out at 15% (potentially higher — see the race trait below).
+
+Community wiki sources (not independently confirmed against the primary manual text in this pass) cite a terraforming cost of 100 resources per 1% terraformed for a standard race. The **Total Terraforming** race trait is explicitly documented in the manual as reducing this cost:
+
+> "Total Terraforming... Terraforming requires 30% less resources and you can research terraforming technologies that improve factors up to 30% instead of just 15% normally."
+
+Source: [STARS! Player's Guide, Ch. 6 "Planets" (Terraforming) and Race Traits appendix](https://archive.org/details/manual_Stars); [Total Terraforming — Stars!wiki (via search index)](https://wiki.starsautohost.org/wiki/Total_Terraforming)
+
+**Discrepancy found by inspection of the exported client.** The same cost calculator's Terraforming branch computes a base resource cost of **70, 110, or 120** (selected by the same 3-way race-derived index used for Defenses, above) — none of which match the "100 resources per 1%" figure cited above from a community wiki snippet. As with the Defenses figure, which branch is the no-trait default was not determined; flagged as an open discrepancy. The terraform-axis-selection behavior itself (§ "automatically choosing whichever factor is furthest out of range") **is independently confirmed** — a one-axis-at-a-time terraform stepper evaluates all 3 axes and mutates only the single axis+direction giving the largest habitability gain, exactly matching this document's existing claim.
+
+**Branch selector identified, this pass — same function and same PRT check as the Defenses item above.** `FUN_10d0_221a`'s item-type switch has a second case group for the three Terraforming queue-item variants (`case 0xe: case 0xf: case 0x10:`, presumably Min/ordinary/Max Terraform) that reads the identical, not-reassigned PRT value from the same generic per-race field accessor call near the top of the function, and branches:
+
+```
+if (PRT == 6)        cost = 70    // Packet Physics
+else if (PRT == 7)    cost = 120   // Interstellar Traveler
+else                  cost = 110   // every other PRT (the "no relevant trait" default)
+```
+
+**This resolves the open item: the no-trait default is 110 resources per 1%**, not 100 — and, again, the two non-default branches single out Packet Physics (cheaper, 70) and Interstellar Traveler (pricier, 120), the identical pair and identical direction (PP cheap, IT expensive) as the Defenses branch above, using the same PRT read in the same function. Total Terraforming's separately-documented 30%-cheaper modifier (§6 above, already confirmed at the code level via a distinct germanium-style flat percentage) is a race-*trait* (LRT) discount layered on top of whichever of these three PRT-selected base costs applies — the two mechanisms are independent, not alternatives. No documented PRT/LRT description anywhere consulted for this project explains *why* Packet Physics and Interstellar Traveler specifically get cheaper/pricier Defenses and Terraforming; this reads as a genuine, previously-undocumented balance detail rather than a decoding artifact, given it is confirmed twice (Defenses and Terraforming) from the same variable in the same function.
+
+**Checked again this pass for an in-code rationale — none found, but a structural pattern confirms this is deliberate pairing, not noise.** `FUN_10d0_221a` is machine-decompiled code with no comments or string labels anywhere near the PRT-6/PRT-7 branch, so there is no in-fiction or programmer-authored explanation to recover from the function itself. However, `race-traits.md` §2a (found independently this pass, in an unrelated area of the codebase — the new-game galaxy-generation routine) documents a **second, live, executing mechanism** that groups exactly these same two PRT values together: the routine that grants a second home-tier starting planet gates on "PRT 6, or PRT 7" reaching one shared code block, with no other PRT eligible for it. Two independent subsystems — new-game planet placement and production-queue cost calculation — single out the identical PRT pair (6 and 7, i.e. Packet Physics and Interstellar Traveler) with no other PRT touched in either place. This is consistent with Packet Physics and Interstellar Traveler being treated internally as one adjacent "logistics/long-range-delivery" category (mass-driver flinging and Stargate-hopping are both ways of moving mass between two owned planets fast) rather than coincidence, but it does not explain the specific cheap/pricey *direction* of the Defense/Terraform split (why PP is cheap and IT is pricey, rather than the reverse) — no rationale for that direction was found anywhere in this pass. Best read as a pure balance number, now corroborated as a deliberate design grouping rather than resolved in meaning.
+
+**Also confirmed by inspection:** Factories' Germanium build cost follows exactly `4 - traitFlag`, i.e. 4 kT normally or 3 kT with the discount trait — an exact match to this document's §2 claim, independently verified at the code level.
+
+### 7. Mineral Alchemy (turning resources into minerals)
+
+When an item is stuck because a needed mineral has run out, Mineral Alchemy converts resources into minerals directly and can be queued (manually or as an auto-build item) ahead of the blocked item:
+
+> "Each unit of mineral alchemy will turn a mere 100 of your resources (25 if you have the Mineral Alchemy trait) into 1 kT of each of the three minerals."
+
+As an auto-build item placed in front of another item, it activates only in the specific year it's needed to unblock that item; placed last in the queue (or alone), it consumes all remaining resources for the year converting them to minerals.
+
+Source: [STARS! Player's Guide, Ch. 7 "Production" (Unblocking a Production Queue)](https://archive.org/details/manual_Stars)
+
+### 8. Queue ordering, blocking, and partial completion
+
+The queue is a strict top-to-bottom work list:
+
+> "You have one production queue per planet. The queue is essentially a work list. Items are produced in the order shown in the queue, from top to bottom."
+
+Each item tracks its own percent-complete, shown when it's selected. Key documented behaviors:
+
+- **Insertion ahead of a partially-built item does not erase its progress, only pauses it.** "If you add an item to the top of the queue in front of something that is partially complete, your people will not work to complete the original item until the new item you placed in the queue is complete or has been deleted."
+- **Deleting a partially-built item forfeits everything spent on it.** "If the item is removed from the queue before completion, resources and minerals already spent on the item are lost."
+- **Mineral shortfalls block ordinary items, but not auto-build items.** "Production of items that require minerals is halted if the planet runs out of minerals. Auto-build items that require only resources will continue to be produced." A normal (non-auto-build) item stuck for lack of minerals is described as "blocking" the queue — its remedies are freighting in minerals, flinging a mineral packet, or queuing Mineral Alchemy ahead of it — implying downstream items behind a blocked ordinary item do not receive that year's leftover resources either, until it is unblocked or removed. If projected time-to-completion exceeds 100 years at current mineral income, the item's name is shown in red as a "practically never" warning.
+- **Auto-build items never block and are simply skipped** in a year they can't be executed, and they never show progress themselves — instead, the moment work is actually done on one, it manifests as an ordinary partially-completed item for that one unit.
+- **Leftover resources go to research, not to next turn's production.** Nothing generated in a turn is wasted: any resources not consumed by the queue (after satisfying every buildable item, or hitting one that blocks) are applied to research that same year. A per-planet "Contribute only leftover resources to research" checkbox governs *when* production claims priority over the player's global research-funding percentage: unchecked, some resources go to research first per the player's normal research allocation and the remainder funds the queue; checked, the queue is fully funded first and only the true leftover goes to research.
+- **A planetary disaster (e.g., a comet strike) resets the queue entirely**, losing all in-progress work and its invested resources (though disasters can also deposit windfall minerals usable immediately).
+
+Source: [STARS! Player's Guide, Ch. 7 "Production" (How Production Works, Clearing/Unblocking the Production Queue, Adding Auto-Build Items)](https://archive.org/details/manual_Stars)
+
+**The per-turn, per-planet queue-application loop, and the narrower open question it resolves, confirmed by inspection of the exported client.** The actual turn-generation code that spends a planet's resources/minerals against its queue lives in `FUN_10b8_0000` (segment 24), which walks the planet's production-queue entries **top to bottom in a single pass per planet per turn**, calling a per-item apply routine (`FUN_10b8_0756`) once for the item currently at the head of the queue. That routine buys as many whole units of the item as the turn's remaining resource/mineral budget allows (the same whole-unit-granularity mechanism already empirically confirmed above), then reports one of several completion-status codes back to the caller. The caller's handling of that status is the mechanism that decides whether the walk continues to the next queue entry or stops for the turn: a status meaning "this item is now fully satisfied" (fully built out, or — for an auto-build entry — its target reached or it made whatever partial progress it could without literally running out of resources to spend) sends the loop straight on to the next item in the same call; only a status meaning "this ordinary item still needs more of a mineral it doesn't have, and there was nothing else useful this iteration could do about it" causes the loop to `break` and stop funding the rest of that planet's queue for the year.
+
+**This resolves the open item below: yes, an auto-build item positioned behind a manual item is funded the same turn the manual item stops blocking.** Because the whole queue is processed in one function call per planet per turn, "the blocking item completes/no-longer-blocks" and "the next item gets its turn" are not separated by a turn boundary — they are two steps of the same loop iteration sequence. Concretely: if the manual item at the head of the queue receives enough resources and minerals during this turn's own pass to either finish outright or otherwise stop reporting a blocking status, the walk immediately proceeds to evaluate the auto-build entry behind it, in that same call, rather than waiting for a subsequent turn. Conversely, if the manual item still can't fully clear that status after being given its share of the turn's budget (e.g. it remains short on a mineral even after any partial whole-unit progress), the loop breaks immediately and the auto-build entry behind it receives *nothing* that turn — directly confirming this document's existing "downstream items behind a blocked ordinary item do not receive that year's leftover resources" claim, and pinning down exactly why: it is this unconditional `break`, not a scheduling rule evaluated in advance. The exact mapping from each numeric status code to its English meaning (e.g. distinguishing "auto-build target already met" from "auto-build made partial progress" from "ordinary item fully completed") was reconstructed from the surrounding control flow rather than from any string/label evidence, so the specific codes are not asserted individually — only the binary continue-vs-break behavior this document relies on, which is unambiguous from the control flow itself.
+
+**Confirmed by inspection of the exported client.** The 100-year "practically never" threshold is not a display heuristic layered on top of some other estimate — the completion-time estimator itself literally **simulates up to 100 yearly iterations** of projected resource/mineral income against the queue, and if the target item has not finished by iteration 100, its finish-time is forced to exactly 100 rather than being computed further. This is an exact match for this document's claim, down to the specific number.
+
+**Also confirmed:** the exact packed queue-record format — quantity is stored in a 10-bit field (hard cap **1,023** units per line), alongside an item-type index and a small sub-flag; a build-order is refused outright once its total queued-item count exceeds **200** entries, a previously undocumented structural cap distinct from the per-line quantity cap.
+
+**Full queue-item text-color scheme, newly identified and confirmed by inspection of the exported client, including the exact RGB values.** The queue listbox's populator prepends one invisible marker character to each item's display text, and the listbox's own owner-draw routine switches on that same character to pick the item's text color — the two routines share this single-character code entirely independently of any font/highlight state. Reading the estimator's two outputs (the simulated iteration at which the item first starts receiving resources, and the one at which it finishes — both forced to 100 if not reached within the 100-year simulation ceiling described above) as (start, finish):
+
+- **(start, finish) = (1, 1)** — the item will both begin and fully complete production in the very next turn — is marked with the color **dark green** (RGB 0,127,0). This is the direct code-level confirmation of the "green if it'll finish in 1 turn" rule.
+- **start = 0, or start = 1 with finish > 1** (i.e. the item is already receiving resources this turn but will need further turns) is marked **dark blue** (RGB 0,0,127).
+- **start ≥ 100** (never begins within the simulated window) — or any other value not matched by a more specific case — falls back to plain **red** (RGB 255,0,0). This is the same "practically never" case already documented above, now with its exact color confirmed; it also fires for any completion state the code doesn't otherwise recognize.
+- **start = finish = 0, or start = finish = −1** (a zero-remaining-cost or not-applicable item — e.g. one already fully paid for) is marked **gray** (RGB 127,127,127) — closer to a dark gray than true black, though it would likely read as "black" against the listbox's normal white-ish item text at a glance.
+- Every other case (start in the 2-99 range, i.e. "will start within the simulated window, but not right away") gets no special marker and is left in the listbox's ordinary default text color — the "black" (or, in a specific alternate listbox state, white) baseline the other four colors stand out against.
+
+The exact English meaning of the blue/gray cases beyond the mechanical trigger above (e.g. whether "blue" specifically reads to a player as "in progress" and "gray" as "nothing to report") was not independently confirmed against the manual or live play in this pass — only the color values, the marker characters, and their precise (start, finish) trigger conditions are confirmed from the decompiled code itself.
+
+### 9. Auto-build vs. manual queue items and production templates
+
+Manually-added items are one-shot orders (optionally multiplied via Shift/Ctrl-modified Add for batches of 10/100/max) that are removed from the queue once built. Auto-build items ("Mines/Factories/Defenses/Mineral Alchemy/Terraforming (Auto Build)") are persistent standing orders phrased as "up to N": they stay in the queue indefinitely, attempting each year to reach (but never exceed) the stated target count of that item, and must be removed manually. A **production template** is a saved, reusable sequence of auto-build items (plus the leftover-resources-to-research setting) that can be applied to any planet's queue in one action; the **default template** auto-applies to every newly founded or captured colony. The manual's own illustrative default template:
+
+```
+Minimum Terraform Up to 10%
+Factories (Auto Build) Up to 10
+Mines (Auto Build) Up to 10
+Defenses (Auto Build) Up to 2
+Factories (Auto Build) Up to 25
+Mines (Auto Build) Up to 25
+Maximum Terraform Up to 10%
+Defenses (Auto Build) Up to 5
+```
+
+— reasoned (per the manual) as: fix life-threatening habitability problems first, then continuously grow infrastructure while the colony is young, add a little defense once the colony can afford it, push infrastructure to its population-based ceiling once mature, polish habitability, then invest further in defense.
+
+Source: [STARS! Player's Guide, Ch. 7 "Production" (Production Templates, Adding Auto-Build Items to the Queue)](https://archive.org/details/manual_Stars)
+
+**Confirmed and extended by inspection of the exported client.** The literal display strings **"(Auto Build)"** and **"up to N"** (for a persistent standing order) are both confirmed to appear verbatim in the game's own listbox-population code, in two independent functions — a strong, direct confirmation of this document's naming convention for auto-build items, down to the exact wording. The manual-add stepper's Shift/Ctrl-modified batch amounts are also confirmed exactly: **no modifier = 1, Shift = 10, Ctrl = 100, Ctrl+Shift = effectively max** (the code clamps the Ctrl+Shift batch to 1,020, one below the queue-line's hard 1,023-unit cap, rather than exactly 1,000).
+
+**Correction — the production-template manager's identity.** The saved-template screen is a **4-slot** manager (not more, not a variable count): each of the 4 slots holds up to **12** auto-build entries plus a single stored flag bit corresponding to the "contribute only leftover resources to research" checkbox described above — confirming this document's claim about what a template stores, down to that exact settings-bit being saved alongside the item list. The *quick, per-planet* production-queue editor (a separate screen from the 4-slot template manager) is where ordinary auto-build/manual queue editing actually happens; these are two distinct screens sharing underlying data, not one screen serving both roles.
+
+**New mechanic, not in this document previously — Mineral Alchemy's automatic counterpart for Alternate Reality.** Distinct from the manually-queued Mineral Alchemy item described in §7, races with the Alternate Reality primary trait receive an **automatic, non-queued** per-turn conversion of leftover resources into minerals at a race-specific ratio, processed during turn generation rather than through the production queue at all. See `turn-generation-engine.md` §6.
+
+**Segment attribution, added by a later pass.** Every UI-facing mechanic in §8-9 above that was previously confirmed "by inspection of the exported client" without naming a code location lives in code-coverage segment 27 (Ghidra `FUN_10D0_*`, plus one specially-named hidden dialog procedure): the 100-iteration completion simulator, the packed queue-record format, the manual-add Shift/Ctrl quantity stepper and its Move-Up/Move-Down commands, the "(Auto Build)"/"up to N" listbox strings, and the 4-slot template manager (`ZIPPRODDLG`, this segment's one specially-named procedure, following the same hidden-dialog-procedure pattern already seen in segments 17/28/29/30). See `research-tech-tree.md`'s new segment-27 note for the itemized write-up, including two further previously-undocumented details found there: an "Upgrade"/"Downgrade" caption suffix on starbase design entries, and a custom-painted itemized cost-breakdown panel distinct from the single combined cost figure this document otherwise describes.
+
+## Worked Examples
+
+All three examples use the confirmed defaults from §1–2 (1 resource / 1000 population; factories cost 10 resources + 4 kT Germanium and yield 1 resource/year each) plus the community-cited, lower-confidence mine defaults from §4 (5 resources to build, 1 kT/mine/year at 100% concentration, no minerals required) purely for illustration — treat the mine-specific numbers in these examples as illustrative, not verified constants.
+
+### Example 1 — A brand-new colony bootstrapping its first factories
+
+- Population: 100,000. No factories or mines built yet. Surface Germanium: 500 kT (a generous starting stock, for illustration).
+- Queue: `Factories (Auto Build) Up to 10`.
+
+**Turn 1 calculation:**
+1. Population resources: `floor(100000 / 1000) = 100`.
+2. No factories exist yet, so factory-derived resources = 0. Total resources available = **100**.
+3. Operable factory cap = `floor(100000/10000) * 10 = 100` — far above the 10 the auto-build order targets, so the cap isn't the binding constraint this turn.
+4. The auto-build order wants to reach 10 factories. Cost for 10: `10 * 10 = 100 resources` and `10 * 4 = 40 kT Germanium`.
+5. Resources (100) exactly cover 10 factories; Germanium (500 kT on hand) easily covers 40 kT. All 10 factories complete this turn. Resources remaining: 0. Germanium remaining: 460 kT.
+
+**Turn 2 calculation** (now with 10 operating factories):
+1. Population resources: 100 (population unchanged for simplicity).
+2. Factory resources: `10 operating factories * 1 = 10`.
+3. Total resources available = **110**.
+4. The auto-build order still reads "Up to 10" and 10 already exist, so it is satisfied and skipped (auto-build items never overshoot their stated count). With nothing else queued, all 110 resources flow to research this turn.
+
+This demonstrates the population-resource formula, the default factory cost/output, an auto-build order being fully satisfiable in one turn, an auto-build order going idle (not deleted) once its target is met, and leftover resources defaulting to research.
+
+### Example 2 — A maturing colony with a mixed manual + auto-build queue and a mid-queue mineral bottleneck
+
+- Population: 400,000. Currently operating: 30 factories, 20 mines. Surface Germanium: 25 kT (mining hasn't kept pace with factory demand).
+- Queue, top to bottom: `Scout` (manual, one-shot; costs 10 resources + 2 kT Ironium), `Factories (Auto Build) Up to 40`, `Mines (Auto Build) Up to 40`, `Defenses (Auto Build) Up to 5` (starting from 0 defenses; illustrative cost 15 resources each, per the lower-confidence figure in §5).
+
+**Turn calculation:**
+1. Population resources: `floor(400000/1000) = 400`.
+2. Factory resources: operable cap is `floor(400000/10000)*10 = 400`, well above the 30 actually built, so all 30 operate: `30 * 1 = 30`.
+3. Total resources available = **430**.
+4. Top of queue, the `Scout`: costs 10 resources + 2 kT Ironium; assume Ironium is plentiful. Spend 10 resources → **420 remaining**. Scout completes and leaves the queue.
+5. `Factories (Auto Build) Up to 40`: 10 more factories are needed (40 − 30). Full cost would be `10*10=100 resources` and `10*4=40 kT Germanium`, but only 25 kT Germanium is on hand — the mineral-limited affordable amount is `floor(25/4) = 6` factories (24 kT Germanium, 60 resources). Because this is an auto-build item, it simply builds as many as it can afford (6) rather than blocking the queue: spend 60 resources and 24 kT Germanium → **360 resources remaining**, 1 kT Germanium left on hand, 36 factories now operating.
+6. `Mines (Auto Build) Up to 40`: 20 more mines needed (40 − 20), at the illustrative 5-resources/no-minerals cost: `20*5=100 resources`, fully affordable → **260 resources remaining**, 40 mines now operating.
+7. `Defenses (Auto Build) Up to 5`: 5 defenses at an illustrative 15 resources each = 75 resources, fully affordable → **185 resources remaining**, 5 defenses now built.
+8. Queue now has nothing left to fund. All **185** leftover resources flow to research this turn.
+
+This demonstrates top-to-bottom consumption across multiple queue entries in a single turn, a one-shot manual item consuming resources before any auto-build item gets a turn, an auto-build item being mineral-constrained yet still not blocking the queue (it just does as much as it can), and the residual flowing to research after every queued need is met.
+
+### Example 3 — A high-value ship blocked by a mineral shortage, then freed with Mineral Alchemy
+
+- Population: 600,000, generating 600 population resources/year, plus 50 operating factories (50 resources/year) = 650 resources/year.
+- Surface minerals: Ironium 300 kT, Boranium 20 kT, Germanium 10 kT.
+- Queue, top to bottom: `Battleship` (manual, one-shot; illustrative full cost 500 resources + 200 kT Ironium + 150 kT Boranium + 100 kT Germanium), `Mineral Alchemy (Auto Build)` placed *after* it, `Factories (Auto Build) Up to 60`.
+
+**Turn 1 calculation:**
+1. Total resources available: 650.
+2. The `Battleship` is the top (and, being an ordinary manual item, blocking) entry. Its Boranium requirement (150 kT) and Germanium requirement (100 kT) both exceed what's on the surface (20 kT and 10 kT respectively) — per §8, an ordinary item that requires minerals it doesn't have halts; no resources are diverted past it to the auto-build items below it this turn, even though 650 resources sat unused. The queue is effectively frozen on this item.
+3. Because the projected wait for enough Boranium/Germanium income (at the colony's current mining rate) is severe, the Battleship's queue entry would be shown in red once its time-to-completion estimate exceeds 100 years (per §8) — the player's cue to intervene.
+
+**Turn 2 — player reorders the queue to add Mineral Alchemy ahead of the Battleship:**
+1. New queue: `Mineral Alchemy (Auto Build, as needed)`, `Battleship`, `Factories (Auto Build) Up to 60`.
+2. Mineral Alchemy converts 100 resources into 1 kT of *each* mineral (Ironium, Boranium, Germanium together) per unit. To close the Boranium/Germanium gap for the Battleship as fast as possible, the auto-build alchemy consumes resources this turn — say all 650 available are spent on alchemy since it's positioned to unblock the item behind it: `650 / 100 = 6.5`, i.e. 6 whole units convert for 600 resources, yielding +6 kT to each mineral (Boranium 20→26 kT, Germanium 10→16 kT, Ironium 300→306 kT), leaving 50 resources unspent this turn (insufficient for a 7th unit) which then flow onward — but the Battleship still can't fully complete, so those 50 resources apply as partial progress toward the Battleship's 500-resource cost instead of being wasted or sent to research, since it is still short on Boranium/Germanium and cannot be fully paid for in minerals this turn either. (Whether a normal item can accept a *partial*, proportional resource payment in a turn where its full mineral cost still can't be met — as opposed to only receiving resources in a turn where minerals are fully available — was not confirmed with a directly quoted rule in this research pass; see Open Questions.)
+3. Over subsequent turns, continued Mineral Alchemy (and/or freighted-in minerals) closes the remaining Boranium/Germanium gap; once both are available in full, the Battleship's stored resource progress plus that turn's resource income complete it, and the `Factories (Auto Build) Up to 60` order — untouched and unblocked this whole time because it never got a turn while the Battleship blocked the queue above it — finally begins receiving resources.
+
+This demonstrates an ordinary item blocking the entire downstream queue when short on minerals (§8), the red "practically never" warning threshold, using Mineral Alchemy as the documented unblocking tool (§7) with its exact 100-resources-to-1-kT-of-each-mineral conversion rate, and highlights (via the flagged uncertainty in step 2) exactly where this specification's confidence in the turn-by-turn partial-payment mechanic runs out.
+
+## Open Questions / Uncertainties
+
+- ~~**Exact default mine settings.**~~ **RESOLVED from the binary (this pass).** The race-wizard bound table and default preset record were read directly out of `stars.exe`. The mine defaults are **mine output 10 (kT per 10 mines per year), 10 mines operable per 10,000 colonists, and mine cost 5 resources**, with ranges 5–25, 5–25 and 2–15 respectively. The full table is in §4, "Race-design economic settings, recovered from the binary". This worked because the tables are not in the shared data segment at all. The clamp routine reads them relative to its own code segment (segment 29), right after the point-cost tables `race-traits.md` §1a had already recovered from that same segment. So the "Ghidra database unavailable" obstacle recorded below was never actually the blocker: a raw NE-segment-table parse of the executable reaches the bytes directly. The mine-cost default of 5 independently matches the live-client test recorded below, and that match validates the extraction. The earlier notes are kept for provenance:
+  **Previously PARTIALLY RESOLVED by direct empirical testing (2026-09-04).**
+  Opened the actual Production Queue dialog (Stars! v2.70j/JRC3) for a freshly-created custom race
+  with no economic-slider changes from wizard defaults, and selected "Mine": the dialog's own
+  "Required Minerals" panel read **Ironium 0kT, Boranium 0kT, Germanium 0kT, Resources 5** —
+  confirming the community-cited default build cost of **5 resources, no minerals** directly from
+  the game. The same test on "Factory" read **Germanium 4kT, Resources 10**, confirming the
+  already-known factory default exactly. Mine output (kT/mine/year at 100% concentration) and
+  mines-operable-per-10,000-colonists were not tested this pass (would need a multi-turn mining
+  observation) and remain open.
+  **Attempted at the code level this pass, not completable.** The Custom Race Wizard's economic
+  slider page (`RACEWIZARDDLG3`, segment 29) does not itself store the min/max/default numbers; its
+  paint and value-clamp logic (`FUN_10e0_1d9e` and `FUN_10e0_223e` respectively) resolve each of
+  the 7 slider rows to a generic per-race field index via a small per-row lookup table, then clamp
+  a candidate value against two further tables — addressed directly by that field index, not
+  per-race data — that hold the field's min and max bounds; the same field index and the same
+  generic accessor (`race_base + field_index + 0x3e`) are reused for every other "generic per-race
+  field" this project has already documented (PRT, LRT bits, etc.), confirming this is one uniform
+  mechanism rather than something economic-slider-specific. This is a genuine, previously
+  unattributed finding about *how* the wizard validates and presumably defaults these sliders, but
+  the actual byte values in those two bound tables (and any separate default-value table) are
+  binary data-segment content, not something the exported decompiled source text carries — this
+  pass could not read them without direct access to the Ghidra project's own database, which was
+  not available (the project's `.rep` database files returned a permission error when read
+  directly, and running the headless analyzer to script a byte dump was judged out of scope for
+  this pass). So: mine output and mines-per-10,000 defaults remain unconfirmed by a clean static
+  value, as before — but the mechanism that *would* yield them, if the raw table bytes were
+  extracted in a future pass, is now identified precisely.
+- ~~**Resources-per-colonist favorable extreme.**~~ **RESOLVED from the binary (this pass): 700.** The manual's OCR text reads "one resource... for every seven colonists". The wizard's bound table stores this setting's minimum as 7, and the stage appends a literal "00" suffix to the displayed value (the suffix string is in the data segment next to the "kT" suffix used for mine output). So the favorable extreme displays as **700** colonists, and the default of 10 displays as 1,000. The OCR "seven" was indeed a dropped "00".
+- ~~**Defense build cost.**~~ **RESOLVED by inspection of the exported client, this pass.** A
+  community wiki search snippet cited approximately 15 resources per defense unit; the real
+  no-relevant-trait default, traced directly to `FUN_10d0_221a` (segment `10d0`/27), is **44
+  resources** — see §5 above for the exact PRT-keyed branch (Packet Physics 25, Interstellar Traveler
+  48, every other PRT 44). The ≈15-resource community figure is not correct for any of the three
+  compiled branches and should be retired. The 100-defenses-per-planet hard cap itself was not
+  re-examined this pass and remains unconfirmed against the primary manual text.
+- ~~**Terraforming resource cost.**~~ **RESOLVED by inspection of the exported client, this pass.**
+  The "100 resources per 1%" community figure is not correct for any of the three compiled branches;
+  the real no-relevant-trait default, traced to the same function and the same PRT read as the
+  Defenses item above, is **110 resources per 1%** (Packet Physics 70, Interstellar Traveler 120,
+  every other PRT 110) — see §6 above. Total Terraforming's 30%-cheaper modifier is confirmed to be
+  an independent discount applied on top of whichever of these three base rates the race's PRT
+  selects, not an alternative to them. Why Packet Physics/Interstellar Traveler specifically are
+  singled out (identically for both Defenses and Terraforming) is not explained by any source
+  consulted for this project and is noted as a genuinely new, undocumented finding rather than a
+  resolved mystery.
+- ~~**Race-wizard slider ranges (min/max), not just the default and one favorable extreme.**~~ **RESOLVED from the binary (this pass).** All seven ranges and defaults are in §4's recovered table: colonists/resource 700–2,500 (default 1,000); factory output 5–15 (10); factory cost 5–25 (10); factories/10k 5–25 (10); mine output 5–25 (10); mine cost 2–15 (5); mines/10k 5–25 (10). The numbers come from the same field-index-keyed min/max tables identified below, read from segment 29 of `stars.exe` rather than from the shared data segment. The point-cost side of the trade-off (how points are charged per setting) is in `race-traits.md` §1a. The original note is kept below for provenance: The manual's "excel at production" checklist gives only the single most-favorable endpoint of each economic slider (factory/mine cost, output, and per-10,000-colonist operability), not the full numeric range or the mechanism (points cost) by which a race design trades one for another. The *Official Strategy Guide* mirror's worked "Monster Race" examples show plausible intermediate values (e.g. "13-15/7-9/18-25" for one archetype) but these are example builds, not the underlying range table. **Partially resolved by inspection of the exported client, this pass** — see the new note under "Exact default mine settings" immediately above: the wizard clamps every slider against a pair of generic, field-index-keyed min/max byte tables (`FUN_10e0_223e`) shared with every other "generic per-race field" this project documents, so the range-lookup *mechanism* is now identified precisely. The actual numeric bounds in those tables were not extractable from the exported decompiled source (they are binary data-segment content, not code) and remain unconfirmed; this is the same underlying blocker as the mine-defaults item above, not a separate one.
+- ~~**Joint resource/mineral bottleneck mechanic for a single partially-built item.**~~ **RESOLVED
+  by direct empirical testing (2026-09-04): partial fulfillment does happen, at whole-unit
+  granularity, for an ordinary (non-auto-build) batch order — it is not all-or-nothing.** Test:
+  created a custom race (Claim Adjuster, no LRTs, default sliders) on its 100%-habitability,
+  25,000-population homeworld (249kT Ironium / 206kT Boranium / 265kT Germanium on hand, 10
+  factories/10 mines built), and queued `Factory x100` (a manual batch order via Ctrl+Add, costing
+  400kT Germanium + 1000 resources total — deliberately far more Germanium than the 265kT on hand)
+  followed by `Mines (Auto Build) Up to 1`. Generated one turn (Stars! v2.70j/JRC3, via the actual
+  running game). Result: population grew to 28,700 (an exact, independent match to this same
+  spec's Example 1 growth-curve table — see §3 — despite coming from a different source/patch),
+  Factories built rose from 10 to **13** (i.e. 3 of the 100 queued factories completed, consuming
+  30 of the required 1000 resources and part of the required Germanium), and re-opening the
+  Production Queue dialog showed the item's remaining quantity as **"Factory 97"** with **"9% Done"**
+  progress banked toward the *next* (4th) unit — i.e. leftover resources beyond three whole units'
+  worth were *not* discarded, they carried forward as fractional progress exactly as un-blocked
+  items do. The `Mines (Auto Build) Up to 1` entry behind it was already satisfied before the turn
+  even started (10 mines already built exceeds "up to 1"), so it does not by itself demonstrate
+  whether an auto-build item behind a *still-blocking* manual item gets funded the same turn —
+  ~~that narrower question (auto-build specifically unblocked mid-turn by the item ahead of it
+  running out of things to spend on) remains open.~~ **RESOLVED by inspection of the exported
+  client, this pass: yes.** See the new note under §8 above, tracing the actual per-turn queue
+  loop (`FUN_10b8_0000`/`FUN_10b8_0756`, segment 24) — the whole queue is walked top-to-bottom in
+  one function call per planet per turn, so an item that stops reporting a blocking status
+  partway through that call (whether by completing outright or simply having nothing further to
+  spend on) lets the walk proceed immediately to the next entry, auto-build or not, in that same
+  turn; only an item that still reports a blocking status after being given its share of the
+  budget causes the walk to stop for the year. The manual's "halts if the planet runs out of
+  minerals" wording is therefore best read as "stops producing *more* once it can no longer afford
+  the next whole unit," not as "makes zero progress the instant the full batch cost exceeds what's
+  on hand." Exact rounding of the intermediate mineral figure shown for the remaining 97 units
+  (380kT, 8kT less than the naive 97×4=388kT expectation) was not fully reconciled and is noted
+  here rather than asserted as a precise formula. Screenshots preserved at
+  `docs/ui-reference/production-queue-partial-fulfillment.png` and
+  `docs/ui-reference/planet-view-after-turn1-generate.png`.
+- ~~**Whether idle (population-capped) factories/mines can ever be lost**~~, e.g. to population
+  decline stranding built infrastructure permanently versus it simply waiting inactive for population
+  to recover. **RESOLVED (2026-09-24 pass) by an exhaustive cross-binary search for every writer of
+  the built-factory/built-mine fields — not via starvation, but via a distinct, previously-undocumented
+  random event.**
+
+  The two fields are packed together in one planet-record dword at byte offset `0x2c`: bits 4-31
+  hold the **built factory count** (read as `param_1[0xb] >> 4` — confirmed consistently in
+  `FUN_1048_4faa`'s cap-comparison, `FUN_1048_4d50`, and the production-apply code below), and a
+  12-bit **built mine count** spans that same dword's low nibble plus the next byte down
+  (`CONCAT11((char)param_1[0xb], (char)(param_1[10] >> 8)) & 0xfff`, confirmed in `FUN_1048_4cce`).
+  Every reference to either field across the full exported source was enumerated (not just the one
+  annual-resource-production routine checked previously) and each was individually classified:
+
+  - **The only routine that *increments* either field** is the production-queue build-completion
+    committer, `FUN_10b8_0e68` (segment 24, `stars.exe.export.c:76969`-`77488`, called once per
+    completed queue item from the segment-24 per-turn queue-apply loop `FUN_10b8_0000` at `:76555`).
+    Its `case 0`/`8` (Mines) and `case 1`/`7` (Factories) branches (`:77186`-`77221`) each compute
+    `min(populationCap, requestedAmount) - currentCount` and add the (always non-negative, floor-
+    clamped-to-0) result into the packed field — an ordinary "build N more" increment, never a
+    decrement.
+  - **A second, distinct writer in the same function — not previously known to this project — zeroes
+    both fields outright: `case 0xd` (`stars.exe.export.c:77424`-`77459`).** This branch broadcasts
+    message string **283**, `"Strong fundamental forces have rebirthed \p."` (recovered in
+    `extracted-game-data/message-strings.txt`), to every player in the game (`:77426`-`77431`), then —
+    for any non-Alternate-Reality owner — unconditionally sets `param_1[0xb] = 0` (wiping *both* the
+    factory count and the mine count in one write, `:77435`), resets a neighboring defense-related
+    sub-field to a fixed value (`:77436`-`77437`), zeroes all three mineral stockpiles, and re-rolls
+    all three mineral concentrations from fresh RNG draws (`:77439`-`77458`). This is the game's rare
+    **"Planet Rebirth"** random event: it reuses the same per-planet, per-item production-apply
+    dispatcher as an internal item-type code (`13`) rather than exposing it as a player-selectable
+    queue entry — `case 0xd` sits numerically alongside, but structurally separate from, the
+    Mine/Factory/Defense/Terraform item-type codes documented in §4-§6 above, and the identical
+    dispatcher pairing (this function alongside the cost-calculator `FUN_10d0_221a`) is consistent
+    with the game engine triggering it internally rather than a player ever queuing it directly. This
+    event was not previously documented anywhere in this project.
+  - **One further write site, `FUN_1070_2440` (segment 15, `stars.exe.export.c:45838`), is turn/save-
+    file deserialization**, not a gameplay mechanic: it decodes the same adaptive-width field encoding
+    already documented in `save-turn-file-format.md` §8, loading a previously-saved built-count value
+    back into memory — not a decline write.
+  - Two further candidate matches were checked and ruled out: `FUN_1070_4ad8`
+    (`stars.exe.export.c:48146`) only *reads* the fields (an "does this planet have any built
+    infrastructure" test, feeding some other decision); and a cluster of matches near
+    `stars.exe.export.c:39440`-`39460` turned out to belong to an unrelated GDI-drawing routine
+    (confirmed by neighboring `SETROP2`/`SETBKCOLOR`/`INTERSECTRECT` calls) operating on a
+    differently-shaped record, not a planet.
+
+  **Conclusion: population decline/starvation itself never touches these fields** — confirmed both by
+  this exhaustive writer search and by `population-growth.md` §3's independent, fully-traced read of
+  the population decline function (`FUN_1038_47d0`), which only ever touches the population field and
+  its own fractional-carry byte. The "grow into your infrastructure" framing (idle factories/mines sit
+  inactive, not destroyed by population loss) stands confirmed. But the literal question — can built
+  factories/mines ever be permanently lost at all — resolves **yes**, just not by the originally-
+  suspected mechanism: the rare, whole-planet "Planet Rebirth" event wipes both counts to zero (along
+  with mineral stockpiles and concentrations) as a random turn-generation event, independent of
+  population or starvation.
+- **Direct access to wiki.starsautohost.org was blocked** by the site's automated bot-check (Cloudflare "Just a moment..." interstitial) throughout this research session; per this project's clean-room policy against defeating bot-detection, no attempt was made to bypass it. Facts attributed to that wiki in this document were instead obtained via search-engine result snippets that quote or closely paraphrase its pages — treat these as secondary/lower-confidence versus the directly-read Player's Guide OCR text and starsfaq.com pages (which were fetched and read in full).
+
+## Sources
+
+- [STARS! The Premiere Space Strategy Game — Player's Guide, official manual (archive.org item page)](https://archive.org/details/manual_Stars) — primary source for population/factory resource formulas and defaults, factory germanium cost, the operable-factories/mines population cap concept, defense build/upgrade behavior, terraforming mechanics and the Total Terraforming trait, Mineral Alchemy's conversion rate, and the entire Production Queue chapter (ordering, partial completion, blocking/unblocking, auto-build behavior, templates). Read via the item's OCR full-text transcription: `https://archive.org/download/manual_Stars/Stars_djvu.txt`.
+- ["How to Get Over 25,000 Resources by 2450" by Jason Cawley — The Stars! FAQ (starsfaq.com)](http://starsfaq.com/articles/25k_by_2450.htm) — auto-build strategy conventions, the "operable factories" grow-into-your-cap dynamic, and typical production-template phrasing.
+- ["Rapid Colony Development" by Michael Meagher — Stars!-R-Us article (starsfaq.com)](http://starsfaq.com/articles/sru/art77.htm) — worked illustration of the mine output/concentration relationship and the homeworld's guaranteed mineral-concentration floor in practice.
+- [Chapter 2: Basic Race Design — Stars! Official Strategy Guide (unofficial mirror)](http://www.deepsky.com/~gpeters/stars/www.anrokima.de/Strategie_Handbuch/ssg/ssg02.htm) — corroborates the default factory cost (10 resources), default output (1 resource/factory/year), and default germanium cost (4 kT).
+- [Chapter 3: Building a Monster Race — Stars! Official Strategy Guide (unofficial mirror)](http://www.deepsky.com/~gpeters/stars/www.anrokima.de/Strategie_Handbuch/ssg/ssg03.htm) — worked example race-design economic settings, illustrating the shape and rough scale of the factory/mine slider ranges.
+- [Chapter 6: Early Resource Management — Stars! Official Strategy Guide (unofficial mirror)](http://www.deepsky.com/~gpeters/stars/www.anrokima.de/Strategie_Handbuch/ssg/ssg06.htm) — the compounding-growth framing of factories building factories, and basic production-queue prioritization advice (factories → mines → terraforming → defenses).
+- [Chapter 6: Early Resource Management — Stars!wiki](https://wiki.starsautohost.org/wiki/Chapter_6:Early_Resource_Management) — cited via search-engine snippet only (direct fetch blocked by the site's bot-check); corroborates the population/factory/mineral three-factor framing.
+- [Total Terraforming — Stars!wiki](https://wiki.starsautohost.org/wiki/Total_Terraforming) — cited via search-engine snippet only; source for the (unconfirmed against the primary manual) 100-resources-per-1% baseline terraforming cost figure.

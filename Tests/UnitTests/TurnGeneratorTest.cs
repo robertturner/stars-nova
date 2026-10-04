@@ -116,6 +116,23 @@ namespace Nova.Tests.UnitTests
             Assert.IsEmpty(serverData.IterateAllFleets().ToList());
         }
 
+        /// <summary>
+        /// End-to-end confirmation that Generate() actually wires up this turn's empire shuffle
+        /// (see EmpireOrderShuffleTest/RemoteMiningOrderFairnessTest for the mechanism's own
+        /// focused unit tests) rather than leaving ServerData.ShuffledEmpireOrder unset.
+        /// </summary>
+        [Test]
+        public void Generate_PopulatesShuffledEmpireOrder_WithEveryEmpire()
+        {
+            SimpleTurnGenerator turnGenerator = new SimpleTurnGenerator(serverData);
+            Assert.IsNull(serverData.ShuffledEmpireOrder, "Sanity check - nothing has run yet.");
+
+            turnGenerator.Generate();
+
+            Assert.IsNotNull(serverData.ShuffledEmpireOrder);
+            CollectionAssert.AreEquivalent(serverData.AllEmpires.Values, serverData.ShuffledEmpireOrder);
+        }
+
         [Test]
         public void Generate_Dont_ScrapFleets()
         {
@@ -273,11 +290,9 @@ namespace Nova.Tests.UnitTests
         public void LayMines_AddsToAnExistingNearbyFieldOfOurs_InsteadOfStartingANewOne()
         {
             // Exercises LayMines.Lay directly rather than through a full TurnGenerator.Generate()
-            // turn - CheckForMinefields.Check's own decay step (applied once per waypoint
-            // processed, a separately-flagged, pre-existing FIXME: "decay has nothing to do with
-            // moving fleets and should be processed separately") would otherwise make an
-            // exact-count assertion here dependent on how many waypoints happen to be processed
-            // that turn, which isn't what this test is about.
+            // turn, so yearly decay does not enter the exact counts. Laid mines join the nearest
+            // own field of the same type whose circle covers the fleet (turn-generation-engine.md
+            // section 3, "Where the mines go").
             serverData = new SimpleServerData();
             empireData = new SimpleEmpireData();
             empireData.Id = 1;
@@ -322,6 +337,102 @@ namespace Nova.Tests.UnitTests
 
             new LayMines(serverData).Lay(otherFleet);
             Assert.AreEqual(2, serverData.AllMinefields.Count, "A different empire's mines at the same spot should start a separate field");
+        }
+
+        private static ShipDesign MakeMineLayerDesign(long key, int layerRate)
+        {
+            ShipDesign shipDesign = new ShipDesign(key);
+            shipDesign.Blueprint = new Component();
+            Hull hull = new Hull();
+            hull.Modules = new List<HullModule>();
+            HullModule mineLayerModule = new HullModule();
+            Component mineLayerComponent = new Component();
+            mineLayerComponent.Properties.Add("Mine Layer", new MineLayer { LayerRate = layerRate });
+            mineLayerModule.AllocatedComponent = mineLayerComponent;
+            hull.Modules.Add(mineLayerModule);
+            shipDesign.Blueprint.Properties.Add("Hull", hull);
+            return shipDesign;
+        }
+
+        [Test]
+        public void Generate_LayMines_NothingOnTheArrivalTurn_ThenTheFullAmountWhileHolding()
+        {
+            // behavior-specs-10/turn-generation-engine.md section 3: a fleet that moved lays
+            // nothing (unless Space Demolition); a fleet whose current waypoint carries Lay Mine
+            // Field does not move on, and lays its full total every year after arriving.
+            serverData = new SimpleServerData();
+            empireData = new SimpleEmpireData();
+            empireData.Id = 1;
+            serverData.AllEmpires.Add(empireData.Id, empireData);
+
+            Fleet fleet = new Fleet(8);
+            fleet.Owner = 1;
+            fleet.Position = new NovaPoint(0, 0);
+            ShipToken shipToken = new ShipToken(MakeMineLayerDesign(8, 40), 5);
+            fleet.Composition.Add(shipToken.Key, shipToken);
+
+            Waypoint here = new Waypoint { Position = new NovaPoint(0, 0), WarpFactor = 0, Task = new NoTask(), Destination = "Space at (0, 0)" };
+            Waypoint layHere = new Waypoint { Position = new NovaPoint(10, 0), WarpFactor = 5, Task = new LayMinesTask(), Destination = "Space at (10, 0)" };
+            Waypoint beyond = new Waypoint { Position = new NovaPoint(50, 0), WarpFactor = 5, Task = new NoTask(), Destination = "Space at (50, 0)" };
+            fleet.Waypoints.Add(here);
+            fleet.Waypoints.Add(layHere);
+            fleet.Waypoints.Add(beyond);
+            empireData.AddOrUpdateFleet(fleet);
+
+            SimpleTurnGenerator turnGenerator = new SimpleTurnGenerator(serverData);
+            turnGenerator.Generate();
+
+            Assert.AreEqual(10, fleet.Position.X, "arrived at the lay waypoint");
+            Assert.AreEqual(0, serverData.AllMinefields.Count, "the arrival turn: the fleet moved, so it lays nothing");
+            Assert.IsInstanceOf<LayMinesTask>(fleet.Waypoints[0].Task, "the order stays on the current waypoint");
+
+            turnGenerator.Generate();
+
+            Assert.AreEqual(10, fleet.Position.X, "a fleet laying mines does not move on");
+            Assert.AreEqual(1, serverData.AllMinefields.Count);
+            Assert.AreEqual(200, serverData.AllMinefields.Values.First().NumberOfMines);
+        }
+
+        [Test]
+        public void Generate_AMinefieldHit_StopsTheFleetShortOfItsWaypoint_AndTheLegResumesNextYear()
+        {
+            // A speed-bump field covering the whole of a warp-9 leg: c = (9 - 5) x 35 = 140 per
+            // mille per light-year over 80 rolls, so a miss is a ~1-in-170,000 event.
+            serverData = new SimpleServerData();
+            empireData = new SimpleEmpireData();
+            empireData.Id = 1;
+            serverData.AllEmpires.Add(empireData.Id, empireData);
+            EmpireData fieldOwner = new SimpleEmpireData();
+            fieldOwner.Id = 2;
+            serverData.AllEmpires.Add(fieldOwner.Id, fieldOwner);
+
+            Minefield field = new Minefield { NumberOfMines = 10000, FieldType = MinefieldType.SpeedBump };
+            field.Key = fieldOwner.GetNextMinefieldKey();
+            field.Position = new NovaPoint(40, 0);
+            serverData.AllMinefields[field.Key] = field;
+
+            Fleet fleet = new Fleet(9);
+            fleet.Owner = 1;
+            fleet.Position = new NovaPoint(0, 0);
+            ShipDesign shipDesign = new ShipDesign(9);
+            shipDesign.Blueprint = new Component();
+            Hull hull = new Hull();
+            hull.Modules = new List<HullModule> { new HullModule() };
+            shipDesign.Blueprint.Properties.Add("Hull", hull);
+            ShipToken shipToken = new ShipToken(shipDesign, 1);
+            fleet.Composition.Add(shipToken.Key, shipToken);
+
+            Waypoint destination = new Waypoint { Position = new NovaPoint(81, 0), WarpFactor = 9, Task = new NoTask(), Destination = "Space at (81, 0)" };
+            fleet.Waypoints.Add(destination);
+            empireData.AddOrUpdateFleet(fleet);
+
+            new SimpleTurnGenerator(serverData).Generate();
+
+            Assert.Less(fleet.Position.X, 81, "stopped at the hit point");
+            Assert.AreEqual(2, fleet.Waypoints.Count, "the destination is still pending");
+            Assert.AreEqual(81, fleet.Waypoints[1].Position.X);
+            Assert.AreEqual(9, fleet.Waypoints[1].WarpFactor, "the leg keeps its ordered warp");
+            Assert.Less(field.NumberOfMines, 10000, "the field lost mines");
         }
 
         [Test]

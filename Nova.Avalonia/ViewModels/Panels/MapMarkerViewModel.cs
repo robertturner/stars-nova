@@ -34,7 +34,29 @@ public abstract class MapMarkerViewModel : ViewModelBase
     public bool IsSelected
     {
         get => isSelected;
-        set => SetProperty(ref isSelected, value);
+        set
+        {
+            if (SetProperty(ref isSelected, value))
+            {
+                OnIsSelectedChanged();
+            }
+        }
+    }
+
+    /// <summary>Hook for markers whose look depends on being the tracked (selected) object -
+    /// the fleet chevron and the enlarged fleet-in-orbit ring.</summary>
+    protected virtual void OnIsSelectedChanged()
+    {
+    }
+
+    private string? toolTipText;
+
+    /// <summary>Hover text (desktop) - the planet tooltip or the shared object-identification
+    /// phrase, built by Nova.Client.Map.MapObjectText. Null shows no tooltip.</summary>
+    public string? ToolTipText
+    {
+        get => toolTipText;
+        set => SetProperty(ref toolTipText, value);
     }
 
     protected MapMarkerViewModel(string name, double x, double y, IBrush color, object selectable, SelectionService selection)

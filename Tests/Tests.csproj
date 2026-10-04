@@ -42,6 +42,8 @@
     <ProjectReference Include="..\Common\Common.csproj" />
     <ProjectReference Include="..\Nova\Nova.csproj" />
     <ProjectReference Include="..\ServerState\Server.csproj" />
+    <!-- The headless simulation harness (SimulationRunner etc.) for Tests/Simulation. -->
+    <ProjectReference Include="..\Nova.Sim\Nova.Sim.csproj" />
   </ItemGroup>
 
 </Project>

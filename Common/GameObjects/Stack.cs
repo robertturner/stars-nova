@@ -58,12 +58,25 @@ namespace Nova.Common
 
         /// <summary>
         /// Total squares moved so far this battle while under a Disengage-style tactic.
-        /// Successfully retreating off the board requires accumulating 7 squares of movement.
-        /// Not itself used to remove a stack from the board (that isn't modeled), but tracked so
-        /// that behavior can be added later without re-deriving it. See
-        /// docs/behavior-specs/combat-resolution.md §3, §7.
+        /// Successfully retreating off the board requires accumulating 7 squares of movement -
+        /// see <see cref="HasRetreated"/>, which BattleEngine.MoveStacks sets once this reaches
+        /// that threshold. See docs/behavior-specs/combat-resolution.md §3, §7.
         /// </summary>
         public double DisengageDistanceAccumulated
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// True once this stack has accumulated 7 squares of movement under a Disengage-style
+        /// tactic and has therefore successfully fled the battle. A retreated stack keeps its
+        /// ships (nothing about its Composition changes - it simply stops taking part in the
+        /// rest of this battle: it moves no further, is skipped as both an attacker and a
+        /// target, and can't be targeted by anyone else's already-selected order either). See
+        /// docs/behavior-specs/combat-resolution.md §3, §7.
+        /// </summary>
+        public bool HasRetreated
         {
             get;
             set;

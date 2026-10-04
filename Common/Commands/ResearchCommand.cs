@@ -42,6 +42,17 @@ namespace Nova.Common.Commands
             get;
             set;
         }
+
+        /// <summary>
+        /// The "next field to research" setting (EmpireData.ResearchNextField:
+        /// Research.NextFieldSame, a field index, or Research.NextFieldLowest), or null to leave
+        /// the empire's setting unchanged (an order file that does not carry it).
+        /// </summary>
+        public int? NextField
+        {
+            get;
+            set;
+        }
         
         
         public ResearchCommand()
@@ -63,7 +74,7 @@ namespace Nova.Common.Commands
 
             while (subnode != null)
             {
-                switch (subnode.Name.ToLower())
+                switch (subnode.Name.ToLowerInvariant())
                 {
                     case "budget":
                       Budget = int.Parse(subnode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -71,6 +82,10 @@ namespace Nova.Common.Commands
 
                     case "topics":
                         Topics = new TechLevel(subnode);
+                    break;
+
+                    case "nextfield":
+                        NextField = int.Parse(subnode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
                     break;
                 }
             
@@ -87,7 +102,8 @@ namespace Nova.Common.Commands
             }
             
             // Invalidate if nothing really changed.
-            if (Budget == empire.ResearchBudget && Topics == empire.ResearchTopics)
+            bool nextFieldChanged = NextField.HasValue && NextField.Value != empire.ResearchNextField;
+            if (Budget == empire.ResearchBudget && Topics == empire.ResearchTopics && !nextFieldChanged)
             {
                 return false;
             }
@@ -100,6 +116,10 @@ namespace Nova.Common.Commands
         {
             empire.ResearchBudget = Budget;
             empire.ResearchTopics = Topics;
+            if (NextField.HasValue)
+            {
+                empire.ResearchNextField = NextField.Value;
+            }
         }
         
         
@@ -114,6 +134,10 @@ namespace Nova.Common.Commands
             xmlelCom.SetAttribute("Type", "Research");
             Global.SaveData(xmldoc, xmlelCom, "Budget", Budget.ToString(System.Globalization.CultureInfo.InvariantCulture));
             xmlelCom.AppendChild(Topics.ToXml(xmldoc, "Topics"));            
+            if (NextField.HasValue)
+            {
+                Global.SaveData(xmldoc, xmlelCom, "NextField", NextField.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
             
             return xmlelCom;
         }

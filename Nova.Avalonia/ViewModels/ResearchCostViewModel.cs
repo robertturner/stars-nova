@@ -66,4 +66,13 @@ public class ResearchCostViewModel : ObservableObject
         get => Cost == 175;
         set { if (value) { Cost = 175; } }
     }
+
+    /// <summary>Re-reads the cost class after the draft changed underneath (Race Designer presets,
+    /// Random, section revert).</summary>
+    public void Refresh()
+    {
+        OnPropertyChanged(nameof(IsCheap));
+        OnPropertyChanged(nameof(IsStandard));
+        OnPropertyChanged(nameof(IsExpensive));
+    }
 }

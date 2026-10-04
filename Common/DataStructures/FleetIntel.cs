@@ -112,7 +112,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (node.Name.ToLower())
+                    switch (node.Name.ToLowerInvariant())
                     {
                         case "year":
                             Year = int.Parse(node.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -219,12 +219,23 @@ namespace Nova.Common
                 // We can at least see it, so set age to current.
                 Year = year;
                 
-                Position    = fleet.Position;
+                // Copies, not the fleet's live objects: a report is a snapshot of what was seen,
+                // as it is once saved and reloaded - aliasing let a report silently follow the
+                // fleet's later moves and losses in a game kept in memory, so a reloaded game
+                // diverged from one that kept running.
+                Position    = fleet.Position == null ? null : new NovaPoint(fleet.Position);
                 Bearing     = fleet.Bearing;
                 Speed       = fleet.Speed;
                 InOrbit     = (fleet.InOrbit == null) ? false : true;
                 IsStarbase  = fleet.IsStarbase;
-                Composition = fleet.Composition;                                
+                Composition = new Dictionary<long, ShipToken>();
+                foreach (KeyValuePair<long, ShipToken> entry in fleet.Composition)
+                {
+                    ShipToken seen = new ShipToken(entry.Value.Design, entry.Value.Quantity, entry.Value.Armor);
+                    seen.PackedDamage = entry.Value.PackedDamage;
+                    seen.Shields = entry.Value.Shields;
+                    Composition.Add(entry.Key, seen);
+                }
             }
             
             // If in the same position.

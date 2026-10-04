@@ -177,6 +177,21 @@ public class MapSelectionSwitcherViewModel : ViewModelBase
             }
         }
 
+        // A foreign fleet sitting at the same star as one of ours used to be completely
+        // unreachable for inspection - confirmed live as a real reported gap ("I can't select the
+        // enemy fleet to examine its structure or stats"). InspectorViewModel already knows how to
+        // show a bare FleetIntel report (ShowFleetReport) - the only thing missing was ever
+        // offering one here. Matched by position (a FleetIntel has no direct star reference to
+        // compare against, unlike an owned Fleet.InOrbit), same as StarMapDocumentViewModel's own
+        // hasForeignFleetInOrbit check.
+        foreach (FleetIntel fleetReport in clientState.EmpireState.FleetReports.Values)
+        {
+            if (fleetReport.InOrbit && fleetReport.Position == anchorStar.Position && fleetReport.Owner != clientState.EmpireState.Id)
+            {
+                list.Add(new MapSelectionSwitcherOptionViewModel(fleetReport.Name + " (Enemy)", fleetReport));
+            }
+        }
+
         return list;
     }
 }

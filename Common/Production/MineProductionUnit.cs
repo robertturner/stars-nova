@@ -69,7 +69,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (mainNode.Name.ToLower())
+                    switch (mainNode.Name.ToLowerInvariant())
                     {
                         case "cost":
                             cost = new Resources(mainNode);
@@ -114,6 +114,21 @@ namespace Nova.Common
             return star.Mines;
         }
 
+        /// <summary>See IProductionUnit.SupportableCount's own comment - this is the auto-build
+        /// per-turn throttle, distinct from IsSkipped's deliberate lack of a construction limit
+        /// above the same cap for a manual order or an already-built surplus.</summary>
+        public int? SupportableCount(Star star)
+        {
+            return star.GetFutureOperableMines();
+        }
+
+        /// <summary>The planet's maximum-population-based mine build cap - a manual order is cut
+        /// to this minus what is already built.</summary>
+        public int? BuildCap(Star star)
+        {
+            return star.GetBuildCapMines();
+        }
+
         /// <summary>
         /// Produce the mine.
         /// </summary>
@@ -135,8 +150,9 @@ namespace Nova.Common
                 }
     
                 // What we spend on the partial builld.
-                star.ResourcesOnHand -= remainingCost * percentBuildable;    
-                remainingCost -= remainingCost * percentBuildable;
+                Resources partialPayment = Resources.PartialPayment(remainingCost, percentBuildable, star.ResourcesOnHand);
+                star.ResourcesOnHand -= partialPayment;
+                remainingCost -= partialPayment;
                 
                 return false;                
             }

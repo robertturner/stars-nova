@@ -58,6 +58,18 @@ namespace Nova.Common.Components
         public int Accuracy = 0;
         public WeaponType Group = WeaponType.standardBeam;
 
+        /// <summary>
+        /// The number of individual weapon components (missiles/torpedoes/beams) this one
+        /// aggregated Weapon entry represents - "WeaponsInSlot" in docs/behavior-specs-5/
+        /// combat-resolution.md §6's ShotDamage formula. ShipDesign.SumProperty folds multiple
+        /// identical components in one hull slot into a single Weapon with Power scaled by this
+        /// count (see operator* below); battle resolution needs the count kept separately too,
+        /// to resolve a missile/torpedo salvo as independent per-missile hit/miss rolls rather
+        /// than one roll for the whole slot's total damage. Defaults to 1 for a single raw
+        /// component loaded from XML.
+        /// </summary>
+        public int Count = 1;
+
         #region Construction
 
         /// <summary>
@@ -79,6 +91,7 @@ namespace Nova.Common.Components
             this.Initiative = existing.Initiative;
             this.Accuracy = existing.Accuracy;
             this.Group = existing.Group;
+            this.Count = existing.Count;
         }
 
         #endregion
@@ -136,6 +149,7 @@ namespace Nova.Common.Components
                 return;
             }
             Power += ((Weapon)op2).Power;
+            Count += ((Weapon)op2).Count;
         }
 
         /// <summary>
@@ -145,6 +159,7 @@ namespace Nova.Common.Components
         public override void Scale(int scalar)
         {
             Power *= scalar;
+            Count *= scalar;
         }
 
         /// <summary>
@@ -168,6 +183,7 @@ namespace Nova.Common.Components
             }
             Weapon sum = new Weapon(op1);
             sum.Power = op1.Power + op2.Power;
+            sum.Count = op1.Count + op2.Count;
             return sum;
         }
 
@@ -182,6 +198,7 @@ namespace Nova.Common.Components
         {
             Weapon sum = new Weapon(op1);
             sum.Power = op1.Power * scalar;
+            sum.Count = op1.Count * scalar;
             return sum;
         }
 
@@ -203,7 +220,7 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    switch (subnode.Name.ToLower())
+                    switch (subnode.Name.ToLowerInvariant())
                     {
                         case "power":
                             Power = int.Parse(subnode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -218,7 +235,7 @@ namespace Nova.Common.Components
                             Accuracy = int.Parse(subnode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
                             break;
                         case "group":
-                            switch (subnode.FirstChild.Value.ToLower())
+                            switch (subnode.FirstChild.Value.ToLowerInvariant())
                             {
                                 case "standardweapon":
                                     Group = WeaponType.standardBeam;

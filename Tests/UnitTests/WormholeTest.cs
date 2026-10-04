@@ -140,9 +140,19 @@ namespace Nova.Tests.UnitTests
             empire.AddOrUpdateFleet(fleet);
 
             SimpleTurnGenerator turnGenerator = new SimpleTurnGenerator(serverData);
+            NovaPoint exitAtTransit = new NovaPoint(exit.Position);
             turnGenerator.Generate();
 
-            Assert.AreEqual(exit.Position, fleet.Position, "Fleet should emerge at the paired wormhole's position the same turn");
+            // The yearly drift (after movement) may move the exit afterwards; the fleet stays
+            // where it came out, holding its own copy of the point.
+            Assert.AreEqual(exitAtTransit, fleet.Position, "Fleet should emerge at the paired wormhole's position the same turn");
+            Assert.AreNotSame(exit.Position, fleet.Position, "The fleet must not share the wormhole's position object, or it drifts with the mouth");
+
+            // The race has now used the wormhole: its bit is set on both ends (the "known" test
+            // of the AI's diversion scoring, ai-opponent-behavior.md §12).
+            Assert.IsTrue(entrance.IsUsedBy(1));
+            Assert.IsTrue(exit.IsUsedBy(1));
+            Assert.IsFalse(exit.IsUsedBy(2));
         }
     }
 }

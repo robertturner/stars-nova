@@ -125,7 +125,7 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    switch (mainNode.Name.ToLower())
+                    switch (mainNode.Name.ToLowerInvariant())
                     {
                         case "mass":
                             Mass = int.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -203,7 +203,7 @@ namespace Nova.Common.Components
                                 // check the save file first to determine what to load, and use the appropriate constructor.
                                 string propertyType = mainNode.SelectSingleNode("Type").FirstChild.Value;
                                 ComponentProperty newProperty;
-                                switch (propertyType.ToLower())
+                                switch (propertyType.ToLowerInvariant())
                                 {
                                     case "armor":
                                         {

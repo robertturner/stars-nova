@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Headless UI tests for the shared Avalonia app (Nova.Avalonia): view models driven against a
+       real, freshly generated game, and views rendered with Avalonia.Headless. See
+       docs/UI-TESTING.md. Plain net9.0, like Nova.Avalonia itself. NUnit 4 (not the 3.x line the
+       older Tests project pins) because Avalonia.Headless.NUnit 12 requires NUnit 4.5 or later;
+       the tests here use Assert.That constraints only. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <AssemblyName>Nova.Avalonia.Tests</AssemblyName>
+    <RootNamespace>Nova.Avalonia.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="NUnit" Version="4.6.1" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+    <PackageReference Include="Avalonia.Headless.NUnit" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nova.Avalonia\Nova.Avalonia.csproj" />
+  </ItemGroup>
+
+  <!-- The same game data the desktop head ships next to its exe (Nova.Avalonia.Desktop.csproj):
+       components, race files, the manual (Help panel / Race Designer help) and graphics. The test
+       fixture points PlatformHooks.NovaRootOverride at this output folder, so nova.conf and every
+       other file the engine looks up next to the executable stay inside the test output. -->
+  <ItemGroup>
+    <Content Include="..\components.xml" Link="components.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Graphics\**\*.*" Link="Graphics\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\HelpContent\**\*.*" Link="HelpContent\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\DefaultRaces\**\*.*" Link="DefaultRaces\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

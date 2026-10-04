@@ -151,9 +151,11 @@ namespace Nova.Common
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "raceicon")
+                    if (subnode.Name.ToLowerInvariant() == "raceicon")
                     {
-                        Source = subnode.FirstChild.Value;
+                        // A race without an icon (Source null) is saved as an empty
+                        // <RaceIcon /> element, which has no child text node.
+                        Source = subnode.FirstChild?.Value;
                     }
                 }
                 catch (Exception e)

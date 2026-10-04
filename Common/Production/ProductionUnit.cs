@@ -67,14 +67,70 @@ namespace Nova.Common
         /// How many of this unit the star already has, for the types where that's a stable,
         /// countable planetary stat (Factories/Mines/Defenses) - null for anything else (Ships,
         /// Alchemy, Terraform), which have no such persistent count to check against.
-        /// Auto-build orders for a unit that returns non-null here are never removed from the
-        /// queue once satisfied and self-replenish if the count later drops (e.g. bombing) -
-        /// see ProductionOrder.Process's own comment. This mirrors the manual's documented
-        /// "Factories (Auto Build) Up to 10" template phrasing (docs/behavior-specs-4/
-        /// production-queue.md §9): an auto-build order names a standing target to maintain,
-        /// not a one-off batch to build and forget.
         /// </summary>
         int? CurrentCount(Star star);
+
+        /// <summary>
+        /// How many of this unit the star's population (projected to next year, for the auto-build
+        /// clamp) can actually operate - null for a unit type with no population-scaled limit.
+        /// behavior-specs-8/production-queue.md �10a: an auto-build entry buys at most
+        /// min(N, SupportableCount - CurrentCount) units per turn. A manual order is never subject
+        /// to this (a colony may own more than it can operate; the surplus simply idles); only its
+        /// separate <see cref="BuildCap"/> applies.
+        /// </summary>
+        int? SupportableCount(Star star);
+
+        /// <summary>
+        /// The most of this unit the planet may CONTAIN, set by its maximum population (Factories,
+        /// Mines) or habitability (Defenses) rather than its current one - null when unlimited.
+        /// A manual order's quantity is cut to BuildCap - CurrentCount (production-queue.md �10a).
+        /// </summary>
+        int? BuildCap(Star star)
+        {
+            return null;
+        }
+
+        /// <summary>
+        /// How many units a MANUAL order for this unit may still buy, or null when unlimited
+        /// (behavior-specs-10/production-queue.md 10a and 10i): Factory / Mine / Defenses orders
+        /// are cut to the build cap minus what is built (message 298), a Terraform Environment
+        /// order to the planet's remaining terraform headroom (message 303); the entry is deleted
+        /// when the room is below 1. The default is <see cref="BuildCap"/> minus
+        /// <see cref="CurrentCount"/> when both are known.
+        /// </summary>
+        int? RoomForManualOrder(Star star)
+        {
+            int? buildCap = BuildCap(star);
+            int? built = CurrentCount(star);
+            if (buildCap.HasValue && built.HasValue)
+            {
+                return buildCap.Value - built.Value;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Whether an auto-build order for this unit is a persistent standing order that is never
+        /// edited or removed and re-buys every turn (true, the default), or behaves like a one-off
+        /// batch (ships - the original has no auto-build ship item, so the legacy consume-to-zero
+        /// behaviour is kept for them).
+        /// </summary>
+        bool AutoBuildIsStandingOrder
+        {
+            get { return true; }
+        }
+
+        /// <summary>
+        /// When non-null, replaces the order's own quantity as the per-turn maximum for an
+        /// auto-build order. Auto Mineral Alchemy in LAST position "consumes all remaining
+        /// resources" - the original forces its quantity to 1,000 (production-queue.md section
+        /// 10a); anywhere else ProductionOrder.Process does not buy it at all (section 7).
+        /// </summary>
+        int? AutoBuildPerTurnLimit
+        {
+            get { return null; }
+        }
 
         /// <summary>
         /// Method which performs actual construction.

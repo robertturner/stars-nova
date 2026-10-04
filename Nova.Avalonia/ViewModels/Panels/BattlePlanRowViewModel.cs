@@ -1,21 +1,26 @@
 using System;
 using System.Collections.Generic;
+using Nova.Client;
 using Nova.Common;
 
 namespace Nova.Avalonia.ViewModels.Panels;
 
 /// <summary>
-/// One battle plan, live-editable - ports BattlePlans.cs's now-working editor (see PROJECT-
-/// STATUS.md's audit-against-updated-specs entry for the WinForms side of this fix). Unlike the
-/// WinForms dialog, there's no separate "working copy"/dirty-flag machinery here: each field
-/// binds straight to the real BattlePlan and writes through immediately on change, matching the
-/// direct-mutation pattern already established for Player Relations/Ship Design in this app -
-/// Avalonia's two-way bindings make WinForms' manual commit-on-switch tracking unnecessary.
+/// One battle plan, live-editable - ports BattlePlans.cs's now-working editor. Each targeting
+/// field binds straight to the real BattlePlan and writes through immediately on change; every
+/// change is reported to the owning BattlePlansViewModel, which queues the plans as an order
+/// (BattlePlansCommand) so the server fights with them too.
+/// The name is different: it is edited in <see cref="EditName"/> (the ordinary rename surface,
+/// filtered on every keystroke) and only committed by the editor's Rename action, which
+/// validates it again and keeps every fleet that uses the plan pointing at it
+/// (client-ui-dialog-catalog.md "Rename surfaces"; Nova.Client.BattlePlanRules.Rename). It used
+/// to rename the plan on every keystroke, re-keying the dictionary each time and leaving every
+/// fleet on the plan naming one that no longer existed.
 /// </summary>
 public class BattlePlanRowViewModel : ViewModelBase
 {
     private readonly BattlePlan plan;
-    private readonly Action<string, string> onRename;
+    private readonly Action onChanged;
 
     public IReadOnlyList<string> TargetOptions => BattlePlan.TargetOptions;
 
@@ -25,21 +30,22 @@ public class BattlePlanRowViewModel : ViewModelBase
 
     public BattlePlan Plan => plan;
 
-    public string Name
-    {
-        get => plan.Name;
-        set
-        {
-            if (string.IsNullOrWhiteSpace(value) || value == plan.Name)
-            {
-                return;
-            }
+    public string Name => plan.Name;
 
-            string oldName = plan.Name;
-            plan.Name = value;
-            onRename(oldName, value);
-            OnPropertyChanged();
-        }
+    private string editName;
+
+    /// <summary>The name being typed (live-filtered); committed by Rename.</summary>
+    public string EditName
+    {
+        get => editName;
+        set => SetProperty(ref editName, RenameRules.LiveFilter(value));
+    }
+
+    /// <summary>Re-reads the plan's name after a rename (or a refused one).</summary>
+    public void NameCommitted()
+    {
+        OnPropertyChanged(nameof(Name));
+        EditName = plan.Name;
     }
 
     public string PrimaryTarget
@@ -51,6 +57,7 @@ public class BattlePlanRowViewModel : ViewModelBase
             {
                 plan.PrimaryTarget = value;
                 OnPropertyChanged();
+                onChanged();
             }
         }
     }
@@ -64,6 +71,7 @@ public class BattlePlanRowViewModel : ViewModelBase
             {
                 plan.SecondaryTarget = value;
                 OnPropertyChanged();
+                onChanged();
             }
         }
     }
@@ -77,6 +85,7 @@ public class BattlePlanRowViewModel : ViewModelBase
             {
                 plan.Tactic = value;
                 OnPropertyChanged();
+                onChanged();
             }
         }
     }
@@ -90,6 +99,7 @@ public class BattlePlanRowViewModel : ViewModelBase
             {
                 plan.Attack = value;
                 OnPropertyChanged();
+                onChanged();
             }
         }
     }
@@ -103,13 +113,15 @@ public class BattlePlanRowViewModel : ViewModelBase
             {
                 plan.DumpCargo = value;
                 OnPropertyChanged();
+                onChanged();
             }
         }
     }
 
-    public BattlePlanRowViewModel(BattlePlan plan, Action<string, string> onRename)
+    public BattlePlanRowViewModel(BattlePlan plan, Action onChanged)
     {
         this.plan = plan;
-        this.onRename = onRename;
+        this.onChanged = onChanged;
+        editName = plan.Name;
     }
 }

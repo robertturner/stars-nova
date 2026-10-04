@@ -67,7 +67,7 @@ namespace Nova.Client
                 XmlDocument xmldoc = new XmlDocument();
                 XmlElement xmlRoot = Global.InitializeXmlDocument(xmldoc);
 
-                Global.SaveData(xmldoc, xmlRoot, "Turn", clientState.EmpireState.LastTurnSubmitted.ToString());
+                Global.SaveData(xmldoc, xmlRoot, "Turn", clientState.EmpireState.LastTurnSubmitted.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 Global.SaveData(xmldoc, xmlRoot, "Id", clientState.EmpireState.Id.ToString("X"));
 
                 // add the orders to the document

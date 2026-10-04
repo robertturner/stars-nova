@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Nova.Avalonia.ViewModels"
+             x:Class="Nova.Avalonia.Views.Controls.RaceDesignerStepper"
+             x:DataType="vm:RaceDesignerEconomyRowViewModel">
+    <UserControl.Styles>
+        <!-- An Alternate Reality race's rows 2-7 are "drawn in the disabled colour" (spec). -->
+        <Style Selector="Grid:disabled > TextBlock">
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+    </UserControl.Styles>
+    <!-- RepeatButtons give the spec's auto-repeat while held; Shift on the press steps by 3. -->
+    <Grid ColumnDefinitions="*,Auto,Auto,Auto" IsEnabled="{Binding IsEnabled}">
+        <TextBlock Grid.Column="0" Text="{Binding Label}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,8,0" />
+        <RepeatButton Grid.Column="1" Name="DecrementButton" Content="-" Width="40" HorizontalContentAlignment="Center"
+                      Delay="400" Interval="90" Click="DecrementButton_Click" />
+        <TextBlock Grid.Column="2" Text="{Binding DisplayValue}" MinWidth="64" TextAlignment="Center" VerticalAlignment="Center" />
+        <RepeatButton Grid.Column="3" Name="IncrementButton" Content="+" Width="40" HorizontalContentAlignment="Center"
+                      Delay="400" Interval="90" Click="IncrementButton_Click" />
+    </Grid>
+</UserControl>

@@ -21,248 +21,184 @@
 
 namespace Nova.Ai
 {
-    using System;
     using System.Collections.Generic;
     using System.Linq;
 
     using Nova.Client;
     using Nova.Common;
     using Nova.Common.DataStructures;
+    using Nova.Common.Waypoints;
 
     /// <summary>
-    /// Picks a colonization target for one AI-owned fleet at its current position - ports
-    /// docs/behavior-specs-3/ai-opponent-behavior.md section 2 ("Colonization and fleet-
-    /// destination selection").
-    ///
-    /// That spec's own figures are explicitly approximate ("roughly 0-100", "roughly 50, 100,
-    /// 150, and 200 light-years") since it was reconstructed from decompiled logic, not exact
-    /// source. The additive habitability-plus-declining-distance-bonus formula below reproduces
-    /// the *described shape* (closer candidates score higher, habitability dominates, banded at
-    /// the spec's own stated squared-distance thresholds) - it is not a bit-verified original
-    /// formula, and every specific constant introduced here beyond what the spec states outright
-    /// (the distance-bonus magnitudes, the "too eager" score threshold, the exploratory-search
-    /// radii) is called out in its own comment as a reasonable reconstruction, not a known fact.
+    /// The colony-ship target search `FUN_1090_098e` (behavior-specs-10/ai-opponent-behavior.md
+    /// §2, "Colonization-target choice (corrected)"): the NEAREST planet, by squared distance,
+    /// that is unowned and not already claimed by another own fleet - with no scoring, no
+    /// distance bands and no random acceptance. For categories other than 0 and 5 a planet whose
+    /// terraformed habitability for the AI is negative is left out too.
     /// </summary>
+    /// <remarks>
+    /// Claims (§2 detail): for categories 0 and 5 the classification is rebuilt on every search,
+    /// and a planet is claimed only when another own fleet's next waypoint is that planet with
+    /// the Colonize task. For the other categories it is built once, on the first search of the
+    /// run, from every own fleet's next waypoint whatever its task, and the caller then marks
+    /// each planet it orders colonized (<see cref="MarkClaimed"/>). The wormhole diversion before
+    /// year 120 is not ported. The "random exploratory colonization" paragraph that survives in
+    /// §2 is not ported either: no traced code path in the colonization search does it.
+    /// </remarks>
     public class ColonizationTargetSelector
     {
-        /// <summary>Past this turn, the late-game distance-conservatism rule (relative to the
-        /// empire's nearest owned colony) kicks in - the spec's own "roughly 59".</summary>
-        private const int LateGameTurn = 59;
-
-        /// <summary>Score at/above which a candidate is flagged "too eager" and gets an
-        /// additional independent rejection roll (see Accept) - not given numerically by the
-        /// spec itself, just described as applying to "some candidates"; picked so it only
-        /// affects genuinely strong candidates, matching the spec's stated purpose of stopping
-        /// every AI fleet rushing the single best-looking planet at once.</summary>
-        private const double TooEagerScoreThreshold = 80;
-
-        /// <summary>Expanding search radii (light-years) tried in order by the exploratory
-        /// fallback until at least one reachable, unowned star is found - not given by the spec
-        /// itself beyond "an expanding search radius"; the last entry is unbounded so a fleet is
-        /// never left with genuinely nothing to do while any unowned star is known at all.</summary>
-        private static readonly double[] ExploratorySearchRadii = { 100, 200, 400, 800, double.MaxValue };
-
         private readonly ClientData clientState;
-        private readonly Random random;
-        private readonly List<NovaPoint> ownedColonyPositions;
+        private readonly int category;
+        private HashSet<string> claimedOnce;
 
-        public ColonizationTargetSelector(ClientData clientState, Random random)
+        public ColonizationTargetSelector(ClientData clientState, int category)
         {
             this.clientState = clientState;
-            this.random = random;
-            ownedColonyPositions = clientState.EmpireState.OwnedStars.Values
-                .Select(star => star.Position)
-                .ToList();
+            this.category = category;
         }
 
         /// <summary>
-        /// Picks a target for the given fleet from the known, unowned, currently-habitable stars,
-        /// applying distance-band scoring, probabilistic acceptance, "too eager" extra rejection,
-        /// and (past <see cref="LateGameTurn"/>) distance-to-nearest-colony conservatism -
-        /// falling back to a reservoir-sampled random target within an expanding search radius if
-        /// nothing is accepted, so a fleet doesn't sit idle just because nothing scored well this
-        /// turn. Returns null only if literally no unowned star is known at all yet.
+        /// The nearest eligible planet for <paramref name="colonyFleet"/>, or null when there is
+        /// none. Ties keep the earlier report.
         /// </summary>
-        public StarIntel SelectTarget(Fleet fleet, int currentTurn)
+        public StarIntel SelectTarget(Fleet colonyFleet)
         {
-            var candidates = new List<(StarIntel Star, double Score)>();
+            bool rebuildEachCall = !AiCategory.UsesColonyHabitabilityFilter(category);
+            HashSet<string> claimed = rebuildEachCall ? ColonizeClaims(colonyFleet) : OnceClaims();
+
+            StarIntel best = null;
+            double bestDistance = double.MaxValue;
 
             foreach (StarIntel report in clientState.EmpireState.StarReports.Values)
             {
-                if (report.Owner != Global.Nobody)
+                if (report.Owner != Global.Nobody || claimed.Contains(report.Name))
                 {
                     continue;
                 }
 
-                double habitability = clientState.EmpireState.Race.HabitalValue(report) * 100;
-                if (habitability <= 0)
+                if (AiCategory.UsesColonyHabitabilityFilter(category) && !PassesHabitabilityFilter(clientState.EmpireState.Race, report))
                 {
                     continue;
                 }
 
-                double score = Math.Min(100, habitability + DistanceBonus(PointUtilities.DistanceSquare(fleet.Position, report.Position)));
-                candidates.Add((report, score));
-            }
-
-            // "Best match": highest score first, ties broken by distance to the fleet - the
-            // spec's own two named search primitives ("nearest match"/"best match") combined,
-            // since scoring already folds distance in as a tiebreaker once scores tie exactly.
-            candidates.Sort((a, b) =>
-            {
-                int byScore = b.Score.CompareTo(a.Score);
-                if (byScore != 0)
+                double distance = PointUtilities.DistanceSquare(colonyFleet.Position, report.Position);
+                if (distance < bestDistance)
                 {
-                    return byScore;
-                }
-
-                return PointUtilities.DistanceSquare(fleet.Position, a.Star.Position)
-                    .CompareTo(PointUtilities.DistanceSquare(fleet.Position, b.Star.Position));
-            });
-
-            foreach ((StarIntel star, double score) in candidates)
-            {
-                if (Accept(star, score, currentTurn))
-                {
-                    return star;
+                    best = report;
+                    bestDistance = distance;
                 }
             }
 
-            return SelectExploratoryTarget(fleet);
+            return best;
         }
 
-        /// <summary>Declining bonus the closer a candidate is, banded at the spec's own stated
-        /// squared-distance thresholds (50/100/150/200 ly). The specific bonus magnitudes below
-        /// aren't given by the spec itself, only that closer scores higher within a combined
-        /// "roughly 0-100" total; picked to keep habitability the dominant term rather than
-        /// letting a nearby wasteland outscore a good but distant world.</summary>
-        private static double DistanceBonus(double distanceSquared)
+        /// <summary>Marks a planet the caller has just ordered colonized, so later searches in
+        /// the same run skip it (the categories whose classification is built once).</summary>
+        public void MarkClaimed(StarIntel target)
         {
-            if (distanceSquared <= 50.0 * 50.0)
+            if (target != null && claimedOnce != null)
             {
-                return 20;
+                claimedOnce.Add(target.Name);
             }
-
-            if (distanceSquared <= 100.0 * 100.0)
-            {
-                return 15;
-            }
-
-            if (distanceSquared <= 150.0 * 150.0)
-            {
-                return 10;
-            }
-
-            if (distanceSquared <= 200.0 * 200.0)
-            {
-                return 5;
-            }
-
-            return 0;
         }
 
-        private bool Accept(StarIntel star, double score, int currentTurn)
+        /// <summary>
+        /// §2 / §12: non-negative terraformed habitability for the AI (`FUN_1048_47ec`). A report
+        /// carries no terraforming history, so the planet is treated as untouched (its current
+        /// environment is its original one) and gets the race's full terraform allowance.
+        /// </summary>
+        public static bool PassesHabitabilityFilter(Race race, StarIntel report)
         {
-            // Probabilistic acceptance: a roll under the candidate's own score succeeds - so a
-            // weak candidate is rarely picked and even a strong one isn't a certainty.
-            if (random.Next(100) >= score)
+            Star projected = new Star
             {
-                return false;
-            }
+                Gravity = report.Gravity,
+                Temperature = report.Temperature,
+                Radiation = report.Radiation,
+                OriginalGravity = report.Gravity,
+                OriginalTemperature = report.Temperature,
+                OriginalRadiation = report.Radiation,
+            };
 
-            // "Too eager": an additional flat 25% rejection chance for candidates that already
-            // scored strongly, adding jitter so multiple idle fleets don't all beeline for the
-            // same best-looking planet the instant it's discovered.
-            if (score >= TooEagerScoreThreshold && random.Next(100) < 25)
-            {
-                return false;
-            }
-
-            if (currentTurn > LateGameTurn && !PassesLateGameDistanceCheck(star))
-            {
-                return false;
-            }
-
-            return true;
+            return race.HabitalValueAfterTerraform(projected) >= 0;
         }
 
-        /// <summary>Past <see cref="LateGameTurn"/>, a candidate far from the empire's *nearest
-        /// already-owned colony* (not the traveling fleet's own position - a fleet may already be
-        /// scouting far afield) is increasingly likely to be passed over, so the AI stops
-        /// overreaching into contested/exposed territory as the game goes on - three graduated
-        /// squared-distance bands, each its own independent roll (a candidate beyond 300ly must
-        /// pass both the 250ly and 300ly checks, so it's rejected more often than one only just
-        /// past 250ly - the spec doesn't state whether these bands are cumulative or mutually
-        /// exclusive; cumulative was chosen since "certain rejection beyond 350" reads as the
-        /// limit these graduated checks are building toward, not a fourth independent tier).</summary>
-        private bool PassesLateGameDistanceCheck(StarIntel star)
+        private IEnumerable<Fleet> OwnFleets()
         {
-            if (ownedColonyPositions.Count == 0)
-            {
-                return true;
-            }
-
-            double nearestColonyDistanceSquared = ownedColonyPositions
-                .Select(position => PointUtilities.DistanceSquare(position, star.Position))
-                .Min();
-
-            if (nearestColonyDistanceSquared > 350.0 * 350.0)
-            {
-                return false;
-            }
-
-            if (nearestColonyDistanceSquared > 300.0 * 300.0 && random.Next(100) < 50)
-            {
-                return false;
-            }
-
-            if (nearestColonyDistanceSquared > 250.0 * 250.0 && random.Next(100) < 50)
-            {
-                return false;
-            }
-
-            return true;
+            return clientState.EmpireState.OwnedFleets.Values
+                .Where(fleet => fleet.Owner == clientState.EmpireState.Id);
         }
 
-        /// <summary>Reservoir-sampled random target among every known star not already owned by
-        /// this empire, searched at an expanding radius from the fleet until at least one
-        /// candidate is found - so a fleet with no strong colonization candidate nearby still
-        /// gets *something* to do rather than idling indefinitely.</summary>
-        private StarIntel SelectExploratoryTarget(Fleet fleet)
+        /// <summary>Categories 0 and 5: planets another own fleet's next waypoint targets with
+        /// the Colonize task.</summary>
+        private HashSet<string> ColonizeClaims(Fleet self)
         {
-            foreach (double radius in ExploratorySearchRadii)
+            HashSet<string> claimed = new HashSet<string>();
+            foreach (Fleet fleet in OwnFleets())
             {
-                StarIntel picked = null;
-                int seen = 0;
-
-                foreach (StarIntel report in clientState.EmpireState.StarReports.Values)
+                Waypoint next = NextWaypoint(fleet);
+                if (fleet == self || next == null || !(next.Task is ColoniseTask))
                 {
-                    if (report.Owner == clientState.EmpireState.Id)
-                    {
-                        continue;
-                    }
-
-                    if (radius != double.MaxValue && PointUtilities.DistanceSquare(fleet.Position, report.Position) > radius * radius)
-                    {
-                        continue;
-                    }
-
-                    // Reservoir sampling: the Nth candidate seen replaces the current pick with
-                    // probability 1/N, leaving every candidate seen so far with equal final odds
-                    // without needing to know the total count up front.
-                    seen++;
-                    if (random.Next(seen) == 0)
-                    {
-                        picked = report;
-                    }
+                    continue;
                 }
 
-                if (picked != null)
+                AddClaim(claimed, next);
+            }
+
+            return claimed;
+        }
+
+        /// <summary>
+        /// The fleet's next waypoint, skipping any waypoint at its current position: the
+        /// original loads colonists by an immediate transfer, which Nova expresses as a load
+        /// waypoint where the fleet stands, so the real "next waypoint" is the one after it.
+        /// </summary>
+        private static Waypoint NextWaypoint(Fleet fleet)
+        {
+            for (int index = 1; index < fleet.Waypoints.Count; index++)
+            {
+                NovaPoint position = fleet.Waypoints[index].Position;
+                bool here = position != null && fleet.Position != null
+                    && position.X == fleet.Position.X && position.Y == fleet.Position.Y;
+                if (!here)
                 {
-                    return picked;
+                    return fleet.Waypoints[index];
                 }
             }
 
             return null;
+        }
+
+        /// <summary>Other categories: every own fleet's next-waypoint planet, whatever the task,
+        /// captured on the first search of the run.</summary>
+        private HashSet<string> OnceClaims()
+        {
+            if (claimedOnce == null)
+            {
+                claimedOnce = new HashSet<string>();
+                foreach (Fleet fleet in OwnFleets())
+                {
+                    Waypoint next = NextWaypoint(fleet);
+                    if (next != null)
+                    {
+                        AddClaim(claimedOnce, next);
+                    }
+                }
+            }
+
+            return claimedOnce;
+        }
+
+        private void AddClaim(HashSet<string> claimed, Waypoint waypoint)
+        {
+            foreach (StarIntel report in clientState.EmpireState.StarReports.Values)
+            {
+                if (report.Name == waypoint.Destination
+                    || (waypoint.Position != null && report.Position != null
+                        && report.Position.X == waypoint.Position.X && report.Position.Y == waypoint.Position.Y))
+                {
+                    claimed.Add(report.Name);
+                }
+            }
         }
     }
 }

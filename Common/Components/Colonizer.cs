@@ -113,7 +113,7 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "orbital")
+                    if (subnode.Name.ToLowerInvariant() == "orbital")
                     {
                         Orbital = bool.Parse(((XmlText)subnode.FirstChild).Value);
                     }

@@ -126,15 +126,15 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "maxmodifiedgravity")
+                    if (subnode.Name.ToLowerInvariant() == "maxmodifiedgravity")
                     {
                         MaxModifiedGravity = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    if (subnode.Name.ToLower() == "maxmodifiedtemperature")
+                    if (subnode.Name.ToLowerInvariant() == "maxmodifiedtemperature")
                     {
                         MaxModifiedTemperature = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    if (subnode.Name.ToLower() == "maxmodifiedradiation")
+                    if (subnode.Name.ToLowerInvariant() == "maxmodifiedradiation")
                     {
                         MaxModifiedRadiation = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }

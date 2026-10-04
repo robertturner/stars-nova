@@ -22,8 +22,11 @@
 #region Module Description
 // ===========================================================================
 // This class defines a probability property, which is any single valued property
-// which sums as the sum of independant probabilities. This includes beam deflectors, 
-// cloaking, tachyon detectors & jammers.
+// which sums as the sum of independant probabilities. This includes jammers. Beam deflectors,
+// cloaking and tachyon detectors are loaded as this type too, but ShipDesign.SumProperty does
+// not combine them with these operators: beam deflectors compound on a truncating 1000 scale
+// (90 / 81 / 72 for 1-3, behavior-specs-9/combat-resolution.md §6 - the double maths here
+// would give 72.9), cloak is summed as raw points and detectors are counted (§11).
 // Defenses are treated separately as they have additional complications (see Defense).
 // Capacitors sum geometrically, (see Capacitor). 
 //
@@ -153,7 +156,7 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "value")
+                    if (subnode.Name.ToLowerInvariant() == "value")
                     {
                         Value = double.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }

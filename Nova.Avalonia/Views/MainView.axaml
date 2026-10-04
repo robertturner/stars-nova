@@ -13,11 +13,128 @@
     </Design.DataContext>
 
     <DockPanel>
+        <!-- The main menu bar, following behavior-specs-10/client-interface.md's "Main-window
+             command table" for the commands this app has. InputGesture only prints the key
+             hint; the accelerators themselves are KeyBindings on MainWindow (desktop only).
+             Not present because the app has no such feature (yet): File > Print Map and the
+             recent-files list; View > Toolbar, Window Layout, Player Colors and Game
+             Parameters; Turn > Wait for New (single-player host); Commands > Change Password,
+             Battle Sound Effects, Music Ctrl+M; Report > Others' Fleets; Help > Introduction,
+             Tutorial; F12 / Ctrl+F12 / Shift+F12 batch generation. Added beyond the original's
+             table: View > Planets (the six "Planets:" view modes the digit keys 1-6 and the
+             map's own selector choose), Commands > Production Templates (the original opens its
+             template manager from the production dialog) and Report > Victory Conditions (the
+             original's in-session summary dialog). View > Find's Ctrl+F is handled by the star
+             map (StarMapDocumentView), which also focuses the query box. -->
         <Menu DockPanel.Dock="Top">
-            <MenuItem Header="_Game">
-                <MenuItem Header="_End Turn" Command="{Binding SubmitTurnCommand}" />
+            <!-- File: Print Map (213) and, between the two adjacent separators, the 9-slot Recent
+                 Files list (4300-4308), inserted by MainView.axaml.cs when the menu opens. -->
+            <MenuItem x:Name="FileMenu" Header="_File">
+                <MenuItem Header="_New..." Command="{Binding NewGameCommand}" InputGesture="Ctrl+N" />
+                <MenuItem Header="Custom _Race Wizard..." Command="{Binding RaceWizardCommand}" />
+                <MenuItem Header="_Open..." Command="{Binding OpenGameCommand}" InputGesture="Ctrl+O" />
+                <MenuItem Header="_Close" Command="{Binding CloseGameCommand}" />
+                <MenuItem Header="_Save" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" />
+                <MenuItem Header="Save _And Submit" Command="{Binding SubmitTurnCommand}" InputGesture="Ctrl+A" />
+                <Separator />
+                <MenuItem Header="_Print Map..." Command="{Binding PrintMapCommand}" />
+                <Separator x:Name="RecentFilesStart" />
+                <Separator x:Name="RecentFilesEnd" />
+                <MenuItem Header="E_xit" Command="{Binding ExitCommand}" />
+            </MenuItem>
+            <!-- View (client-interface.md command table: Find 4200 / Ctrl+F 4201, Zoom
+                 3901-3909 "sets zoom step -4 to +4, recentres the map", Race 156 / F8 157
+                 "opens the same wizard view-only"). The current zoom step is checked. -->
+            <MenuItem Header="_View">
+                <MenuItem Header="_Toolbar" Command="{Binding ToggleToolbarCommand}"
+                          ToggleType="CheckBox" IsChecked="{Binding ShowToolbar, Mode=OneWay}" />
+                <Separator />
+                <MenuItem Header="_Find..." Command="{Binding StarMap.Search.OpenCommand}" InputGesture="Ctrl+F" />
+                <MenuItem Header="_Zoom">
+                    <MenuItem Header="{Binding ZoomLabels[0]}" Command="{Binding SetZoomCommand}" CommandParameter="0"
+                              ToggleType="Radio" GroupName="Zoom" IsChecked="{Binding ZoomChecks[0], Mode=OneWay}" />
+                    <MenuItem Header="{Binding ZoomLabels[1]}" Command="{Binding SetZoomCommand}" CommandParameter="1"
+                              ToggleType="Radio" GroupName="Zoom" IsChecked="{Binding ZoomChecks[1], Mode=OneWay}" />
+                    <MenuItem Header="{Binding ZoomLabels[2]}" Command="{Binding SetZoomCommand}" CommandParameter="2"
+                              ToggleType="Radio" GroupName="Zoom" IsChecked="{Binding ZoomChecks[2], Mode=OneWay}" />
+                    <MenuItem Header="{Binding ZoomLabels[3]}" Command="{Binding SetZoomCommand}" CommandParameter="3"
+                              ToggleType="Radio" GroupName="Zoom" IsChecked="{Binding ZoomChecks[3], Mode=OneWay}" />
+                    <MenuItem Header="{Binding ZoomLabels[4]}" Command="{Binding SetZoomCommand}" CommandParameter="4"
+                              ToggleType="Radio" GroupName="Zoom" IsChecked="{Binding ZoomChecks[4], Mode=OneWay}" />
+                    <MenuItem Header="{Binding ZoomLabels[5]}" Command="{Binding SetZoomCommand}" CommandParameter="5"
+                              ToggleType="Radio" GroupName="Zoom" IsChecked="{Binding ZoomChecks[5], Mode=OneWay}" />
+                    <MenuItem Header="{Binding ZoomLabels[6]}" Command="{Binding SetZoomCommand}" CommandParameter="6"
+                              ToggleType="Radio" GroupName="Zoom" IsChecked="{Binding ZoomChecks[6], Mode=OneWay}" />
+                    <MenuItem Header="{Binding ZoomLabels[7]}" Command="{Binding SetZoomCommand}" CommandParameter="7"
+                              ToggleType="Radio" GroupName="Zoom" IsChecked="{Binding ZoomChecks[7], Mode=OneWay}" />
+                    <MenuItem Header="{Binding ZoomLabels[8]}" Command="{Binding SetZoomCommand}" CommandParameter="8"
+                              ToggleType="Radio" GroupName="Zoom" IsChecked="{Binding ZoomChecks[8], Mode=OneWay}" />
+                </MenuItem>
+                <MenuItem Header="_Planets">
+                    <MenuItem Header="{Binding PlanetModeLabels[0]}" Command="{Binding SetPlanetModeCommand}" CommandParameter="0"
+                              ToggleType="Radio" GroupName="PlanetMode" IsChecked="{Binding PlanetModeChecks[0], Mode=OneWay}" />
+                    <MenuItem Header="{Binding PlanetModeLabels[1]}" Command="{Binding SetPlanetModeCommand}" CommandParameter="1"
+                              ToggleType="Radio" GroupName="PlanetMode" IsChecked="{Binding PlanetModeChecks[1], Mode=OneWay}" />
+                    <MenuItem Header="{Binding PlanetModeLabels[2]}" Command="{Binding SetPlanetModeCommand}" CommandParameter="2"
+                              ToggleType="Radio" GroupName="PlanetMode" IsChecked="{Binding PlanetModeChecks[2], Mode=OneWay}" />
+                    <MenuItem Header="{Binding PlanetModeLabels[3]}" Command="{Binding SetPlanetModeCommand}" CommandParameter="3"
+                              ToggleType="Radio" GroupName="PlanetMode" IsChecked="{Binding PlanetModeChecks[3], Mode=OneWay}" />
+                    <MenuItem Header="{Binding PlanetModeLabels[4]}" Command="{Binding SetPlanetModeCommand}" CommandParameter="4"
+                              ToggleType="Radio" GroupName="PlanetMode" IsChecked="{Binding PlanetModeChecks[4], Mode=OneWay}" />
+                    <MenuItem Header="{Binding PlanetModeLabels[5]}" Command="{Binding SetPlanetModeCommand}" CommandParameter="5"
+                              ToggleType="Radio" GroupName="PlanetMode" IsChecked="{Binding PlanetModeChecks[5], Mode=OneWay}" />
+                </MenuItem>
+                <!-- Window Layout (130-132): Large / Medium / Small Screen, the current one
+                     checked; the toolbar's drop-down sets the same preset. -->
+                <MenuItem Header="_Window Layout">
+                    <MenuItem Header="{Binding WindowLayoutLabels[0]}" Command="{Binding SetWindowLayoutCommand}" CommandParameter="0"
+                              ToggleType="Radio" GroupName="WindowLayout" IsChecked="{Binding WindowLayoutChecks[0], Mode=OneWay}" />
+                    <MenuItem Header="{Binding WindowLayoutLabels[1]}" Command="{Binding SetWindowLayoutCommand}" CommandParameter="1"
+                              ToggleType="Radio" GroupName="WindowLayout" IsChecked="{Binding WindowLayoutChecks[1], Mode=OneWay}" />
+                    <MenuItem Header="{Binding WindowLayoutLabels[2]}" Command="{Binding SetWindowLayoutCommand}" CommandParameter="2"
+                              ToggleType="Radio" GroupName="WindowLayout" IsChecked="{Binding WindowLayoutChecks[2], Mode=OneWay}" />
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="_Race..." Command="{Binding ViewRaceCommand}" InputGesture="F8" />
+            </MenuItem>
+            <MenuItem Header="_Turn">
+                <MenuItem Header="_Generate" Command="{Binding SubmitTurnCommand}" InputGesture="F9" />
+            </MenuItem>
+            <MenuItem Header="_Commands">
+                <MenuItem Header="_Ship Design..." Command="{Binding ShowPanelCommand}" CommandParameter="ShipDesign" InputGesture="F4" />
+                <MenuItem Header="_Research..." Command="{Binding ShowPanelCommand}" CommandParameter="Research" InputGesture="F5" />
+                <MenuItem Header="_Battle Plans..." Command="{Binding ShowPanelCommand}" CommandParameter="BattlePlans" InputGesture="F6" />
+                <MenuItem Header="_Player Relations..." Command="{Binding ShowPanelCommand}" CommandParameter="PlayerRelations" InputGesture="F7" />
+                <Separator />
+                <MenuItem Header="Production _Templates..." Command="{Binding ShowPanelCommand}" CommandParameter="ProductionTemplates" />
+                <Separator />
+                <!-- 2450 / 2451 (Ctrl+M): persisted toggles, grayed because this client has no
+                     sound support (client-interface.md "Runtime menu state"). -->
+                <MenuItem Header="Battle _Sound Effects" Command="{Binding ToggleSoundEffectsCommand}"
+                          ToggleType="CheckBox" IsChecked="{Binding SoundEffectsChecked, Mode=OneWay}" />
+                <MenuItem Header="_Music" Command="{Binding ToggleMusicCommand}" InputGesture="Ctrl+M"
+                          ToggleType="CheckBox" IsChecked="{Binding MusicChecked, Mode=OneWay}" />
+            </MenuItem>
+            <MenuItem Header="_Report">
+                <MenuItem Header="_Planets..." Command="{Binding ShowPanelCommand}" CommandParameter="PlanetReport" InputGesture="F3" />
+                <MenuItem Header="_Fleets..." Command="{Binding ShowPanelCommand}" CommandParameter="FleetReport" />
+                <Separator />
+                <MenuItem Header="_Battles..." Command="{Binding ShowPanelCommand}" CommandParameter="BattleReport" />
+                <Separator />
+                <MenuItem Header="_Score..." Command="{Binding ShowPanelCommand}" CommandParameter="ScoreReport" InputGesture="F10" />
+                <MenuItem Header="_Victory Conditions..." Command="{Binding ShowPanelCommand}" CommandParameter="VictoryConditions" />
+                <Separator />
+                <MenuItem Header="_Dump to Text File">
+                    <MenuItem Header="_Universe" Command="{Binding ExportReportCommand}" CommandParameter="Universe" />
+                    <MenuItem Header="_Planets" Command="{Binding ExportReportCommand}" CommandParameter="Planets" />
+                    <MenuItem Header="_Fleets" Command="{Binding ExportReportCommand}" CommandParameter="Fleets" />
+                </MenuItem>
             </MenuItem>
             <MenuItem Header="_Help">
+                <MenuItem Header="_Player's Guide" Command="{Binding ShowPanelCommand}" CommandParameter="Help" InputGesture="F1" />
+                <Separator />
+                <MenuItem Header="Technology _Browser" Command="{Binding ToggleTechnologyBrowserCommand}" InputGesture="F2" />
+                <Separator />
                 <MenuItem Header="_About Stars! Nova" Command="{Binding ShowAboutCommand}" />
             </MenuItem>
         </Menu>
@@ -33,7 +150,57 @@
                 <Button Grid.Column="1" Content="End Turn" Command="{Binding SubmitTurnCommand}" />
             </Grid>
         </Border>
-        <DockControl Layout="{Binding Layout}" />
+        <!-- The toolbar (client-interface.md "Navigation controls"): a vertical strip of
+             buttons with tooltips, bound to the same commands as their menu items (so the same
+             enablement), plus the window-layout preset drop-down. Right-click a button to move
+             or remove it, or the strip to add buttons back / reset; the set and order are saved
+             (MainView.axaml.cs builds those menus). View > Toolbar hides it. The original's icon
+             art is not available: buttons show short text. -->
+        <Border x:Name="ToolbarStrip" DockPanel.Dock="Left" IsVisible="{Binding ShowToolbar}"
+                Background="#202028" Padding="2" BorderBrush="#40404a" BorderThickness="0,0,1,0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding ToolbarButtons}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ToolbarButtonViewModel">
+                            <Panel Margin="0,1">
+                                <Button IsVisible="{Binding IsButton}" Content="{Binding Glyph}"
+                                        Command="{Binding Command}" CommandParameter="{Binding CommandParameter}"
+                                        ToolTip.Tip="{Binding Tooltip}" Width="56" Height="32" Padding="0"
+                                        FontSize="11" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                        ContextRequested="OnToolbarButtonContextRequested" />
+                                <ComboBox IsVisible="{Binding IsLayoutPreset}" Width="56" Padding="2,0" FontSize="11"
+                                          ItemsSource="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).WindowLayoutLabels}"
+                                          SelectedIndex="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).SelectedWindowLayoutIndex}"
+                                          ToolTip.Tip="{Binding Tooltip}"
+                                          ContextRequested="OnToolbarButtonContextRequested" />
+                            </Panel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+        <Grid>
+            <DockControl Layout="{Binding Layout}" />
+
+            <!-- The progress dialog of long-running actions (End Turn; client-ui-dialog-catalog.md
+                 "Progress and failure feedback"): a gauge while working; on failure, the reason
+                 and a Close button only - never a success message. -->
+            <Border IsVisible="{Binding IsProgressVisible}" Background="#80000000">
+                <Border Background="#202028" BorderBrush="DodgerBlue" BorderThickness="1" CornerRadius="6"
+                        Padding="16" Width="360" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel Spacing="8">
+                        <StackPanel Spacing="8" IsVisible="{Binding IsProgressRunning}">
+                            <TextBlock Text="{Binding ProgressCaption}" Foreground="White" />
+                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressPercent}" Height="16" />
+                        </StackPanel>
+                        <StackPanel Spacing="8" IsVisible="{Binding HasProgressFailed}">
+                            <TextBlock Text="{Binding ProgressFailureMessage}" Foreground="OrangeRed" TextWrapping="Wrap" />
+                            <Button Content="Close" Command="{Binding CloseProgressCommand}" HorizontalAlignment="Right" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Border>
+        </Grid>
     </DockPanel>
 
 </UserControl>

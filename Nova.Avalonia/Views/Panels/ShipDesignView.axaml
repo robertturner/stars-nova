@@ -198,7 +198,22 @@
             <TextBlock Text="Tap a component, then tap a highlighted slot to fit it there. Tap an empty-handed filled slot to clear it. Press and hold a component to see its details."
                        FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
 
-            <ItemsControl ItemsSource="{Binding Categories}">
+            <!-- Component-category browser (client-ui-dialog-catalog.md "Search and record
+                 browser"): pick a category, or step Prev/Next through the available components
+                 (the stepped one is armed for placing). Desktop only - see the code-behind. -->
+            <StackPanel x:Name="ComponentBrowserStrip" Spacing="4" Margin="0,6,0,0">
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                    <ComboBox Grid.Column="0" ItemsSource="{Binding BrowseCategoryNames}"
+                              SelectedIndex="{Binding SelectedBrowseCategoryIndex}" HorizontalAlignment="Stretch" />
+                    <Button Grid.Column="1" Content="Prev" Command="{Binding BrowsePreviousCommand}" Margin="4,0,0,0"
+                            ToolTip.Tip="Previous available component" />
+                    <Button Grid.Column="2" Content="Next" Command="{Binding BrowseNextCommand}" Margin="4,0,0,0"
+                            ToolTip.Tip="Next available component" />
+                </Grid>
+                <TextBlock Text="{Binding BrowsePositionText}" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <ItemsControl ItemsSource="{Binding VisibleCategories}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="panels:ComponentCategoryViewModel">
                         <StackPanel Margin="0,6,0,0" Spacing="1">

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -62,13 +63,18 @@ public static class TurnHost
     /// submitted. Returns true if the turn actually advanced - the caller should reload its
     /// ClientData for the new turn in that case.
     /// </summary>
-    public static async Task<bool> SubmitAndTryAdvanceTurnAsync(ClientData clientState)
+    /// <param name="stage">Optional: told each Nova.Client.Shell.TurnProgressStages step as it
+    /// starts (the progress dialog's gauge); may be called from a background thread.</param>
+    public static async Task<bool> SubmitAndTryAdvanceTurnAsync(ClientData clientState, System.Action<int>? stage = null)
     {
+        stage?.Invoke(Nova.Client.Shell.TurnProgressStages.SavingOrders);
         GameActions.SubmitTurn(clientState);
 
         string gameFolder = clientState.GameFolder;
+        stage?.Invoke(Nova.Client.Shell.TurnProgressStages.WaitingForComputerPlayers);
         await RunPendingAiTurnsAsync(gameFolder).ConfigureAwait(false);
 
+        stage?.Invoke(Nova.Client.Shell.TurnProgressStages.GeneratingTurn);
         return await Task.Run(() => TryAdvanceTurn(gameFolder)).ConfigureAwait(false);
     }
 
@@ -81,6 +87,9 @@ public static class TurnHost
         }
 
         new OrderReader(serverState).ReadOrders();
+
+        // The AI reads the game's own settings (map size...), not whatever the process holds.
+        using IDisposable gameSettings = serverState.UseSettings();
 
         foreach (PlayerSettings settings in serverState.AllPlayers)
         {
@@ -117,6 +126,13 @@ public static class TurnHost
         args.Add(CommandArguments.Option.RaceName, settings.RaceName);
         args.Add(CommandArguments.Option.Turn, serverState.TurnYear);
         args.Add(CommandArguments.Option.IntelFileName, Path.Combine(serverState.GameFolder, settings.RaceName + Global.IntelExtension));
+
+        // The New Game screen's built-in AI picker stores the archetype as the spec's AI category
+        // (ai-opponent-behavior.md section 1a); DefaultAi takes it as its -n personality code.
+        if (settings.AiCategory >= 0)
+        {
+            args.Add(CommandArguments.Option.AiPersonality, NewGameSetup.PersonalityCodeForCategory(settings.AiCategory));
+        }
 
         AbstractAI ai = new DefaultAi();
         ai.Initialize(args);

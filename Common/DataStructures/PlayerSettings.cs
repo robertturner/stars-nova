@@ -36,6 +36,24 @@ namespace Nova.Common
         public string RaceName; // The path & file name of the race.
         public string AiProgram; // The path & file name of the AI application or "Human"
         public ushort PlayerNumber; // The order number of the player from 1 - Global.MaxPlayers        
+        
+        /// <summary>
+        /// The computer player's AI category (behavior-specs-10/ai-opponent-behavior.md section 1a:
+        /// the archetype 0-5 picked in the New Game player row becomes the category the personality
+        /// dispatcher switches on). -1 (the default, and every older file) means "not set": the AI
+        /// launcher then passes no personality code and DefaultAi plays its own default. Only
+        /// meaningful when AiProgram is not "Human".
+        /// </summary>
+        public int AiCategory = -1;
+
+        /// <summary>
+        /// The computer player's skill tier (behavior-specs-10/turn-generation-engine.md §5a, the
+        /// AI submenu's tier list): 0 Easy, 1 Standard, 2 Tough, 3 Expert. -1 (the default, and
+        /// every older file) means "not recorded". Read by the Mystery Trader's planet trade, which
+        /// only Tough and Expert computer players make. Only meaningful when AiProgram is not
+        /// "Human".
+        /// </summary>
+        public int AiSkill = -1;
     
         /// <summary>
         /// Default constructor. 
@@ -55,13 +73,19 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (subnode.Name.ToLower())
+                    switch (subnode.Name.ToLowerInvariant())
                     {
                         case "racename":
                             RaceName = subnode.FirstChild.Value;
                             break;
                         case "aiprogram":
                             AiProgram = subnode.FirstChild.Value;
+                            break;
+                        case "aicategory":
+                            AiCategory = int.Parse(subnode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
+                            break;
+                        case "aiskill":
+                            AiSkill = int.Parse(subnode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
                             break;
                         case "playernumber":
                             PlayerNumber = ushort.Parse(subnode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
@@ -89,6 +113,15 @@ namespace Nova.Common
             Global.SaveData(xmldoc, xmlelPlayerSettings, "RaceName", RaceName);
             Global.SaveData(xmldoc, xmlelPlayerSettings, "AiProgram", AiProgram);
             Global.SaveData(xmldoc, xmlelPlayerSettings, "PlayerNumber", PlayerNumber.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (AiCategory >= 0)
+            {
+                Global.SaveData(xmldoc, xmlelPlayerSettings, "AiCategory", AiCategory.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            if (AiSkill >= 0)
+            {
+                Global.SaveData(xmldoc, xmlelPlayerSettings, "AiSkill", AiSkill.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
         
             return xmlelPlayerSettings;
         }

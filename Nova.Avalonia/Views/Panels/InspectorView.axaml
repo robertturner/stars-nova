@@ -6,6 +6,13 @@
              xmlns:input="using:Avalonia.Input"
              x:Class="Nova.Avalonia.Views.Panels.InspectorView"
              x:DataType="panels:InspectorViewModel">
+    <!-- Delete / Backspace delete the selected waypoint (behavior-specs-10/client-interface.md
+         command table, ids 103/104); a focused TextBox handles both keys itself first, so
+         editing a name field is unaffected. -->
+    <UserControl.KeyBindings>
+        <KeyBinding Gesture="Delete" Command="{Binding DeleteSelectedWaypointCommand}" />
+        <KeyBinding Gesture="Back" Command="{Binding DeleteSelectedWaypointCommand}" />
+    </UserControl.KeyBindings>
     <UserControl.Styles>
         <!-- A default FluentTheme TabItem's Padding is generous enough that this TabControl's
              tabs wrap onto stacked rows once several are visible at once at phone width (up to 4
@@ -36,6 +43,13 @@
         <Style Selector="TextBlock.waypointFuel.shortfall">
             <Setter Property="Foreground" Value="OrangeRed" />
             <Setter Property="Opacity" Value="1" />
+        </Style>
+        <!-- A Stargate-speed leg whose route isn't a safe jump - see
+             FleetWaypointRowViewModel.HasStargateWarning. Same treatment as the fuel shortfall
+             warning above, just its own symbol so it reads at a glance in a narrow row. -->
+        <Style Selector="TextBlock.stargateWarning">
+            <Setter Property="Foreground" Value="OrangeRed" />
+            <Setter Property="Margin" Value="0,0,8,0" />
         </Style>
     </UserControl.Styles>
 
@@ -69,6 +83,66 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
+                            <!-- Minefield: the compact display-option selector (a local view
+                                 preference; client-interface.md) and, for an owned Space
+                                 Demolition standard field, the Detonate order (DetonateCommand,
+                                 applied at the next turn generation). -->
+                            <StackPanel IsVisible="{Binding IsMinefieldSelected}" Spacing="4" Margin="0,8,0,0">
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <TextBlock Grid.Column="0" Text="Show" Opacity="0.7" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding MinefieldDisplayOptions}"
+                                              SelectedIndex="{Binding MinefieldDisplayIndex}" HorizontalAlignment="Stretch" />
+                                </Grid>
+                                <CheckBox Content="Detonate" IsChecked="{Binding MinefieldDetonate}" IsVisible="{Binding CanDetonateMinefield}"
+                                          ToolTip.Tip="While set, every fleet inside the field takes mine damage once a year, and the field decays faster" />
+                            </StackPanel>
+
+                            <!-- Scanner display % (client-ui-dialog-catalog.md "Planet
+                                 inspector"): a "N%" field where Enter commits and Escape reverts,
+                                 a slider kept in step, both turning the map's scan circles on, and
+                                 a live value tooltip for 400 ms after a change. Desktop only
+                                 (InspectorViewModel.Scanner.cs); the same value is on the map's
+                                 View popup. -->
+                            <StackPanel IsVisible="{Binding ShowScannerDisplay}" Spacing="4" Margin="0,8,0,0">
+                                <TextBlock Text="Scanner display" FontWeight="Bold" Opacity="0.8" FontSize="11" />
+                                <Grid ColumnDefinitions="64,*">
+                                    <TextBox Grid.Column="0" Text="{Binding ScannerPercentText}" MinWidth="56"
+                                             ToolTip.Tip="2-100%: below 100% the map draws scan circles larger (Enter applies, Escape reverts)">
+                                        <TextBox.KeyBindings>
+                                            <KeyBinding Gesture="Enter" Command="{Binding CommitScannerTextCommand}" />
+                                            <KeyBinding Gesture="Escape" Command="{Binding RevertScannerTextCommand}" />
+                                        </TextBox.KeyBindings>
+                                    </TextBox>
+                                    <Slider Grid.Column="1" Minimum="2" Maximum="100" Value="{Binding ScannerPercentSlider}"
+                                            Margin="8,0,0,0" VerticalAlignment="Center"
+                                            ToolTip.Tip="{Binding ScannerTooltipText}"
+                                            ToolTip.IsOpen="{Binding IsScannerTooltipVisible, Mode=OneWay}"
+                                            ToolTip.ShowDelay="0" />
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- Mineral packets: an own planet whose starbase carries a mass
+                                 driver sets where its packets go and how fast (a planet order,
+                                 PacketDestinationCommand; production-queue.md 10b). On the
+                                 desktop map, Shift+click a planet does the same. -->
+                            <StackPanel IsVisible="{Binding CanSetPacketDestination}" Spacing="4" Margin="0,8,0,0">
+                                <TextBlock Text="Mineral packets" FontWeight="Bold" Opacity="0.8" FontSize="11" />
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <TextBlock Grid.Column="0" Text="Destination" Opacity="0.7" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding PacketDestinationChoices}"
+                                              SelectedItem="{Binding SelectedPacketDestination}" HorizontalAlignment="Stretch" />
+                                </Grid>
+                                <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding HasPacketDestination}">
+                                    <TextBlock Grid.Column="0" Text="Speed" Opacity="0.7" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding PacketSpeedChoices}"
+                                              SelectedIndex="{Binding SelectedPacketSpeedIndex}" HorizontalAlignment="Stretch"
+                                              ToolTip.Tip="A packet faster than the receiving planet's mass driver can catch damages the planet" />
+                                </Grid>
+                                <TextBlock Text="{Binding PacketLaunchSpeedText}" Opacity="0.7" FontSize="11" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding PacketStatusMessage}" Foreground="OrangeRed" FontSize="11" TextWrapping="Wrap"
+                                           IsVisible="{Binding PacketStatusMessage, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+                            </StackPanel>
+
                             <!-- Ships making up the selected fleet - a fleet can be (and often
                                  is) several different hulls/quantities at once, not just one
                                  design; the same SplitMergeRows list already built for the
@@ -96,8 +170,19 @@
                                                            Width="24" Height="24" Stretch="Uniform"
                                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                 </Border>
-                                                <TextBlock Grid.Column="1" Text="{Binding Label}" VerticalAlignment="Center" />
-                                                <TextBlock Grid.Column="2" Text="{Binding OriginalQuantity, StringFormat='x{0}'}" Opacity="0.7" VerticalAlignment="Center" />
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Label}" />
+                                                    <TextBlock Text="{Binding DamageLabel}" IsVisible="{Binding DamageLabel, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}"
+                                                               FontSize="10" Foreground="OrangeRed" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding OriginalQuantity, StringFormat='x{0}'}" Opacity="0.7" HorizontalAlignment="Right" />
+                                                    <!-- Per-ship mass, not this row's total (Quantity x Mass) - see
+                                                         SplitMergeRowViewModel.MassLabel's own comment on why this
+                                                         is the exact figure a Stargate jump checks per ship. -->
+                                                    <TextBlock Text="{Binding MassLabel}" Opacity="0.5" FontSize="10" HorizontalAlignment="Right"
+                                                               ToolTip.Tip="Mass per ship (excludes cargo) - checked per ship, not fleet total, when using a Stargate" />
+                                                </StackPanel>
                                             </Grid>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
@@ -188,24 +273,53 @@
                             <ItemsControl ItemsSource="{Binding WaypointRows}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="panels:FleetWaypointRowViewModel">
+                                        <!-- Two lines, not one 9-column row - confirmed live on a phone-width
+                                             screen that cramming Destination/Warp/warning/Task/years/fuel/3
+                                             buttons into one row left no room at all for Destination (and
+                                             clipped the Move/Delete buttons off the right edge entirely) once
+                                             WarpDisplay could read the full word "Stargate" and a warning
+                                             column was added alongside it. -->
                                         <Button Classes="waypointRow" Classes.selected="{Binding IsSelected}" Command="{Binding SelectCommand}">
-                                            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="2">
-                                                <TextBlock Grid.Column="0" Text="{Binding Destination}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding Warp, StringFormat='warp {0}'}" Opacity="0.7" Margin="8,0" />
-                                                <TextBlock Grid.Column="2" Text="{Binding Task}" Opacity="0.7" Margin="0,0,8,0" />
-                                                <TextBlock Grid.Column="3" Text="{Binding YearsUntilArrivalDisplay}" Opacity="0.7" Margin="0,0,8,0"
-                                                           ToolTip.Tip="Estimated years to reach this waypoint" />
-                                                <TextBlock Grid.Column="4" Classes="waypointFuel" Classes.shortfall="{Binding HasFuelShortfall}"
-                                                           Text="{Binding FuelUponArrival, StringFormat='{}{0:0}mg'}" Margin="0,0,8,0"
-                                                           ToolTip.Tip="Estimated fuel remaining on arrival" />
-                                                <Button Grid.Column="5" Content="▲" Padding="4,0" Command="{Binding MoveUpCommand}" />
-                                                <Button Grid.Column="6" Content="▼" Padding="4,0" Command="{Binding MoveDownCommand}" Margin="2,0,0,0" />
-                                                <Button Grid.Column="7" Content="✕" Padding="4,0" Command="{Binding DeleteCommand}" Margin="4,0,0,0" />
-                                            </Grid>
+                                            <StackPanel Margin="2" Spacing="2">
+                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Destination}" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding WarpDisplay}" Opacity="0.7" Margin="8,0" />
+                                                    <TextBlock Grid.Column="2" Classes="stargateWarning" Text="&#9888;" IsVisible="{Binding HasStargateWarning}"
+                                                               ToolTip.Tip="{Binding StargateWarningText}" />
+                                                    <TextBlock Grid.Column="3" Text="{Binding Task}" Opacity="0.7" Margin="8,0,0,0" />
+                                                </Grid>
+                                                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">
+                                                    <TextBlock Grid.Column="0" Text="{Binding YearsUntilArrivalDisplay}" Opacity="0.7" Margin="0,0,8,0"
+                                                               ToolTip.Tip="Estimated years to reach this waypoint" />
+                                                    <TextBlock Grid.Column="1" Classes="waypointFuel" Classes.shortfall="{Binding HasFuelShortfall}"
+                                                               Text="{Binding FuelUponArrival, StringFormat='{}{0:0}mg'}"
+                                                               ToolTip.Tip="Estimated fuel remaining on arrival" />
+                                                    <!-- "chasing <fleet>" for a waypoint aimed at a fleet (a pursuit). -->
+                                                    <TextBlock Grid.Column="2" Text="{Binding TargetNote}" IsVisible="{Binding HasTargetNote}"
+                                                               Opacity="0.7" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"
+                                                               ToolTip.Tip="This waypoint follows the target fleet each turn" />
+                                                    <Button Grid.Column="3" Content="▲" Padding="4,0" Command="{Binding MoveUpCommand}" />
+                                                    <Button Grid.Column="4" Content="▼" Padding="4,0" Command="{Binding MoveDownCommand}" Margin="2,0,0,0" />
+                                                    <Button Grid.Column="5" Content="✕" Padding="4,0" Command="{Binding DeleteCommand}" Margin="4,0,0,0" />
+                                                </Grid>
+                                            </StackPanel>
                                         </Button>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+
+                            <!-- The fleet's Repeat Orders flag: sends a RepeatOrdersCommand as soon
+                                 as it is toggled (see InspectorViewModel.RepeatOrders). -->
+                            <CheckBox Content="Repeat Orders" IsChecked="{Binding RepeatOrders}"
+                                      ToolTip.Tip="When the fleet reaches a waypoint, it is added again at the end of the route" />
+
+                            <!-- The fleet's battle plan (sent with the plans themselves as a
+                                 BattlePlansCommand - see InspectorViewModel.Minefield.cs). -->
+                            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                                <TextBlock Grid.Column="0" Text="Battle plan" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding FleetBattlePlanOptions}"
+                                          SelectedItem="{Binding SelectedFleetBattlePlan}" HorizontalAlignment="Stretch" />
+                            </Grid>
 
                             <!-- Shown only while a waypoint row above is selected - lets an
                                  ALREADY-added waypoint's warp and task be changed after the fact
@@ -215,29 +329,50 @@
                                  immediately on change, matching FleetDetail.WaypointTaskChanged's
                                  own behavior in the original for Task; Warp follows the same
                                  pattern for consistency. -->
-                            <Grid ColumnDefinitions="Auto,*" Margin="0,2" IsVisible="{Binding HasSelectedWaypoint}">
+                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2" IsVisible="{Binding HasSelectedWaypoint}">
                                 <TextBlock Grid.Column="0" Text="Selected waypoint's warp" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <NumericUpDown Grid.Column="1" Value="{Binding SelectedWaypointWarp}" Minimum="0" Maximum="10" FormatString="0"
+                                               IsEnabled="{Binding !SelectedWaypointUseStargate}"
                                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="4,0" />
+                                <CheckBox Grid.Column="2" Content="Stargate" IsChecked="{Binding SelectedWaypointUseStargate}" Margin="8,0,0,0" />
                             </Grid>
                             <Grid ColumnDefinitions="Auto,*" Margin="0,2" IsVisible="{Binding HasSelectedWaypoint}">
                                 <TextBlock Grid.Column="0" Text="Selected waypoint's task" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <ComboBox Grid.Column="1" ItemsSource="{Binding TaskOptions}" SelectedItem="{Binding SelectedWaypointTaskOption}" HorizontalAlignment="Stretch" />
                             </Grid>
+                            <!-- Patrol settings of the selected waypoint (apply immediately). -->
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Margin="0,2" IsVisible="{Binding IsSelectedWaypointPatrol}">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Patrol speed" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding PatrolSpeedOptions}" SelectedIndex="{Binding SelectedPatrolSpeed}" HorizontalAlignment="Stretch" />
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Patrol range" VerticalAlignment="Center" Margin="0,4,8,0" />
+                                <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding PatrolRangeOptions}" SelectedIndex="{Binding SelectedPatrolRangeIndex}" HorizontalAlignment="Stretch" Margin="0,4,0,0" />
+                            </Grid>
 
                             <TextBlock Text="Add waypoint (inserted in front of the selected one above)"
                                        FontSize="11" Opacity="0.6" Margin="0,4,0,0" IsVisible="{Binding HasSelectedWaypoint}" />
                             <TextBlock Text="Add waypoint" FontSize="11" Opacity="0.6" Margin="0,4,0,0" IsVisible="{Binding !HasSelectedWaypoint}" />
-                            <TextBlock Text="Tap a star, fleet, minefield or wormhole on the map to set it as the destination."
+                            <TextBlock Text="Tap a star, fleet, minefield or wormhole on the map to set it as the destination. A fleet tapped as the destination is followed (the waypoint moves with it)."
                                        FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
-                            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
                                 <TextBlock Grid.Column="0" Text="Warp" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <NumericUpDown Grid.Column="1" Value="{Binding NewWaypointWarp}" Minimum="0" Maximum="10" FormatString="0"
+                                               IsEnabled="{Binding !NewWaypointUseStargate}"
                                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="4,0" />
+                                <CheckBox Grid.Column="2" Content="Stargate" IsChecked="{Binding NewWaypointUseStargate}" Margin="8,0,0,0" />
                             </Grid>
+                            <TextBlock Text="If eligible (both ends have an operational Stargate at the time this is added), the speed above defaults to Stargate; pick an ordinary warp instead to travel normally even where one exists."
+                                       FontSize="10" Opacity="0.55" TextWrapping="Wrap" />
                             <Grid ColumnDefinitions="Auto,*" Margin="0,2">
                                 <TextBlock Grid.Column="0" Text="Task" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <ComboBox Grid.Column="1" ItemsSource="{Binding TaskOptions}" SelectedItem="{Binding NewWaypointTask}" HorizontalAlignment="Stretch" />
+                            </Grid>
+                            <!-- Patrol settings for the waypoint about to be added: speed
+                                 (Automatic = the fleet's efficient warp) and the intercept range. -->
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Margin="0,2" IsVisible="{Binding IsNewWaypointPatrol}">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Patrol speed" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding PatrolSpeedOptions}" SelectedIndex="{Binding NewPatrolSpeed}" HorizontalAlignment="Stretch" />
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Patrol range" VerticalAlignment="Center" Margin="0,4,8,0" />
+                                <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding PatrolRangeOptions}" SelectedIndex="{Binding NewPatrolRangeIndex}" HorizontalAlignment="Stretch" Margin="0,4,0,0" />
                             </Grid>
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <!-- Arms "tap something on the map" targeting - see
@@ -369,7 +504,11 @@
                                     <DataTemplate x:DataType="panels:SplitMergeRowViewModel">
                                         <StackPanel Margin="0,4">
                                             <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Grid.Column="0" Text="{Binding Label}" />
+                                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="{Binding Label}" />
+                                                    <TextBlock Text="{Binding MassLabel}" Opacity="0.5" FontSize="10" VerticalAlignment="Center"
+                                                               ToolTip.Tip="Mass per ship (excludes cargo) - checked per ship, not fleet total, when using a Stargate" />
+                                                </StackPanel>
                                                 <TextBlock Grid.Column="1" Text="{Binding OtherQuantity, StringFormat='Other: {0}'}" Opacity="0.6" FontSize="11" />
                                             </Grid>
                                             <Slider Minimum="0" Maximum="{Binding OriginalQuantity}" Value="{Binding KeepInSource}" />

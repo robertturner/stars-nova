@@ -155,11 +155,11 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "capacity")
+                    if (subnode.Name.ToLowerInvariant() == "capacity")
                     {
                         Capacity = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    if (subnode.Name.ToLower() == "generation")
+                    if (subnode.Name.ToLowerInvariant() == "generation")
                     {
                         Generation = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }

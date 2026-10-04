@@ -20,6 +20,15 @@ public partial class OpenGameWindow : Window
         OpenGameContent.GameOpened += OnGameOpened;
     }
 
+    /// <summary>Opened from the game window's File menu: shows the startup screen already on
+    /// the given sub-screen ("new", "open", "race"; anything else = the startup choices) - see
+    /// OpenGameView.ShowStartupChoice.</summary>
+    public OpenGameWindow(string startupChoice)
+        : this()
+    {
+        OpenGameContent.ShowStartupChoice(startupChoice);
+    }
+
     private void OnGameOpened(ClientData clientState)
     {
         var mainWindow = new MainWindow(new MainViewModel(clientState));

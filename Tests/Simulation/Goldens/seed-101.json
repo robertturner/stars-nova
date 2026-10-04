@@ -1,0 +1,10 @@
+{
+  "Seed": 101,
+  "Config": "seed 101, Tiny/Normal, 12 turns, accelerated off, players [Macinti/Standard, Automitrons/Standard]",
+  "Turns": 12,
+  "Hashes": {
+    "4": "ee68d68bc37404f21829a1c9",
+    "8": "424477e0dedf4aabe11eff29",
+    "12": "c6791501010c90b78d09ec2b"
+  }
+}

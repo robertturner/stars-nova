@@ -19,16 +19,31 @@
             <Button Grid.Column="1" Content="Delete" Command="{Binding DeleteCommand}" />
         </Grid>
 
-        <TextBlock Text="{Binding StatusMessage}" Opacity="0.7" IsVisible="{Binding HasStatusMessage}" />
+        <!-- Deleting a plan still assigned to a fleet asks first (client-interface.md, Battle
+             Plans dialog); declining changes nothing. -->
+        <Border IsVisible="{Binding IsConfirmingDelete}" BorderBrush="OrangeRed" BorderThickness="1" Padding="6" CornerRadius="3">
+            <StackPanel Spacing="4">
+                <TextBlock Text="{Binding ConfirmDeleteText}" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Button Content="Yes" Command="{Binding ConfirmDeleteCommand}" />
+                    <Button Content="No" Command="{Binding CancelDeleteCommand}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="{Binding StatusMessage}" Opacity="0.7" IsVisible="{Binding HasStatusMessage}" TextWrapping="Wrap" />
 
         <StackPanel Spacing="4" Margin="0,8,0,0" IsVisible="{Binding SelectedPlan, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <TextBlock Text="Plan Details" FontWeight="Bold" Opacity="0.8" />
+        <!-- The ordinary rename surface: filtered while typing, committed (and checked again)
+             by Rename - BattlePlanRowViewModel.EditName, BattlePlansViewModel.RenameCommand. -->
+        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox Grid.Column="1" Text="{Binding SelectedPlan.EditName}" />
+            <Button Grid.Column="2" Content="Rename" Margin="4,0,0,0" Command="{Binding RenameCommand}" />
+        </Grid>
         <StackPanel Spacing="4" DataContext="{Binding SelectedPlan}" x:DataType="panels:BattlePlanRowViewModel">
-            <TextBlock Text="Plan Details" FontWeight="Bold" Opacity="0.8" />
 
-            <Grid ColumnDefinitions="Auto,*" Margin="0,2">
-                <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" Margin="0,0,8,0" />
-                <TextBox Grid.Column="1" Text="{Binding Name}" />
-            </Grid>
             <Grid ColumnDefinitions="Auto,*" Margin="0,2">
                 <TextBlock Grid.Column="0" Text="Primary Target" VerticalAlignment="Center" Margin="0,0,8,0" />
                 <ComboBox Grid.Column="1" ItemsSource="{Binding TargetOptions}" SelectedItem="{Binding PrimaryTarget}" HorizontalAlignment="Stretch" />

@@ -1,0 +1,326 @@
+using System.Collections.Generic;
+using System.Linq;
+using Avalonia.Headless.NUnit;
+using Nova.Avalonia.ViewModels;
+using Nova.Avalonia.ViewModels.Panels;
+using Nova.Client;
+using Nova.Client.Map;
+using Nova.Common;
+using Nova.Common.DataStructures;
+using Nova.Common.Waypoints;
+using NUnit.Framework;
+
+namespace Nova.Avalonia.Tests;
+
+/// <summary>
+/// The Star Map document's view model against a real generated game (client-interface.md, "Map
+/// canvas" rows 17-46). Where a rule's values are spec-gap stand-ins (the planet-mode order, the
+/// initial view options), the tests read them through MapViewOptions' own seams instead of
+/// pinning them.
+/// </summary>
+[TestFixture]
+public class StarMapViewModelTests
+{
+    private static (ClientData Client, SelectionService Selection, StarMapDocumentViewModel Map) Open(string race = TestGame.PacketRace)
+    {
+        ClientData client = TestGame.Load(race);
+        var selection = new SelectionService();
+        var map = new StarMapDocumentViewModel("StarMap", "Star Map", client, selection);
+        return (client, selection, map);
+    }
+
+    private static StarMapStarViewModel MarkerOf(StarMapDocumentViewModel map, string starName)
+    {
+        return map.Stars.Single(star => star.Name == starName);
+    }
+
+    /// <summary>Row 17: selecting an object on the map makes it the subject every panel follows.</summary>
+    [AvaloniaTest]
+    public void SelectingAStarMarker_PublishesTheOwnedStar_AndHighlightsIt()
+    {
+        (ClientData client, SelectionService selection, StarMapDocumentViewModel map) = Open();
+        Star home = TestGame.HomeStar(client);
+        var inspector = new InspectorViewModel("Inspector", "Inspector", client, selection);
+        var production = new ProductionViewModel("Production", "Production", client, selection);
+
+        StarMapStarViewModel marker = MarkerOf(map, home.Name);
+        marker.SelectCommand.Execute(null);
+
+        Assert.That(selection.Selected, Is.SameAs(home), "an owned star publishes the live Star, not its report");
+        Assert.That(marker.IsSelected, Is.True);
+        Assert.That(map.Stars.Count(star => star.IsSelected), Is.EqualTo(1));
+        Assert.That(inspector.Name, Is.EqualTo(home.Name));
+        Assert.That(production.PlanetName, Is.EqualTo(home.Name));
+    }
+
+    /// <summary>Row 17: an unowned star publishes only its report.</summary>
+    [AvaloniaTest]
+    public void SelectingAForeignStarMarker_PublishesItsReport()
+    {
+        (ClientData client, SelectionService selection, StarMapDocumentViewModel map) = Open();
+        StarIntel report = client.EmpireState.StarReports.Values.First(r => r.Owner != client.EmpireState.Id);
+
+        MarkerOf(map, report.Name).SelectCommand.Execute(null);
+
+        Assert.That(selection.Selected, Is.SameAs(report));
+    }
+
+    /// <summary>Rows 18-20: the selected fleet's route is drawn as ordered legs with a distinct
+    /// first leg and final marker; selecting something else replaces it.</summary>
+    [AvaloniaTest]
+    public void SelectedFleetRoute_IsDrawnAsOrderedLegs_AndFollowsTheSelection()
+    {
+        (ClientData client, SelectionService selection, StarMapDocumentViewModel map) = Open();
+        Star home = TestGame.HomeStar(client);
+        Fleet fleet = TestGame.FleetsAt(client, home)[0];
+        List<StarIntel> targets = client.EmpireState.StarReports.Values.Where(r => r.Name != home.Name).Take(2).ToList();
+        foreach (StarIntel target in targets)
+        {
+            fleet.Waypoints.Add(new Waypoint { Position = target.Position, Destination = target.Name, WarpFactor = 6 });
+        }
+
+        selection.Selected = fleet;
+
+        IReadOnlyList<StarMapRouteLegViewModel> legs = map.RouteLegs;
+        Assert.That(legs, Has.Count.EqualTo(2), "one leg per pending waypoint");
+        bool firstLegDistinct = legs[0].LineThickness != legs[1].LineThickness || !Equals(legs[0].LineColor, legs[1].LineColor);
+        Assert.That(firstLegDistinct, Is.True, "the first leg (from the fleet's current position) is drawn distinctly");
+        Assert.That(legs[1].MarkerDiameter, Is.GreaterThan(legs[0].MarkerDiameter), "the final destination is marked distinctly");
+        Assert.That(legs[0].End, Is.EqualTo(legs[1].Start), "the legs join in order");
+
+        selection.Selected = home;
+        Assert.That(map.RouteLegs, Is.Empty, "selecting a planet removes the route overlay");
+
+        Fleet other = TestGame.FleetsAt(client, home)[1];
+        other.Waypoints.Add(new Waypoint { Position = targets[0].Position, Destination = targets[0].Name, WarpFactor = 5 });
+        selection.Selected = other;
+        Assert.That(map.RouteLegs, Has.Count.EqualTo(1), "a different fleet's own route replaces the first one");
+    }
+
+    /// <summary>Row 22: repeated clicks on the same spot cycle through the co-located objects.</summary>
+    [AvaloniaTest]
+    public void RepeatedClickOnTheSameSpot_CyclesThroughCoLocatedMarkers()
+    {
+        ClientData client = TestGame.Load();
+        Star home = TestGame.HomeStar(client);
+
+        // Take one fleet out of orbit (still on the star's position) so it gets its own marker
+        // sitting on the star's.
+        Fleet scout = TestGame.FleetsAt(client, home)[0];
+        scout.InOrbit = null;
+
+        var selection = new SelectionService();
+        var map = new StarMapDocumentViewModel("StarMap", "Star Map", client, selection);
+        StarMapStarViewModel star = MarkerOf(map, home.Name);
+        Assume.That(map.Fleets.Any(f => ReferenceEquals(f.Selectable, scout)), "the out-of-orbit fleet has a map marker");
+
+        MapMarkerViewModel? first = map.FindNearestStarOrFleetMarker(star.X, star.Y);
+        MapMarkerViewModel? second = map.FindNearestStarOrFleetMarker(star.X, star.Y);
+        MapMarkerViewModel? third = map.FindNearestStarOrFleetMarker(star.X, star.Y);
+
+        Assert.That(first, Is.Not.Null);
+        Assert.That(second, Is.Not.SameAs(first), "a second click on the same spot moves to the next object there");
+        Assert.That(new[] { first, second }, Has.Some.SameAs(star));
+        Assert.That(third, Is.SameAs(first), "the cycle wraps round");
+    }
+
+    /// <summary>Rows 27 and 32: the home planet's starbase/mass-driver dots and the fleet-in-orbit
+    /// ring, which grows from the small to the large size class when the planet is tracked.</summary>
+    [AvaloniaTest]
+    public void HomePlanetMarker_ShowsStarbaseCapabilities_AndTheOrbitRing()
+    {
+        (ClientData client, SelectionService selection, StarMapDocumentViewModel map) = Open();
+        Star home = TestGame.HomeStar(client);
+        StarMapStarViewModel marker = MarkerOf(map, home.Name);
+
+        Assert.That(marker.HasStarbase, Is.True);
+        Assert.That(map.Stars.Any(s => s.HasMassDriver), Is.True, "a Packet Physics empire starts with a mass-driver starbase");
+        Assert.That(marker.HasOwnFleetInOrbit, Is.True, "the starting fleets orbit the home world");
+        Assert.That(marker.HasFleetsInOrbit, Is.True);
+
+        double untracked = marker.OrbitRingDiameter;
+        selection.Selected = home;
+        Assert.That(marker.OrbitRingDiameter, Is.GreaterThan(untracked), "the tracked planet uses the large ring");
+        Assert.That(untracked, Is.EqualTo(11), "client-interface.md: 11x11 ring normally");
+        Assert.That(marker.OrbitRingDiameter, Is.EqualTo(19), "19x19 when the planet is the tracked object");
+    }
+
+    /// <summary>Rows 33 and 34: a deep-space fleet marker carries its ship count, the badge
+    /// follows Shift+0, and the tracked fleet shows the chevron instead of the heading
+    /// triangle.</summary>
+    [AvaloniaTest]
+    public void DeepSpaceFleetMarker_BadgeAndChevron()
+    {
+        ClientData client = TestGame.Load();
+        Star home = TestGame.HomeStar(client);
+        Fleet scout = TestGame.FleetsAt(client, home)[0];
+        scout.InOrbit = null;
+
+        var selection = new SelectionService();
+        var map = new StarMapDocumentViewModel("StarMap", "Star Map", client, selection);
+        StarMapFleetViewModel? marker = map.Fleets.FirstOrDefault(f => ReferenceEquals(f.Selectable, scout));
+        Assume.That(marker, Is.Not.Null, "the out-of-orbit fleet has a map marker");
+
+        Assert.That(marker!.ShipCount, Is.EqualTo(scout.Composition.Values.Sum(token => token.Quantity)));
+        Assert.That(marker.ShipCountDisplay, Is.EqualTo(marker.ShipCount.ToString()));
+
+        bool badge = marker.ShowBadge;
+        Assert.That(map.HandleDigitKey(0, shift: true), Is.True, "Shift+0 is the badge key");
+        Assert.That(marker.ShowBadge, Is.EqualTo(!badge));
+
+        Assert.That(marker.ShowChevron, Is.False);
+        selection.Selected = scout;
+        Assert.That(marker.ShowChevron, Is.True, "the tracked fleet is drawn as the chevron");
+        Assert.That(marker.ShowTriangle, Is.False);
+    }
+
+    /// <summary>Row 36: the empire's own scanners draw scan-range circles; key 7 turns them off.</summary>
+    [AvaloniaTest]
+    public void ScanCircles_DrawnForOwnScanners_AndFollowKeySeven()
+    {
+        (ClientData client, _, StarMapDocumentViewModel map) = Open();
+        map.ShowScanCircles = true;
+        Assert.That(map.ScanCircles, Is.Not.Empty, "the home planet's scanner draws a circle");
+
+        Assert.That(map.HandleDigitKey(7, shift: false), Is.True);
+        Assert.That(map.ShowScanCircles, Is.False);
+        Assert.That(map.ScanCircles, Is.Empty);
+
+        map.HandleDigitKey(7, shift: false);
+        Assert.That(map.ScanCircles, Is.Not.Empty);
+    }
+
+    /// <summary>Row 38 wiring: lowering the scanner percentage enlarges the drawn circles by the
+    /// rule in ScanCircleRules, and force-enables them.</summary>
+    [AvaloniaTest]
+    public void ScannerPercentage_RescalesTheDrawnCircles()
+    {
+        (ClientData client, _, StarMapDocumentViewModel map) = Open();
+        Star home = TestGame.HomeStar(client);
+        map.ShowScanCircles = true;
+        double fullSize = map.ScanCircles.Max(circle => circle.Diameter / 2);
+
+        map.ShowScanCircles = false;
+        map.ScannerPercentage = 50;
+
+        Assert.That(map.ShowScanCircles, Is.True, "changing the percentage turns the circles back on");
+        Assert.That(map.ScanCircles.Max(circle => circle.Diameter / 2), Is.GreaterThan(fullSize));
+        Assert.That(map.ScanCircles.Select(c => c.Diameter / 2), Has.Some.EqualTo(ScanCircleRules.DisplayRadius(home.ScanRange, 50)).Within(0.001));
+    }
+
+    /// <summary>Row 44: the nine fixed zoom steps; the zoom commands clamp at both ends.</summary>
+    [AvaloniaTest]
+    public void Zoom_HasNineSteps_AndClampsAtBothEnds()
+    {
+        (_, _, StarMapDocumentViewModel map) = Open();
+
+        Assert.That(map.ZoomLevelLabels, Has.Count.EqualTo(9));
+        Assert.That(map.Zoom, Is.EqualTo(1.0), "the default step is 100%");
+
+        for (int i = 0; i < 12; i++)
+        {
+            map.ZoomInCommand.Execute(null);
+        }
+
+        Assert.That(map.ZoomLevelIndex, Is.EqualTo(8));
+        Assert.That(map.Zoom, Is.EqualTo(4.0), "the largest step is x4");
+
+        for (int i = 0; i < 12; i++)
+        {
+            map.ZoomOutCommand.Execute(null);
+        }
+
+        Assert.That(map.ZoomLevelIndex, Is.EqualTo(0));
+        Assert.That(map.Zoom, Is.EqualTo(0.25), "the smallest step is 1/4");
+
+        map.ResetZoomCommand.Execute(null);
+        Assert.That(map.Zoom, Is.EqualTo(1.0));
+    }
+
+    /// <summary>Rows 31 and 46: the six-way "Planets:" mode drives every star's overlay (read
+    /// through the MapViewOptions seam, not pinned), and the digit keys 1-6 select it.</summary>
+    [AvaloniaTest]
+    public void PlanetMode_DrivesEveryStarOverlay_AndTheDigitKeysSelectIt()
+    {
+        (_, _, StarMapDocumentViewModel map) = Open();
+        Assert.That(map.PlanetModeLabels, Has.Count.EqualTo(MapViewOptions.ModeCount));
+        Assert.That(MapViewOptions.ModeCount, Is.EqualTo(6));
+
+        for (int mode = 0; mode < MapViewOptions.ModeCount; mode++)
+        {
+            Assert.That(map.HandleDigitKey(mode + 1, shift: false), Is.True);
+            Assert.That(map.PlanetMode, Is.EqualTo(mode));
+            Assert.That(map.Stars.Select(star => star.Overlay), Is.All.EqualTo(MapViewOptions.ModeOverlays[mode]));
+        }
+    }
+
+    /// <summary>Row 46: key 0 toggles the planet-name labels on every star.</summary>
+    [AvaloniaTest]
+    public void KeyZero_TogglesPlanetNames()
+    {
+        (_, _, StarMapDocumentViewModel map) = Open();
+        bool before = map.ShowPlanetNames;
+
+        map.HandleDigitKey(0, shift: false);
+
+        Assert.That(map.ShowPlanetNames, Is.EqualTo(!before));
+        Assert.That(map.Stars.Select(star => star.ShowName), Is.All.EqualTo(!before));
+        Assert.That(map.HandleDigitKey(5, shift: true), Is.False, "Shift with 1-9 is not bound");
+    }
+
+    /// <summary>Row 11: commands are gated on context - measuring needs a map object selected.</summary>
+    [AvaloniaTest]
+    public void MeasureDistance_IsEnabledOnlyWithAMapObjectSelected()
+    {
+        (ClientData client, SelectionService selection, StarMapDocumentViewModel map) = Open();
+        Star home = TestGame.HomeStar(client);
+        StarIntel other = client.EmpireState.StarReports.Values.First(r => r.Name != home.Name);
+
+        Assert.That(map.MeasureDistanceCommand.CanExecute(null), Is.False);
+
+        selection.Selected = home;
+        Assert.That(map.MeasureDistanceCommand.CanExecute(null), Is.True);
+
+        map.MeasureDistanceCommand.Execute(null);
+        Assert.That(map.IsMeasuringDistance, Is.True);
+        MarkerOf(map, other.Name).SelectCommand.Execute(null);
+
+        Assert.That(map.IsMeasuringDistance, Is.False);
+        Assert.That(selection.Selected, Is.SameAs(home), "the measured-to tap does not change the selection");
+        Assert.That(map.MeasureDistanceResult, Does.Contain(home.Name).And.Contain(other.Name));
+    }
+
+    /// <summary>Row 83: detected mineral packets and wormholes get selectable markers with an
+    /// identification tooltip.</summary>
+    [AvaloniaTest]
+    public void PacketAndWormholeReports_GetSelectableMarkers()
+    {
+        ClientData client = TestGame.Load();
+        Star home = TestGame.HomeStar(client);
+        var packet = new MineralPacket { Owner = client.EmpireState.Id, Id = 77, Warp = 8, TargetName = home.Name };
+        packet.Position = new NovaPoint(home.Position.X + 30, home.Position.Y + 30);
+        packet.Minerals.Ironium = 100;
+        client.EmpireState.MineralPacketReports[packet.Key] = packet;
+
+        var wormhole = new WormholeIntel { Id = 5, Year = client.EmpireState.TurnYear };
+        wormhole.Position = new NovaPoint(home.Position.X - 30, home.Position.Y - 30);
+        client.EmpireState.WormholeReports[wormhole.Key] = wormhole;
+
+        var selection = new SelectionService();
+        var map = new StarMapDocumentViewModel("StarMap", "Star Map", client, selection);
+        var inspector = new InspectorViewModel("Inspector", "Inspector", client, selection);
+
+        StarMapPacketViewModel packetMarker = map.Packets.Single();
+        StarMapWormholeViewModel wormholeMarker = map.Wormholes.Single();
+        Assert.That(packetMarker.ToolTipText, Is.Not.Empty);
+        Assert.That(wormholeMarker.ToolTipText, Is.Not.Empty);
+
+        packetMarker.SelectCommand.Execute(null);
+        Assert.That(selection.Selected, Is.SameAs(packet));
+        Assert.That(inspector.Kind, Is.EqualTo("Mineral Packet"));
+        Assert.That(inspector.Rows, Is.Not.Empty);
+
+        wormholeMarker.SelectCommand.Execute(null);
+        Assert.That(selection.Selected, Is.SameAs(wormhole));
+    }
+}

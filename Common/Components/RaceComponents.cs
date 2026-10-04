@@ -80,9 +80,19 @@ namespace Nova.Common.Components
                 throw new System.NullReferenceException();
             }
             
-            // go through the AllCompoents list
-            foreach (Component component in allComponents.GetAll.Values)
+            // go through the AllCompoents list (in stable name order: see GetAllInNameOrder)
+            foreach (Component component in allComponents.GetAllInNameOrder)
             {
+                // The 12 one-time-battle-grant specials (see SpecialComponentGrants) are never
+                // available from tech/trait eligibility alone - a fresh race here has never
+                // fought a battle, so it can't have been granted any of them yet. Skip them
+                // entirely; StarUpdateStep.TechLevelUp is what actually adds one once both a
+                // grant AND its tech requirement are satisfied.
+                if (SpecialComponentGrants.IsSpecialGrant(component.Name))
+                {
+                    continue;
+                }
+
                 // first check the required tech level
                 if (tech < component.RequiredTech)
                 {
@@ -94,28 +104,37 @@ namespace Nova.Common.Components
                 }
 
                 // check if the component is restricted by this race's Primary or Secondary traits.
-                bool restricted = false;
-                foreach (string trait in AllTraits.TraitKeys)
-                {
-                    bool hasTrait = race.HasTrait(trait);
-                    RaceAvailability availability = component.Restrictions.Availability(trait);
-                    if (availability == RaceAvailability.not_available && hasTrait)
-                    {
-                        restricted = true;
-                        break;
-                    }
-                    if (availability == RaceAvailability.required && !hasTrait)
-                    {
-                        restricted = true;
-                        break;
-                    }
-                }
-
-                if (!restricted)
+                if (!IsRestrictedFor(component, race))
                 {
                     Add(component.Name, component);
                 }
             }
+        }
+
+        /// <summary>
+        /// True when the race's primary or lesser traits bar it from the component: a trait the
+        /// component is "not_available" to, or a trait it "required"s that the race lacks. Trait gates
+        /// are checked before - and never replace - the tech-level check (behavior-specs-9/
+        /// research-tech-tree.md), so every path that makes a component available (the initial
+        /// determination here, and StarUpdateStep's level-up) must consult it.
+        /// </summary>
+        public static bool IsRestrictedFor(Component component, Race race)
+        {
+            foreach (string trait in AllTraits.TraitKeys)
+            {
+                bool hasTrait = race.HasTrait(trait);
+                RaceAvailability availability = component.Restrictions.Availability(trait);
+                if (availability == RaceAvailability.not_available && hasTrait)
+                {
+                    return true;
+                }
+                if (availability == RaceAvailability.required && !hasTrait)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>

@@ -54,6 +54,9 @@ public class MobileMainViewModel : GameShellViewModelBase
         FleetReport,
         BattleReport,
         ScoreReport,
+        VictoryConditions,
+        ProductionTemplates,
+        TechnologyBrowser,
         Help,
     }
 
@@ -71,6 +74,9 @@ public class MobileMainViewModel : GameShellViewModelBase
         ("Fleet Report", Page.FleetReport),
         ("Battle Report", Page.BattleReport),
         ("Score Report", Page.ScoreReport),
+        ("Victory Conditions", Page.VictoryConditions),
+        ("Production Templates", Page.ProductionTemplates),
+        ("Technology Browser", Page.TechnologyBrowser),
         ("Help", Page.Help),
     };
 
@@ -94,6 +100,10 @@ public class MobileMainViewModel : GameShellViewModelBase
     /// closes the menu for it the way picking a section already does (SelectedPageLabel's own
     /// setter).</summary>
     public IRelayCommand ShowAboutFromMenuCommand { get; }
+
+    /// <summary>The menu's "View Race" (the desktop's View > Race / F8): closes the menu, then
+    /// the shared ViewRaceCommand - the host shows the race wizard read-only.</summary>
+    public IRelayCommand ViewRaceFromMenuCommand { get; }
 
     /// <summary>Fires the platform's native Share sheet with whatever Report.Error history has
     /// been persisted (see PlatformHooks.ShareErrorLog's own comment) - a Report.Error only ever
@@ -179,6 +189,11 @@ public class MobileMainViewModel : GameShellViewModelBase
             IsMenuOpen = false;
             ShowAboutCommand.Execute(null);
         });
+        ViewRaceFromMenuCommand = new RelayCommand(() =>
+        {
+            IsMenuOpen = false;
+            ViewRaceCommand.Execute(null);
+        });
         ShareErrorLogCommand = new RelayCommand(() =>
         {
             IsMenuOpen = false;
@@ -235,7 +250,61 @@ public class MobileMainViewModel : GameShellViewModelBase
         FleetReport = new FleetReportViewModel("FleetReport", "Fleet Report", clientState);
         BattleReport = new BattleReportViewModel("BattleReport", "Battle Report", clientState);
         ScoreReport = new ScoreReportViewModel("ScoreReport", "Score Report", clientState);
+        VictoryConditions = new VictoryConditionsViewModel("VictoryConditions", "Victory Conditions");
+        ProductionTemplates = new ProductionTemplatesViewModel("ProductionTemplates", "Production Templates", clientState, selection);
+        TechnologyBrowser = new TechnologyBrowserViewModel("TechnologyBrowser", "Technology Browser", clientState);
         Help = new HelpViewModel("Help", "Manual");
+
+        // The Production tab's template list follows edits made in the template manager.
+        ProductionTemplates.TemplatesChanged += Production.RefreshTemplateSlots;
+
+        ExportFromMenuCommand = new RelayCommand<string>(kind =>
+        {
+            IsMenuOpen = false;
+            ExportReport(kind);
+        });
+
+        // Tapping a battle message (MessageItemViewModel.ReplayCommand) jumps straight to that
+        // battle's step log: select it in the Battle Report panel, then switch this screen's own
+        // page - unlike the desktop shell (NovaDockFactory.CreateLayout, which brings a Dock tab
+        // to the front via IFactory.SetActiveDockable), Mobile has no Dock layout at all (see this
+        // class's own top comment), so "navigate to Battle Report" here means setting
+        // SelectedPageLabel instead.
+        Messages.BattleReplayRequested += report =>
+        {
+            BattleReport.SelectBattle(report);
+            SelectedPageLabel = "Battle Report";
+        };
+
+        // Message-click routing (Nova.Client.MessageRouting): 62/63 open the named planet's
+        // production queue (the Map page's Inspector, Production tab), other planet notices
+        // select the planet, tech notices open Research or the Technology Browser.
+        Messages.DestinationRequested += destination =>
+        {
+            switch (destination.Kind)
+            {
+                case MessageDestinationKind.ProductionQueue:
+                case MessageDestinationKind.Planet:
+                    object? planet = FindPlanet(clientState, destination.PlanetName);
+                    if (planet != null)
+                    {
+                        selection.Selected = planet;
+                        SelectedPageLabel = "Map";
+                        if (destination.Kind == MessageDestinationKind.ProductionQueue && planet is Star)
+                        {
+                            Inspector.SelectedTabIndex = 1; // Overview, Production, ...
+                        }
+                    }
+
+                    break;
+                case MessageDestinationKind.Research:
+                    SelectedPageLabel = "Research";
+                    break;
+                case MessageDestinationKind.TechnologyBrowser:
+                    SelectedPageLabel = "Technology Browser";
+                    break;
+            }
+        };
 
         RebuildMenuEntries();
     }
@@ -272,6 +341,26 @@ public class MobileMainViewModel : GameShellViewModelBase
 
     public HelpViewModel Help { get; }
 
+    public VictoryConditionsViewModel VictoryConditions { get; }
+
+    public ProductionTemplatesViewModel ProductionTemplates { get; }
+
+    public TechnologyBrowserViewModel TechnologyBrowser { get; }
+
+    /// <summary>The menu's Export rows (closes the menu, then ExportReport).</summary>
+    public IRelayCommand<string> ExportFromMenuCommand { get; }
+
+    private static object? FindPlanet(ClientData clientState, string? name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            return null;
+        }
+
+        return clientState.EmpireState.OwnedStars.Values.FirstOrDefault(star => star.Name == name)
+            ?? (object?)(clientState.EmpireState.StarReports.TryGetValue(name, out StarIntel? report) ? report : null);
+    }
+
     private IReadOnlyList<MobileMenuEntryViewModel> menuEntries = Array.Empty<MobileMenuEntryViewModel>();
 
     /// <summary>One directly-tappable row per section (see this class's own top comment for why
@@ -306,7 +395,14 @@ public class MobileMainViewModel : GameShellViewModelBase
                 OnPropertyChanged(nameof(ShowFleetReportPage));
                 OnPropertyChanged(nameof(ShowBattleReportPage));
                 OnPropertyChanged(nameof(ShowScoreReportPage));
+                OnPropertyChanged(nameof(ShowVictoryConditionsPage));
+                OnPropertyChanged(nameof(ShowProductionTemplatesPage));
+                OnPropertyChanged(nameof(ShowTechnologyBrowserPage));
                 OnPropertyChanged(nameof(ShowHelpPage));
+                if (selectedPage == Page.VictoryConditions)
+                {
+                    VictoryConditions.Refresh();
+                }
                 RebuildMenuEntries();
             }
         }
@@ -346,6 +442,12 @@ public class MobileMainViewModel : GameShellViewModelBase
     public bool ShowBattleReportPage => selectedPage == Page.BattleReport;
 
     public bool ShowScoreReportPage => selectedPage == Page.ScoreReport;
+
+    public bool ShowVictoryConditionsPage => selectedPage == Page.VictoryConditions;
+
+    public bool ShowProductionTemplatesPage => selectedPage == Page.ProductionTemplates;
+
+    public bool ShowTechnologyBrowserPage => selectedPage == Page.TechnologyBrowser;
 
     public bool ShowHelpPage => selectedPage == Page.Help;
 }

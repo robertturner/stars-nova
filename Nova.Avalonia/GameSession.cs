@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Nova.Client;
+using Nova.Client.Shell;
 using Nova.Common;
 using Nova.Common.Components;
 
@@ -49,8 +50,23 @@ public static class GameSession
         clientState.FirstTurn = false;
 
         RecordAsLastGame(clientState);
+        RecordRecentFile(intelFilePath);
 
         return clientState;
+    }
+
+    /// <summary>The File menu's 9-slot Recent Files list (Nova.Client.Shell.RecentFiles), most
+    /// recently opened first.</summary>
+    public static RecentFiles ReadRecentFiles()
+    {
+        return RecentFiles.Parse(ClientPreferences.Read(RecentFiles.PreferenceKey));
+    }
+
+    private static void RecordRecentFile(string intelFilePath)
+    {
+        RecentFiles recent = ReadRecentFiles();
+        recent.Add(intelFilePath);
+        ClientPreferences.Write(RecentFiles.PreferenceKey, recent.Format());
     }
 
     /// <summary>

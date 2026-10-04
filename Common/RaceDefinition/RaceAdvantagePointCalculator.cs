@@ -56,21 +56,39 @@ namespace Nova.Common.RaceDefinition
             return ((a) == -1);
         }
 
-        double planetValueCalc(Race race, int[] testPlanetHab)
+        /// <summary>
+        /// The per-sample Planet Value: the original's integer habitability evaluator
+        /// FUN_1048_490e (behavior-specs-10/race-traits.md section 1b), i.e.
+        /// <see cref="Race.HabPercent"/>, not the old floating-point HabValue x 100.
+        /// The sample's axes are in the race's own axis order (0 Gravity, 1 Temperature,
+        /// 2 Radiation; see <see cref="Race.LowerHab"/>).
+        /// </summary>
+        private static int planetValueCalc(Race race, int[] testPlanetHab)
         {
             Star star = new Star();
             star.Gravity = testPlanetHab[0];
-            star.Radiation = testPlanetHab[1];
-            star.Temperature = testPlanetHab[2];
+            star.Temperature = testPlanetHab[1];
+            star.Radiation = testPlanetHab[2];
 
-            return race.HabValue(star) * 100.0;
+            return race.HabPercent(star);
+        }
+
+        /// <summary>
+        /// The race wizard's "habitability quality" sampler FUN_10e0_3404 (behavior-specs-10/
+        /// race-traits.md section 1b): Q = 3,293,786 for the Humanoid preset, 23,958,000 for a
+        /// tri-immune race. The growth-rate term of <see cref="calculateAdvantagePoints"/> uses
+        /// Q / 2,000.
+        /// </summary>
+        public int HabitabilityQuality(Race race)
+        {
+            return habPoints(race);
         }
 
         private int habPoints(Race race)
         {
             bool isTotalTerraforming;
             double advantagePoints,v136,v13E;
-            double v12E,planetDesir;
+            long v12E,planetDesir;
             int v100,tmpHab,TTCorrFactor,h,i,j,k;
             int[] v108 = new int[3];
             int[] testHabStart = new int[3];
@@ -181,23 +199,28 @@ namespace Nova.Common.RaceDefinition
                             v12E+=planetDesir;
                         }
                         /* loc_92D34 */
+                        // race-traits.md section 1b: the Radiation (innermost) sum is an
+                        // integer, x 11 if immune, else x band width and integer-divided by 100.
                         if (!race.RadiationTolerance.Immune) v12E = (v12E*testHabWidth[2])/100;
                         else v12E *= 11;
 
                         v136 += v12E;
                     }
-                    if (!race.TemperatureTolerance.Immune) v136 = (v136 * testHabWidth[1]) / 100;
-                    else v136 *= 11;
+                    // The Temperature and Gravity sums are floating-point: x 11.0 if immune,
+                    // else x (width x 0.01).
+                    if (!race.TemperatureTolerance.Immune) v136 = v136 * (testHabWidth[1] * 0.01);
+                    else v136 *= 11.0;
 
                     v13E += v136;
                 }
-                if (!race.GravityTolerance.Immune) v13E = (v13E * testHabWidth[0]) / 100;
-                else v13E *= 11;
+                if (!race.GravityTolerance.Immune) v13E = v13E * (testHabWidth[0] * 0.01);
+                else v13E *= 11.0;
 
                 advantagePoints += v13E;
             }
 
-            return (int)(advantagePoints/10.0+0.5);
+            // The three passes summed, then floor(total x 0.1 + 0.5) (DS 0x1dda, 0x1de2).
+            return (int)(advantagePoints * 0.1 + 0.5);
         }
 
         public int calculateAdvantagePoints(Race race)
@@ -215,6 +238,9 @@ namespace Nova.Common.RaceDefinition
             /*cout << "Step 2, hab points = " << hab << endl;*/
 
             grRateFactor = (int)race.GrowthRate;
+            // behavior-specs-10/race-traits.md section 1b: a stored growth rate above 20 is
+            // clamped to 20 and one below 1 is set to 1 (both uses below see the clamped value).
+            grRateFactor = Math.Max(1, Math.Min(20, grRateFactor));
             grRate = grRateFactor;
             if (grRateFactor <= 5) points += (6 - grRateFactor) * 4200;
             else if (grRateFactor <= 13)
@@ -383,9 +409,10 @@ namespace Nova.Common.RaceDefinition
                 if (tmpPoints < -4 && (race.ColonistsPerResource / 100) < 10) points -= 190;
             }
             if (race.Traits.Contains("ExtraTech")) points -= 180;
-            // docs/behavior-specs-4/race-traits.md item 9: this penalty applies when Energy
-            // research is set to EXPENSIVE (175), not Cheap - it was inverted here previously.
-            if (PRT == PRT_AR && race.ResearchCosts[TechLevel.ResearchField.Energy] == 175/*expensive*/) points -= 100;
+            // behavior-specs-10/race-traits.md section 1a item 9 and the section 1b correction:
+            // the Alternate Reality -100 applies when Energy is stored as class 2, which is
+            // CHEAP (50%), not Expensive - the spec-4 "fix" that switched it to 175 was wrong.
+            if (PRT == PRT_AR && race.ResearchCosts[TechLevel.ResearchField.Energy] == 50/*cheap*/) points -= 100;
 
             /*cout << "Step 8, points = " << points << endl;*/
 

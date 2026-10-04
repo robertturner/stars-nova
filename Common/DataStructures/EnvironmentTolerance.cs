@@ -106,6 +106,25 @@ namespace Nova.Common
         }
 
         /// <summary>
+        /// <see cref="Format"/> under the invariant culture, for the saved files: the display
+        /// formats use the current culture ("0,31g" under a decimal-comma culture), which made a
+        /// saved game's text depend on the machine it was played on.
+        /// </summary>
+        private string FormatInvariant(int value)
+        {
+            System.Globalization.CultureInfo current = System.Globalization.CultureInfo.CurrentCulture;
+            try
+            {
+                System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+                return Format(value);
+            }
+            finally
+            {
+                System.Globalization.CultureInfo.CurrentCulture = current;
+            }
+        }
+
+        /// <summary>
         /// Load from XML.
         /// </summary>
         /// <param name="node">The node is a "EnvironmentTolerance" <see cref="XmlNode"/> in 
@@ -157,8 +176,8 @@ namespace Nova.Common
             Global.SaveData(xmldoc, xmlelEnvironmentTolerance, MinInternalIdentifier, MinimumValue);
             Global.SaveData(xmldoc, xmlelEnvironmentTolerance, MaxInternalIdentifier, MaximumValue);
             // "correct" values for human readability only
-            Global.SaveData(xmldoc, xmlelEnvironmentTolerance, MinToleranceIdentifier, Format(MinimumValue));
-            Global.SaveData(xmldoc, xmlelEnvironmentTolerance, MaxToleranceIdentifier, Format(MaximumValue));
+            Global.SaveData(xmldoc, xmlelEnvironmentTolerance, MinToleranceIdentifier, FormatInvariant(MinimumValue));
+            Global.SaveData(xmldoc, xmlelEnvironmentTolerance, MaxToleranceIdentifier, FormatInvariant(MaximumValue));
             Global.SaveData(xmldoc, xmlelEnvironmentTolerance, ImmuneIdentifier, Immune.ToString());
             return xmlelEnvironmentTolerance;
         }

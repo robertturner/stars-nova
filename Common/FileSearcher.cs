@@ -390,11 +390,11 @@ namespace Nova.Common
             string[] folders = applicationDirectory.Split(Path.DirectorySeparatorChar);
             string upTwo = "../..";
             upTwo = upTwo.Replace('/', Path.DirectorySeparatorChar);
-            if (folders[folders.Length - 1].ToLower() == "debug")
+            if (folders[folders.Length - 1].ToLowerInvariant() == "debug")
             {
                 novaRoot = Path.Combine(applicationDirectory, upTwo);
             }
-            else if (folders[folders.Length - 1].ToLower() == "release")
+            else if (folders[folders.Length - 1].ToLowerInvariant() == "release")
             {
                 novaRoot = Path.Combine(applicationDirectory, upTwo);
             }

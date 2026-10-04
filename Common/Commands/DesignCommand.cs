@@ -87,7 +87,7 @@ namespace Nova.Common.Commands
             
             while (mainNode != null)
             {
-                switch (mainNode.Name.ToLower())
+                switch (mainNode.Name.ToLowerInvariant())
                 {
                     case "mode":
                         Mode = (CommandMode)Enum.Parse(typeof(CommandMode), mainNode.FirstChild.Value);
@@ -129,10 +129,59 @@ namespace Nova.Common.Commands
                     {
                         return false;
                     }
+
+                    if (IsProtectedAlternateRealityDesign(empire, empire.Designs[Design.Key], Mode))
+                    {
+                        return false;
+                    }
                 break;
             }
-            
+
             return true;
+        }
+
+        /// <summary>The name of Alternate Reality's design slot 0 (ServerState StarterColony).</summary>
+        public const string StarterColonyDesignName = "Starter Colony";
+
+        /// <summary>
+        /// Alternate Reality's starbase designs are protected (behavior-specs-10/population-
+        /// growth.md section 3, the designer's starbase view for PRT 8): slot 0, the "Starter
+        /// Colony" every new AR colony is given, can be neither deleted nor edited, and no
+        /// starbase design with existing starbases can be deleted - an owned AR planet must always
+        /// keep its starbase, its only source of population capacity. Other races are unaffected
+        /// (deleting a design still scraps the ships built to it).
+        /// </summary>
+        public static bool IsProtectedAlternateRealityDesign(EmpireData empire, ShipDesign design, CommandMode mode)
+        {
+            if (empire == null || design == null || empire.Race == null || !empire.Race.HasTrait("AR"))
+            {
+                return false;
+            }
+
+            if (design.Type != ItemType.Starbase)
+            {
+                return false;
+            }
+
+            if (design.Name == StarterColonyDesignName)
+            {
+                return mode == CommandMode.Delete || mode == CommandMode.Edit;
+            }
+
+            if (mode != CommandMode.Delete)
+            {
+                return false;
+            }
+
+            foreach (Fleet fleet in empire.OwnedFleets.Values)
+            {
+                if (fleet.Composition.ContainsKey(design.Key))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
         
         
@@ -142,7 +191,9 @@ namespace Nova.Common.Commands
             switch (Mode)
             {
                 case CommandMode.Add:
+                    LinkComponents(empire);
                     empire.Designs.Add(Design.Key, Design);
+                    empire.TrackDesignKey(Design.Key);
                 break;
                 case CommandMode.Delete:
                     empire.Designs.Remove(Design.Key);                
@@ -151,8 +202,45 @@ namespace Nova.Common.Commands
                 case CommandMode.Edit:
                     empire.Designs.Remove(Design.Key);
                     UpdateFleetCompositions(empire);
+                    LinkComponents(empire);
                     empire.Designs.Add(Design.Key, Design);
                 break;
+            }
+        }
+
+
+        /// <summary>
+        /// A design read from an orders file holds its parts by name only (placeholder
+        /// components with no properties); EmpireData.LinkReferences swaps in the real
+        /// components and recomputes the design for the race and tech on every load. Do the same
+        /// when the design arrives, so a newly ordered design has its real fuel, cargo, engine and
+        /// weapon figures from its first turn rather than only after the next reload (found by
+        /// Nova.Sim: the in-memory design re-saved with FuelCapacity 650, the reloaded one 900,
+        /// and fleets of it burned fuel differently until a reload).
+        /// </summary>
+        private void LinkComponents(EmpireData empire)
+        {
+            if (Design == null || Design.Blueprint == null || !(Design.Blueprint.Properties.ContainsKey("Hull")))
+            {
+                return;
+            }
+
+            AllComponents allComponents = new AllComponents(false);
+            Hull hull = Design.Hull;
+            if (hull != null && hull.Modules != null)
+            {
+                foreach (HullModule module in hull.Modules)
+                {
+                    if (module.AllocatedComponent != null && module.AllocatedComponent.Name != null && allComponents.Contains(module.AllocatedComponent.Name))
+                    {
+                        module.AllocatedComponent = allComponents.Fetch(module.AllocatedComponent.Name);
+                    }
+                }
+            }
+
+            if (empire.Race != null)
+            {
+                Design.Update(empire.Race, empire.ResearchLevels);
             }
         }
         

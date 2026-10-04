@@ -63,6 +63,11 @@ namespace Nova.Common
             return null;
         }
 
+        public int? SupportableCount(Star star)
+        {
+            return null;
+        }
+
         public bool Construct(Star star)
         {
             return false;

@@ -149,7 +149,7 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "value")
+                    if (subnode.Name.ToLowerInvariant() == "value")
                     {
                         Value = ((XmlText)subnode.FirstChild).Value;
                     }

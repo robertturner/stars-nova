@@ -27,54 +27,58 @@ namespace Nova.Tests.UnitTests
     using NUnit.Framework;
 
     /// <summary>
-    /// Unit tests for the AI's personality-dispatch code
-    /// (docs/behavior-specs-3/ai-opponent-behavior.md section 1) - the pure trait-value mapping,
-    /// and the CLI option that carries the code into the AI process. DefaultAi.DoMove's own
-    /// Disabled/Passive/Standard branching is exercised via the AI CLI harness instead (see
-    /// PROJECT-STATUS.md's mechanic-1-of-8 entry) rather than here, since it needs a fully
-    /// initialized game save the same way mechanics 2/5's live verification did.
+    /// Unit tests for the AI's personality dispatch (docs/behavior-specs-10/ai-opponent-behavior.md
+    /// §1/§1a): how Nova's `-n` code maps onto the spec's categories, the per-category colonist
+    /// loads of §12/§13, and the CLI option that carries the code into the AI process. (The
+    /// retracted §4 threat assessment's "trait value" mapping went with the code it fed.)
     /// </summary>
     [TestFixture]
     public class DefaultAiPersonalityTest
     {
         [Test]
-        public void TraitValueForPersonality_IsOne_AtTheLowEndOfTheStandardRange()
+        public void ForPersonality_MapsTheDisabledAndPassiveCodesToCategoriesSixAndSeven()
         {
-            Assert.AreEqual(1, DefaultAi.TraitValueForPersonality(DefaultAi.MinStandardPersonality));
+            Assert.AreEqual(AiCategory.NoDriver, AiCategory.ForPersonality(DefaultAi.DisabledPersonality));
+            Assert.AreEqual(AiCategory.EconomyOnly, AiCategory.ForPersonality(DefaultAi.PassivePersonality));
         }
 
         [Test]
-        public void TraitValueForPersonality_IsSix_AtTheHighEndOfTheStandardRange()
+        public void ForPersonality_MapsTheStandardRangeOntoCategoriesZeroToFive()
         {
-            Assert.AreEqual(6, DefaultAi.TraitValueForPersonality(DefaultAi.MaxStandardPersonality));
-        }
-
-        [Test]
-        public void TraitValueForPersonality_IncreasesMonotonically_AcrossTheStandardRange()
-        {
-            int previous = DefaultAi.TraitValueForPersonality(DefaultAi.MinStandardPersonality);
-            for (int code = DefaultAi.MinStandardPersonality + 1; code <= DefaultAi.MaxStandardPersonality; code++)
+            for (int code = DefaultAi.MinStandardPersonality; code <= DefaultAi.MaxStandardPersonality; code++)
             {
-                int current = DefaultAi.TraitValueForPersonality(code);
-                Assert.Greater(current, previous);
-                previous = current;
+                Assert.AreEqual(code - DefaultAi.MinStandardPersonality, AiCategory.ForPersonality(code));
             }
+
+            Assert.AreEqual(AiCategory.Macinti, AiCategory.ForPersonality(DefaultAi.MaxStandardPersonality + 5), "clamped");
         }
 
         [Test]
-        public void TraitValueForPersonality_ClampsBelowTheStandardRange()
+        public void TheDefaultPersonalityPlaysAutomitrons()
         {
-            Assert.AreEqual(
-                DefaultAi.TraitValueForPersonality(DefaultAi.MinStandardPersonality),
-                DefaultAi.TraitValueForPersonality(DefaultAi.PassivePersonality));
+            Assert.AreEqual(AiCategory.Automitrons, AiCategory.ForPersonality(DefaultAi.StandardPersonality));
         }
 
         [Test]
-        public void TraitValueForPersonality_ClampsAboveTheStandardRange()
+        public void ColonistLoadUnits_FollowsTheSection13Table()
         {
-            Assert.AreEqual(
-                DefaultAi.TraitValueForPersonality(DefaultAi.MaxStandardPersonality),
-                DefaultAi.TraitValueForPersonality(DefaultAi.MaxStandardPersonality + 5));
+            Assert.AreEqual(10, AiCategory.ColonistLoadUnits(AiCategory.Robotoids, 5000));
+            Assert.AreEqual(25, AiCategory.ColonistLoadUnits(AiCategory.Turindrones, 5000));
+            Assert.AreEqual(150, AiCategory.ColonistLoadUnits(AiCategory.Automitrons, 5000));
+            Assert.AreEqual(25, AiCategory.ColonistLoadUnits(AiCategory.Rototills, 5000));
+            Assert.AreEqual(250, AiCategory.ColonistLoadUnits(AiCategory.Cybertrons, 5000));
+            Assert.AreEqual(25, AiCategory.ColonistLoadUnits(AiCategory.Macinti, 5000));
+            Assert.AreEqual(12, AiCategory.ColonistLoadUnits(AiCategory.Macinti, 125), "min(25, population / 10)");
+        }
+
+        [Test]
+        public void OnlyCategoriesZeroAndFive_ScrapATargetlessColonyFleet()
+        {
+            for (int category = 0; category <= 7; category++)
+            {
+                bool expected = category == AiCategory.Robotoids || category == AiCategory.Macinti;
+                Assert.AreEqual(expected, AiCategory.ScrapsTargetlessColonyFleet(category), "category " + category);
+            }
         }
 
         [Test]

@@ -8,11 +8,32 @@
         x:Class="Nova.Avalonia.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="Stars! Nova">
+        Title="{Binding WindowTitle}">
 
     <Design.DataContext>
         <vm:MainViewModel />
     </Design.DataContext>
+
+    <!-- Accelerators of behavior-specs-10/client-interface.md's command table, for the
+         commands this app has (the menu items in MainView print the same hints). On the
+         Window so they work wherever the focus is; a focused TextBox still keeps Ctrl+A. -->
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+N" Command="{Binding NewGameCommand}" />
+        <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenGameCommand}" />
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}" />
+        <KeyBinding Gesture="Ctrl+A" Command="{Binding SubmitTurnCommand}" />
+        <KeyBinding Gesture="F1" Command="{Binding ShowPanelCommand}" CommandParameter="Help" />
+        <KeyBinding Gesture="F2" Command="{Binding ToggleTechnologyBrowserCommand}" />
+        <KeyBinding Gesture="F3" Command="{Binding ShowLastReportCommand}" />
+        <KeyBinding Gesture="F4" Command="{Binding ShowPanelCommand}" CommandParameter="ShipDesign" />
+        <KeyBinding Gesture="F5" Command="{Binding ShowPanelCommand}" CommandParameter="Research" />
+        <KeyBinding Gesture="F6" Command="{Binding ShowPanelCommand}" CommandParameter="BattlePlans" />
+        <KeyBinding Gesture="F7" Command="{Binding ShowPanelCommand}" CommandParameter="PlayerRelations" />
+        <KeyBinding Gesture="F8" Command="{Binding ViewRaceCommand}" />
+        <KeyBinding Gesture="F9" Command="{Binding SubmitTurnCommand}" />
+        <KeyBinding Gesture="F10" Command="{Binding ShowPanelCommand}" CommandParameter="ScoreReport" />
+        <KeyBinding Gesture="Ctrl+M" Command="{Binding ToggleMusicCommand}" />
+    </Window.KeyBindings>
 
     <views:MainView DataContext="{Binding}" />
 

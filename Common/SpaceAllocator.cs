@@ -38,7 +38,7 @@ namespace Nova.Common
         public int GridAxisCount;
 
         private readonly List<NovaRect> availableBoxes = new List<NovaRect>();
-        private readonly Random random = new Random();
+        private readonly Random random;
 
         /// <summary>
         /// <para>Construction
@@ -51,8 +51,17 @@ namespace Nova.Common
         /// requested number is rounded up to a number that does.
         /// </para></summary>
         /// <param name="numberOfItems">The number of items to be distributed in the allocatable space.</param>
-        public SpaceAllocator(int numberOfItems)
+        public SpaceAllocator(int numberOfItems) : this(numberOfItems, null)
         {
+        }
+
+        /// <summary>
+        /// As <see cref="SpaceAllocator(int)"/>, drawing the boxes from <paramref name="random"/>
+        /// (null: the ambient game stream, GameRandom.Current) so the allocation is repeatable.
+        /// </summary>
+        public SpaceAllocator(int numberOfItems, Random random)
+        {
+            this.random = random ?? GameRandom.Current;
             GridAxisCount = (int)Math.Sqrt(numberOfItems);
             if ((GridAxisCount * GridAxisCount) != numberOfItems)
             {

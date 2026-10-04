@@ -82,7 +82,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (mainNode.Name.ToLower())
+                    switch (mainNode.Name.ToLowerInvariant())
                     {
                         case "cost":
                             cost = new Resources(mainNode);
@@ -140,7 +140,21 @@ namespace Nova.Common
             return null;
         }
 
-        
+        /// <summary>No population-scaled cap applies to ships - see
+        /// IProductionUnit.SupportableCount's own comment.</summary>
+        public int? SupportableCount(Star star)
+        {
+            return null;
+        }
+
+        /// <summary>The original has no auto-build ship item, so an "auto-build" ship order keeps
+        /// the legacy one-off consume-to-zero behaviour rather than becoming a standing order.</summary>
+        public bool AutoBuildIsStandingOrder
+        {
+            get { return false; }
+        }
+
+
         /// <summary>
         /// Construct the ship.
         /// </summary>
@@ -177,8 +191,9 @@ namespace Nova.Common
                 }
                 
                 // What we spend on the partial builld.
-                star.ResourcesOnHand -= remainingCost * percentBuildable;    
-                remainingCost -= remainingCost * percentBuildable;
+                Resources partialPayment = Resources.PartialPayment(remainingCost, percentBuildable, star.ResourcesOnHand);
+                star.ResourcesOnHand -= partialPayment;
+                remainingCost -= partialPayment;
                 
                 return false;
             }

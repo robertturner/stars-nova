@@ -63,7 +63,7 @@ namespace Nova.Common.DataStructures
             {
                 try
                 {
-                    switch (subnode.Name.ToLower())
+                    switch (subnode.Name.ToLowerInvariant())
                     {
                         case "type":
                             Type = subnode.FirstChild.Value;
@@ -74,11 +74,11 @@ namespace Nova.Common.DataStructures
                             break;
 
                         case "targeting":
-                            if (subnode.FirstChild.Value.ToLower() == "shields")
+                            if (subnode.FirstChild.Value.ToLowerInvariant() == "shields")
                             {
                                 Targeting = BattleStepWeapons.TokenDefence.Shields;
                             }
-                            else if (subnode.FirstChild.Value.ToLower() == "armor")
+                            else if (subnode.FirstChild.Value.ToLowerInvariant() == "armor")
                             {
                                 Targeting = BattleStepWeapons.TokenDefence.Armor;
                             }

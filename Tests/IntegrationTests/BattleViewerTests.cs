@@ -50,8 +50,7 @@ namespace Nova.Tests.IntegrationTests
             const int player2Id = 2;
 
             ServerData serverState = new ServerData();
-            BattleReport battle = new BattleReport();
-            BattleEngine battleEngine = new BattleEngine(serverState, battle);
+            BattleEngine battleEngine = new BattleEngine(serverState, new BattleReport());
 
             Fleet fleet1 = new Fleet("fleet1", player1Id, 1, new Point(100, 200));
             Fleet fleet2 = new Fleet("fleet2", player2Id, 1, new Point(100, 200));
@@ -99,7 +98,11 @@ namespace Nova.Tests.IntegrationTests
 
             battleEngine.Run();
 
-            return battle;
+            // BattleEngine.Run() now creates its own fresh BattleReport per battle location
+            // rather than mutating a single injected instance in place (see its own comment) -
+            // the resulting report has to be fetched from where Run() actually recorded it,
+            // not from whatever was originally passed into the constructor.
+            return empireData1.BattleReports[0];
         }
 
         [Test]

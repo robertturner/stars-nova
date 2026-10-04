@@ -21,10 +21,64 @@
          has no opaque background of its own, so without hiding what's behind it, both screens
          render on top of each other (confirmed live as a "graphics quirk"). -->
     <Grid>
-    <Grid Margin="16" RowDefinitions="Auto,*,Auto" IsVisible="{Binding !ShowRaceDesignerOverlay}">
+    <Grid Margin="16" RowDefinitions="Auto,Auto,*,Auto" IsVisible="{Binding !ShowRaceDesignerOverlay}">
         <TextBlock Grid.Row="0" Text="New Game" FontSize="18" FontWeight="Bold" Margin="0,0,0,8" />
 
-        <TabControl Grid.Row="1" SelectedIndex="{Binding SelectedTabIndex}">
+        <!-- The two setup paths of behavior-specs-10/new-game-setup.md sections 1-2. Both edit
+             the same draft, so switching keeps every value already chosen. -->
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,0,0,8">
+            <TextBlock Grid.Column="0" Text="Setup" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding SetupModeOptions}" SelectedItem="{Binding SelectedSetupMode}"
+                      HorizontalAlignment="Stretch" />
+        </Grid>
+
+        <ScrollViewer Grid.Row="2" IsVisible="{Binding IsSimplified}">
+            <StackPanel Spacing="10">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Game name" />
+                    <TextBox Text="{Binding GameName}" />
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Game folder" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding GameFolder}" />
+                        <Button Grid.Column="1" Content="Browse..." Click="BrowseFolderButton_Click" Margin="8,0,0,0" />
+                    </Grid>
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Your race" />
+                    <ComboBox ItemsSource="{Binding RaceOptions}" SelectedItem="{Binding SimplifiedRaceName}" HorizontalAlignment="Stretch" />
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Galaxy size" />
+                    <ComboBox ItemsSource="{Binding GalaxySizeOptions}" SelectedIndex="{Binding GalaxySizeIndex}" HorizontalAlignment="Stretch" />
+                    <TextBlock Text="{Binding GalaxySummary}" Opacity="0.7" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Computer player difficulty" />
+                    <ComboBox ItemsSource="{Binding DifficultyOptions}" SelectedIndex="{Binding SimplifiedDifficultyIndex}" HorizontalAlignment="Stretch" />
+                </StackPanel>
+
+                <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding SimplifiedPlayerSummary}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding SimplifiedPlayerRange}" Opacity="0.7" TextWrapping="Wrap" />
+                        <TextBlock TextWrapping="Wrap" Opacity="0.7">
+                            <Run Text="No one can win in the first" /><Run Text=" " /><Run Text="{Binding SimplifiedYearGate}" /><Run Text=" years" />
+                        </TextBlock>
+                        <Button Content="Pick another player count" Command="{Binding RerollPlayerCountCommand}" HorizontalAlignment="Stretch" />
+                    </StackPanel>
+                </Border>
+
+                <Button Content="Reset settings to defaults" Command="{Binding ResetToDefaultsCommand}" HorizontalAlignment="Stretch" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <TabControl Grid.Row="2" SelectedIndex="{Binding SelectedTabIndex}" IsVisible="{Binding IsDetailed}">
         <TabItem Header="Options">
             <ScrollViewer>
                 <StackPanel Spacing="10">
@@ -41,30 +95,52 @@
                         </Grid>
                     </StackPanel>
 
-                    <CheckBox Content="Accelerated start" IsChecked="{Binding AcceleratedStart}" />
-
+                    <!-- new-game-setup.md sections 1 and 3: Galaxy Size Tiny..Huge, Star Density
+                         Sparse..Packed, Starting Distance Close..Distant. The free map sliders
+                         are kept for the older generator (GameSettings.UseGalaxyPresets off). -->
                     <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
                         <StackPanel Spacing="6">
-                            <TextBlock Text="Map" FontWeight="Bold" />
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Width (light years)" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding MapWidth}" Minimum="300" Maximum="9999" FormatString="0" Width="120" />
-                            </Grid>
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Height (light years)" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding MapHeight}" Minimum="300" Maximum="9999" FormatString="0" Width="120" />
-                            </Grid>
+                            <TextBlock Text="Galaxy" FontWeight="Bold" />
+                            <CheckBox Content="Use the standard galaxy sizes" IsChecked="{Binding UseGalaxyPresets}" />
+
+                            <StackPanel Spacing="6" IsVisible="{Binding UseGalaxyPresets}">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Galaxy size" />
+                                    <ComboBox ItemsSource="{Binding GalaxySizeOptions}" SelectedIndex="{Binding GalaxySizeIndex}" HorizontalAlignment="Stretch" />
+                                </StackPanel>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Star density" />
+                                    <ComboBox ItemsSource="{Binding StarDensityOptions}" SelectedIndex="{Binding StarDensityIndex}" HorizontalAlignment="Stretch" />
+                                </StackPanel>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Starting distance" />
+                                    <ComboBox ItemsSource="{Binding StartingDistanceOptions}" SelectedIndex="{Binding StartingDistanceIndex}" HorizontalAlignment="Stretch" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding GalaxySummary}" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="6" IsVisible="{Binding UseFreeMap}">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="Width (light years)" VerticalAlignment="Center" />
+                                    <NumericUpDown Grid.Column="1" Value="{Binding MapWidth}" Minimum="300" Maximum="9999" FormatString="0" Width="120" />
+                                </Grid>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="Height (light years)" VerticalAlignment="Center" />
+                                    <NumericUpDown Grid.Column="1" Value="{Binding MapHeight}" Minimum="300" Maximum="9999" FormatString="0" Width="120" />
+                                </Grid>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="Star density" VerticalAlignment="Center" />
+                                    <NumericUpDown Grid.Column="1" Value="{Binding StarDensity}" Minimum="1" Maximum="100" FormatString="0" Width="120" />
+                                </Grid>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="Star uniformity" VerticalAlignment="Center" />
+                                    <NumericUpDown Grid.Column="1" Value="{Binding StarUniformity}" Minimum="1" Maximum="100" FormatString="0" Width="120" />
+                                </Grid>
+                            </StackPanel>
+
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0" Text="Minimum star separation (ly)" VerticalAlignment="Center" />
                                 <NumericUpDown Grid.Column="1" Value="{Binding StarSeparation}" Minimum="5" Maximum="50" FormatString="0" Width="120" />
-                            </Grid>
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Star density" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding StarDensity}" Minimum="1" Maximum="100" FormatString="0" Width="120" />
-                            </Grid>
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="Star uniformity" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding StarUniformity}" Minimum="1" Maximum="100" FormatString="0" Width="120" />
                             </Grid>
                             <Grid ColumnDefinitions="*,Auto,Auto">
                                 <TextBlock Grid.Column="0" Text="Seed" VerticalAlignment="Center" />
@@ -73,10 +149,22 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Game options" FontWeight="Bold" />
+                            <CheckBox Content="Beginner: Maximum Minerals" IsChecked="{Binding MaximumMinerals}" />
+                            <CheckBox Content="Slower Tech Advances" IsChecked="{Binding SlowTechAdvance}" />
+                            <CheckBox Content="Accelerated BBS Play" IsChecked="{Binding AcceleratedStart}" />
+                            <CheckBox Content="No Random Events" IsChecked="{Binding NoRandomEvents}" />
+                            <CheckBox Content="Galaxy Clumping" IsChecked="{Binding GalaxyClumping}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Button Content="Reset settings to defaults" Command="{Binding ResetToDefaultsCommand}" HorizontalAlignment="Stretch" />
                 </StackPanel>
             </ScrollViewer>
         </TabItem>
-
         <TabItem Header="Players">
             <ScrollViewer>
                 <StackPanel Spacing="10">
@@ -89,16 +177,27 @@
                                             <Run Text="Player" /><Run Text="{Binding DisplayNumber}" />
                                         </TextBlock>
 
-                                        <ComboBox ItemsSource="{Binding RaceOptions}" SelectedItem="{Binding SelectedRaceName}"
-                                                  HorizontalAlignment="Stretch" />
-
-                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                                            <Button Grid.Column="0" Content="New Race..." Command="{Binding NewRaceCommand}" HorizontalAlignment="Stretch" />
-                                            <Button Grid.Column="1" Content="Load Race..." Command="{Binding LoadRaceCommand}" HorizontalAlignment="Stretch" />
-                                        </Grid>
-
                                         <ComboBox ItemsSource="{Binding AiProgramOptions}" SelectedItem="{Binding SelectedAiProgram}"
                                                   HorizontalAlignment="Stretch" />
+
+                                        <StackPanel Spacing="6" IsVisible="{Binding ChoosesOwnRace}">
+                                            <ComboBox ItemsSource="{Binding RaceOptions}" SelectedItem="{Binding SelectedRaceName}"
+                                                      HorizontalAlignment="Stretch" />
+
+                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                                <Button Grid.Column="0" Content="New Race..." Command="{Binding NewRaceCommand}" HorizontalAlignment="Stretch" />
+                                                <Button Grid.Column="1" Content="Load Race..." Command="{Binding LoadRaceCommand}" HorizontalAlignment="Stretch" />
+                                            </Grid>
+                                        </StackPanel>
+
+                                        <!-- The setup screen's AI menu (ai-opponent-behavior.md section 1a):
+                                             six archetypes or Random, four skill tiers or Random. -->
+                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8" IsVisible="{Binding IsBuiltInAi}">
+                                            <ComboBox Grid.Column="0" ItemsSource="{Binding ArchetypeOptions}" SelectedIndex="{Binding SelectedArchetypeIndex}"
+                                                      HorizontalAlignment="Stretch" />
+                                            <ComboBox Grid.Column="1" ItemsSource="{Binding TierOptions}" SelectedIndex="{Binding SelectedTierIndex}"
+                                                      HorizontalAlignment="Stretch" />
+                                        </Grid>
 
                                         <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
                                             <Button Grid.Column="0"
@@ -182,7 +281,7 @@
         </TabItem>
         </TabControl>
 
-        <StackPanel Grid.Row="2" Spacing="6" Margin="0,8,0,0">
+        <StackPanel Grid.Row="3" Spacing="6" Margin="0,8,0,0">
             <TextBlock Text="{Binding StatusMessage}" Opacity="0.7" TextWrapping="Wrap" />
             <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                 <Button Grid.Column="0" Content="Cancel" Click="CancelButton_Click" HorizontalAlignment="Stretch" />

@@ -23,7 +23,7 @@ namespace Nova.Avalonia.ViewModels.Panels;
 /// AutoBuildOnAdd/ToggleAutoBuild - even though neither the WinForms client nor this port
 /// originally surfaced it despite the engine (ProductionOrder.IsAutoBuild) always supporting it.
 /// </summary>
-public class ProductionViewModel : Tool
+public partial class ProductionViewModel : Tool
 {
     private readonly ClientData clientState;
     private readonly SelectionService selection;
@@ -97,8 +97,45 @@ public class ProductionViewModel : Tool
     public ProductionCatalogItemViewModel? SelectedAvailableItem
     {
         get => selectedAvailableItem;
-        set => SetProperty(ref selectedAvailableItem, value);
+        set
+        {
+            if (SetProperty(ref selectedAvailableItem, value))
+            {
+                // The "Min / Max Terraform" and "Mineral Packets" entries exist only as auto-build
+                // orders; the four manual packet items only as manual ones.
+                if (value?.AutoOnly == true)
+                {
+                    AutoBuildOnAdd = true;
+                }
+                else if (value?.ManualOnly == true)
+                {
+                    AutoBuildOnAdd = false;
+                }
+
+                OnPropertyChanged(nameof(ShowTerraformAutoChoice));
+                OnPropertyChanged(nameof(CanToggleAutoBuildOnAdd));
+            }
+        }
     }
+
+    /// <summary>The Min / Max choice of an auto terraform order (TerraformProductionUnit.
+    /// MinimumOnly; production-queue.md section 6 and 10k): Max is index 0, Min index 1.</summary>
+    public IReadOnlyList<string> TerraformAutoChoices => ProductionCaptions.TerraformAutoChoices;
+
+    private int terraformAutoChoiceIndex;
+
+    public int TerraformAutoChoiceIndex
+    {
+        get => terraformAutoChoiceIndex;
+        set => SetProperty(ref terraformAutoChoiceIndex, Math.Clamp(value, 0, 1));
+    }
+
+    /// <summary>The Min / Max selector shows for a terraform item being added as auto-build.</summary>
+    public bool ShowTerraformAutoChoice => selectedAvailableItem?.IsTerraform == true && autoBuildOnAdd;
+
+    /// <summary>False while an auto-only item (the box stays ticked) or a manual-only item (the
+    /// box stays clear) is selected.</summary>
+    public bool CanToggleAutoBuildOnAdd => selectedAvailableItem?.AutoOnly != true && selectedAvailableItem?.ManualOnly != true;
 
     private int addQuantity = 1;
 
@@ -121,7 +158,18 @@ public class ProductionViewModel : Tool
     public bool AutoBuildOnAdd
     {
         get => autoBuildOnAdd;
-        set => SetProperty(ref autoBuildOnAdd, value);
+        set
+        {
+            bool wanted = (value || selectedAvailableItem?.AutoOnly == true) && selectedAvailableItem?.ManualOnly != true;
+            if (SetProperty(ref autoBuildOnAdd, wanted))
+            {
+                OnPropertyChanged(nameof(ShowTerraformAutoChoice));
+            }
+            else if (wanted != value)
+            {
+                OnPropertyChanged();
+            }
+        }
     }
 
     public IRelayCommand AddToQueueCommand { get; }
@@ -160,6 +208,8 @@ public class ProductionViewModel : Tool
         this.selection = selection;
 
         AddToQueueCommand = new RelayCommand(AddToQueue);
+        ReplaceWithTemplateCommand = new RelayCommand(() => ApplyTemplate(replace: true), () => selectedStar != null);
+        AppendTemplateCommand = new RelayCommand(() => ApplyTemplate(replace: false), () => selectedStar != null);
         IncrementAddQuantityCommand = new RelayCommand(() => AddQuantity = Math.Clamp(AddQuantity + NextStep(AddQuantity), 1, 1000));
         DecrementAddQuantityCommand = new RelayCommand(() => AddQuantity = Math.Clamp(AddQuantity - NextStep(AddQuantity), 1, 1000));
 
@@ -187,6 +237,7 @@ public class ProductionViewModel : Tool
             SelectedAvailableItem = AvailableItems.FirstOrDefault();
             AddQuantity = 1;
             AutoBuildOnAdd = false;
+            RefreshTemplateSlots();
             RebuildQueueRows(star);
         }
         else
@@ -221,8 +272,37 @@ public class ProductionViewModel : Tool
             new ProductionCatalogItemViewModel(new MineProductionUnit(race)),
             new ProductionCatalogItemViewModel(new DefenseProductionUnit(race)),
             new ProductionCatalogItemViewModel(new AlchemyProductionUnit(race)),
-            new ProductionCatalogItemViewModel(new TerraformProductionUnit(race)),
         };
+
+        // production-queue.md row 37: the manual "Terraform Environment" item is offered only on
+        // a planet with terraform headroom for its owner; the auto Min / Max entries are always
+        // offered (they are gated at purchase time instead - Min while the planet is habitable
+        // and not shrinking, both by the headroom).
+        if (TerraformProductionUnit.CatalogOffersTerraformEnvironment(star, clientState.EmpireState))
+        {
+            items.Add(new ProductionCatalogItemViewModel(new TerraformProductionUnit(race), ProductionCaptions.TerraformEnvironment, isTerraform: true));
+        }
+
+        items.Add(new ProductionCatalogItemViewModel(new TerraformProductionUnit(race), "Min / Max Terraform (Auto Build)", isTerraform: true, autoOnly: true));
+
+        // A Genesis Device is a one-shot planet reset that only becomes orderable once the empire
+        // has both been granted the special component and researched its (very high) tech level -
+        // EmpireData.AvailableComponents already folds both conditions in.
+        if (clientState.EmpireState.AvailableComponents.Contains("Genesis Device"))
+        {
+            // The empire-aware constructor prices the device with this race's miniaturization
+            // (and cost traits) at its current tech levels, so the catalog shows the real price.
+            items.Add(new ProductionCatalogItemViewModel(new GenesisDeviceProductionUnit(clientState.EmpireState)));
+        }
+
+        // Mineral packets (production-queue.md section 10, types 6 and 14-17): only on a planet
+        // whose starbase carries a mass driver (section 10b) - the auto "Mineral Packets" entry
+        // (always mixed) and the four manual items (Nova.Client.PacketOrders.CatalogItems).
+        foreach (PacketProductionUnit packet in PacketOrders.CatalogItems(star, race))
+        {
+            items.Add(new ProductionCatalogItemViewModel(packet, packet.AutoBuild ? packet.Name + " (Auto Build)" : null,
+                autoOnly: packet.AutoBuild, manualOnly: !packet.AutoBuild));
+        }
 
         Fleet? starbase = star.Starbase;
         int dockCapacity = starbase?.TotalDockCapacity ?? 0;
@@ -319,7 +399,20 @@ public class ProductionViewModel : Tool
             return;
         }
 
-        var order = new ProductionOrder(AddQuantity, SelectedAvailableItem.Unit, AutoBuildOnAdd);
+        IProductionUnit unit = SelectedAvailableItem.Unit;
+        if (SelectedAvailableItem.IsTerraform)
+        {
+            // A fresh unit per order (the catalog row's unit is a price display): Min Terraform
+            // when the auto choice says so, otherwise Max / the manual Terraform Environment.
+            unit = new TerraformProductionUnit(clientState.EmpireState.Race, AutoBuildOnAdd && TerraformAutoChoiceIndex == 1);
+        }
+        else if (unit is PacketProductionUnit packet)
+        {
+            // A fresh unit per order: a packet unit carries its own partial progress.
+            unit = PacketOrders.FreshUnit(packet, clientState.EmpireState.Race);
+        }
+
+        var order = new ProductionOrder(AddQuantity, unit, AutoBuildOnAdd);
         var command = new ProductionCommand(CommandMode.Add, order, selectedStar.Name, selectedStar.ManufacturingQueue.Queue.Count);
         ApplyCommand(command);
     }
@@ -338,7 +431,22 @@ public class ProductionViewModel : Tool
         }
 
         ProductionOrder existing = selectedStar.ManufacturingQueue.Queue[index];
-        var edited = new ProductionOrder(existing.Quantity, existing.Unit, !existing.IsAutoBuild);
+        IProductionUnit unit = existing.Unit;
+        if (unit is PacketProductionUnit)
+        {
+            // A packet unit's own Auto flag must match the order's: only the mixed packet has
+            // both forms (auto type 6 / manual type 17), so it swaps to the other unit and a
+            // single-mineral packet stays manual (Nova.Client.PacketOrders.ToggledUnit).
+            PacketProductionUnit? toggled = PacketOrders.ToggledUnit(existing, clientState.EmpireState.Race);
+            if (toggled == null)
+            {
+                return;
+            }
+
+            unit = toggled;
+        }
+
+        var edited = new ProductionOrder(existing.Quantity, unit, !existing.IsAutoBuild);
         ApplyCommand(new ProductionCommand(CommandMode.Edit, edited, selectedStar.Name, index));
     }
 

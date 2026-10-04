@@ -41,6 +41,8 @@ namespace Nova.Tests.UnitTests
 
             public int? CurrentCount(Star star) => null;
 
+            public int? SupportableCount(Star star) => null;
+
             public bool Construct(Star star) => false;
 
             public XmlElement ToXml(XmlDocument xmldoc) => xmldoc.CreateElement("StuckUnit");
@@ -90,6 +92,8 @@ namespace Nova.Tests.UnitTests
             public bool IsSkipped(Star star) => false;
 
             public int? CurrentCount(Star star) => 0;
+
+            public int? SupportableCount(Star star) => null;
 
             public bool Construct(Star star) => false;
 

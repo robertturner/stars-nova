@@ -50,10 +50,21 @@ namespace Nova.Server.NewGame
         public static void Initialize(string gameFolderPath, List<PlayerSettings> players, Dictionary<string, Race> knownRaces)
         {
             Gameinitializer game = new Gameinitializer(gameFolderPath);
-            game.GenerateEmpires(players, knownRaces);
-            game.GenerateStarMap();
-            game.GenerateAssets();
-            game.GenerateIntel();
+
+            // Anything in generation that draws from the ambient stream (GameRandom.Current, e.g.
+            // stochastic rounding) draws from the seed too, not from process state.
+            using (GameRandom.Use(game.ServerState.CreateRandom("Initialize")))
+            {
+                game.GenerateEmpires(players, knownRaces);
+                game.GenerateStarMap();
+                game.GenerateAssets();
+                game.GenerateIntel();
+            }
+
+            // The game keeps its own copy of the settings it was made with (ServerData.Settings),
+            // so later turns use them whatever the process-wide GameSettings.Data holds then.
+            game.ServerState.Settings = GameSettings.Data.Clone();
+
             game.ServerState.Save();
         } 
 
@@ -72,6 +83,11 @@ namespace Nova.Server.NewGame
             int seed = GameSettings.Data.Seed ?? Environment.TickCount;
             GameSettings.Data.Seed = seed;
             random = new Random(seed);
+
+            // Kept with the game state too (GameSettings is a process-wide singleton that turn
+            // generation does not reload), so every later turn derives its random streams from
+            // it - ServerData.CreateRandom - and a reloaded game continues identically.
+            serverState.Seed = seed;
             nameGenerator = new NameGenerator(random);
 
 
@@ -132,6 +148,10 @@ namespace Nova.Server.NewGame
                 empireData.Id = settings.PlayerNumber;
                 empireData.Race = serverState.AllRaces[settings.RaceName];
 
+                // The empire's own seed for decisions made on its behalf (the in-process AI),
+                // derived one-way from the game seed (EmpireData.RandomSeed); never 0 ("none").
+                empireData.RandomSeed = GameRandom.DeriveSeed(serverState.Seed ?? 0, 0, "EmpireRandomSeed", empireData.Id) | 1;
+
                 serverState.AllEmpires[empireData.Id] = empireData;
 
                 // Add initial state to the intel files.
@@ -148,6 +168,8 @@ namespace Nova.Server.NewGame
             // confirms (via decompile of the exported client) that a newly created race's
             // relationship toward every other race initializes to Neutral, not Enemy - every
             // new game previously started with all empires already at war with each other.
+            // The exception is a game with exactly one human player (DefaultRelation).
+            PlayerRelation initialRelation = DefaultRelation(serverState.AllPlayers);
             foreach (EmpireData wolf in serverState.AllEmpires.Values)
             {
                 foreach (EmpireData lamb in serverState.AllEmpires.Values)
@@ -155,10 +177,43 @@ namespace Nova.Server.NewGame
                     if (wolf.Id != lamb.Id)
                     {
                         wolf.EmpireReports.Add(lamb.Id, new EmpireIntel(lamb));
-                        wolf.EmpireReports[lamb.Id].Relation = PlayerRelation.Neutral;
+                        wolf.EmpireReports[lamb.Id].Relation = initialRelation;
                     }
                 }
             }
+        }
+
+
+        /// <summary>
+        /// Whether a player slot is a person: PlayerSettings.AiProgram is "Human" (a null or
+        /// empty value, as left by tests and older callers, also counts as human).
+        /// </summary>
+        public static bool IsHumanPlayer(PlayerSettings player)
+        {
+            return string.IsNullOrEmpty(player.AiProgram) || player.AiProgram == "Human";
+        }
+
+
+        /// <summary>
+        /// The relation every ordered pair of distinct players starts with. behavior-specs-10/
+        /// new-game-setup.md section 1 (option bit 0x04, `:51775`-`51802`): the game commit sets
+        /// the single-human-player flag when exactly one slot is human, and then gives every
+        /// ordered pair of distinct slots relation value 2, which is Enemy (diplomacy-relations.md
+        /// section 4: 0 Neutral, 1 Friend, 2 Enemy). Otherwise every pair stays at the Neutral
+        /// default.
+        /// </summary>
+        public static PlayerRelation DefaultRelation(IEnumerable<PlayerSettings> players)
+        {
+            int humans = 0;
+            foreach (PlayerSettings player in players)
+            {
+                if (IsHumanPlayer(player))
+                {
+                    humans++;
+                }
+            }
+
+            return humans == 1 ? PlayerRelation.Enemy : PlayerRelation.Neutral;
         }
 
 
@@ -190,7 +245,7 @@ namespace Nova.Server.NewGame
         /// <Summary>
         /// Process the Primary Traits for this race.
         /// </Summary>
-        private void ProcessPrimaryTraits(EmpireData empire)
+        public static void ProcessPrimaryTraits(EmpireData empire)
         {
             // TODO (priority 4) Special Components
             // Races are granted access to components currently based on tech level and primary/secondary traits (not tested).
@@ -249,14 +304,12 @@ namespace Nova.Server.NewGame
                     break;
 
                 case "PP":
-                    // docs/behavior-specs/race-traits.md §2 says PP "Starts with ... Mass Driver
-                    // tech up to level 13" - that's the component's own tier number (this
-                    // codebase's highest mass-driver-family component is "Ultra Driver 13"), not
-                    // an Energy tech level of 13. Per this project's own components.xml, Ultra
-                    // Driver 13 requires Energy tech 24 - the previous value of 4 only unlocked
-                    // "Mass Driver 5", nowhere near what the spec describes. Cross-referenced
-                    // from data, not re-verified against a live game session (unlike WM/CA above).
-                    empire.ResearchLevels[TechLevel.ResearchField.Energy] = 24;
+                    // Packet Physics STARTS at Energy 4 (behavior-specs-10/race-traits.md
+                    // sections 2, 2a and 6; the galaxy-setup starting-tech switch writes 4,
+                    // `stars.exe.export.c:50852`-`50888`). Energy 24 is only Ultra Driver 13's
+                    // requirement - an earlier pass misread "Mass Driver tech up to level 13"
+                    // as a starting level and set 24 here.
+                    empire.ResearchLevels[TechLevel.ResearchField.Energy] = 4;
                     // Two shielded scouts, one colony ship, two starting planets in a non-tiny universe
                     break;
 
@@ -292,7 +345,7 @@ namespace Nova.Server.NewGame
         /// <Summary>
         /// Read the Secondary Traits for this race.
         /// </Summary>
-        private void ProcessSecondaryTraits(EmpireData empire)
+        public static void ProcessSecondaryTraits(EmpireData empire)
         {
             // TODO (priority 4) finish the rest of the LRTs.
             // Not all of these properties are fully implemented here, as they may require changes elsewhere in the game engine.
@@ -316,7 +369,8 @@ namespace Nova.Server.NewGame
             if (empire.Race.Traits.Contains("ARM"))
             {
                 // Grants access to three additional mining hulls and two new robots : implemented in component definitions.
-                // Start the game with two midget miners : TODO ??? (priority 4)
+                // Start the game with two Potato Bugs (Midget Miner hull) unless the race also
+                // has OBRM: StarMapinitializer.HasPotatoBugs / PrepareDesigns.
             }
             if (empire.Race.Traits.Contains("ISB"))
             {
@@ -330,13 +384,15 @@ namespace Nova.Server.NewGame
             // effect, so there's nothing to set up here at race initialization time.
             if (empire.Race.Traits.Contains("UR"))
             {
-                // Affects minerals and resources returned due to scrapping. TODO ??? (priority 4).
+                // 90%/45% scrap recovery is implemented in ScrapTask.Perform (component-cost
+                // adjustment) and Star.DeferredScrapResources/StarUpdateStep (the resources share
+                // deferred a full turn, as documented, rather than credited immediately).
             }
             if (empire.Race.Traits.Contains("MA"))
             {
                 // One instance of mineral alchemy costs 25 resources instead of 100. TODO ??? (priority 4)
             }
-            if (empire.Race.Traits.Contains("NRSE"))
+            if (empire.Race.Traits.Contains("NRS"))
             {
                 // affects which engines are available : implemented in component definitions.
             }
@@ -346,8 +402,11 @@ namespace Nova.Server.NewGame
             }
             if (empire.Race.Traits.Contains("CE"))
             {
-                // Engines cost 50% less TODO (priority 4)
-                // Engines have a 10% chance of not engaging above warp 6 : TODO ??? (priority 4)
+                // Engines cost 50% less: ShipDesign. Engines balk above warp 6: TurnGenerator.
+
+                // propulsion tech starts one level higher, exactly as for IFE
+                // (behavior-specs-10/race-traits.md sections 3 and 6, `:50906`).
+                empire.ResearchLevels[TechLevel.ResearchField.Propulsion]++;
             }
             if (empire.Race.Traits.Contains("NAS"))
             {
@@ -360,17 +419,16 @@ namespace Nova.Server.NewGame
             }
             if (empire.Race.Traits.Contains("BET"))
             {
-                // TODO ??? (priority 4)
-                // New technologies initially cost twice as much to build. 
-                // Once all tech requirements are exceeded cost is normal. 
-                // Miniaturization occurs at 5% per level up to 80% (instead of 4% per level up to 75%)
+                // Both the 2x-cost-until-ahead-of-prerequisites penalty and the steeper 5%/80%
+                // Miniaturization discount are implemented in ShipDesign.Update's per-component
+                // cost loop (ApplyMiniaturizationAndBleedingEdge), gated on the empire's current
+                // tech levels vs. each component's own requirements.
             }
             if (empire.Race.Traits.Contains("RS"))
             {
-                // TODO ??? (priority 4)
-                // All shields are 40% stronger than the listed rating.
-                // Shields regenrate at 10% of max strength each round of combat.
-                // All armors are 50% of their rated strength.
+                // The +40% shield / -50% armor design-level multipliers are implemented in
+                // ShipDesign.Update; the 10%-of-maximum per-round regen is implemented in
+                // BattleEngine.ApplyRegeneratingShields, called once per battle round.
             }
             if (empire.Race.Traits.Contains("ExtraTech"))
             {

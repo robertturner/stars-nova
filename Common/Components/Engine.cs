@@ -77,6 +77,12 @@ namespace Nova.Common.Components
                 this.FuelConsumption[i] = existing.FuelConsumption[i];
             }
             this.RamScoop = existing.RamScoop;
+
+            // Every component fetched from AllComponents is a copy made here: without these, an
+            // Interspace-10 or Trans-Star 10 lost its warp-10 safe rating and every ship using it
+            // ran the 10% warp-10 destruction risk (fleet-movement-scanning-cargo.md section 1).
+            this.FastestSafeSpeed = existing.FastestSafeSpeed;
+            this.OptimalSpeed = existing.OptimalSpeed;
         }
 
         #endregion
@@ -153,7 +159,7 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    switch (subnode.Name.ToLower())
+                    switch (subnode.Name.ToLowerInvariant())
                     {
                         case "ramscoop":
                             RamScoop = bool.Parse(((XmlText)subnode.FirstChild).Value);

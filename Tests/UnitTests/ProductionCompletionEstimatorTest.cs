@@ -147,7 +147,9 @@ namespace Nova.Tests.UnitTests
             // (Red) sitting in the same queue, matching the user's own report: a stardock moved
             // to the front of a queue full of factories, permanently blocked on minerals it could
             // never mine.
-            Star star = new Star { Colonists = 100000, ThisRace = race, Factories = 10 };
+            // (Factories = 50 on 10,000 colonists leaves no room under the operable cap, so the auto
+            // entry is idle/Gray - per-turn-N semantics mean merely having N built would not do it.)
+            Star star = new Star { Colonists = 10000, ThisRace = race, Factories = 50 };
             star.ManufacturingQueue.Queue.Add(new ProductionOrder(10, new FactoryProductionUnit(race), isAutoBuild: true));
             star.ManufacturingQueue.Queue.Add(new ProductionOrder(1, new FactoryProductionUnit(race), isAutoBuild: false));
 
@@ -166,12 +168,13 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void Estimate_AutoBuildAlreadyAtItsTarget_IsGrayWithNothingToBuild()
+        public void Estimate_AutoBuildWithNoRoomUnderTheOperableCap_IsGrayWithNothingToBuild()
         {
-            // "Factories (Auto Build) Up to 10" with 10 already built has nothing left to do at
-            // all right now - distinct from an ordinary item that simply hasn't started yet.
+            // "Factories (Auto Build) Up to 10" on a planet already holding more factories than its
+            // population can operate has nothing to buy at all right now - distinct from an ordinary
+            // item that simply hasn't started yet. (N itself never idles an entry: see the next test.)
             Race race = MakeDefaultRace();
-            Star star = new Star { Colonists = 100000, ThisRace = race, Factories = 10 };
+            Star star = new Star { Colonists = 10000, ThisRace = race, Factories = 50 };
 
             var order = new ProductionOrder(10, new FactoryProductionUnit(race), isAutoBuild: true);
             star.ManufacturingQueue.Queue.Add(order);
@@ -181,6 +184,22 @@ namespace Nova.Tests.UnitTests
             Assert.That(estimate.Color, Is.EqualTo(ProductionQueueColor.Gray));
             Assert.That(estimate.YearsToFinish, Is.EqualTo(0));
             Assert.That(estimate.PercentComplete, Is.EqualTo(100.0));
+        }
+
+        [Test]
+        public void Estimate_AutoBuildWithNOrMoreAlreadyBuilt_IsNotIdle_WhenThereIsRoomToBuyMore()
+        {
+            // behavior-specs-8/production-queue.md section 10h: "Up to 10" is a per-turn maximum, so
+            // 10 already built on a planet that can operate 100 leaves the entry buying every year.
+            Race race = MakeDefaultRace();
+            Star star = new Star { Colonists = 100000, ThisRace = race, Factories = 10 };
+
+            var order = new ProductionOrder(10, new FactoryProductionUnit(race), isAutoBuild: true);
+            star.ManufacturingQueue.Queue.Add(order);
+
+            ProductionCompletionEstimate estimate = ProductionCompletionEstimator.Estimate(star, 0, race, researchBudget: 0);
+
+            Assert.That(estimate.Color, Is.Not.EqualTo(ProductionQueueColor.Gray));
         }
     }
 }

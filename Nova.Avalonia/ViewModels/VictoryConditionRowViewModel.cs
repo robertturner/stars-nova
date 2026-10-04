@@ -41,6 +41,14 @@ public class VictoryConditionRowViewModel : ObservableObject
         }
     }
 
+    /// <summary>Re-reads both values after the underlying EnabledValue changed elsewhere (New
+    /// Game's Reset to defaults).</summary>
+    public void Refresh()
+    {
+        OnPropertyChanged(nameof(IsChecked));
+        OnPropertyChanged(nameof(NumericValue));
+    }
+
     public int NumericValue
     {
         get => enabledValue.NumericValue;

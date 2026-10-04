@@ -539,6 +539,11 @@ namespace Nova.WinForms.Console
                         args.Add(CommandArguments.Option.RaceName, settings.RaceName);
                         args.Add(CommandArguments.Option.Turn, serverState.TurnYear);
                         args.Add(CommandArguments.Option.IntelFileName, Path.Combine(serverState.GameFolder, settings.RaceName + Global.IntelExtension));
+                        if (settings.AiCategory >= 0)
+                        {
+                            args.Add(CommandArguments.Option.AiPersonality, Nova.Client.NewGameSetup.PersonalityCodeForCategory(settings.AiCategory));
+                        }
+
                         try
                         {
                             Process.Start(FileSearcher.GetOwnExecutablePath(), args.ToString());

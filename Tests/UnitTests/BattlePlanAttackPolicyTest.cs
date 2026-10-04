@@ -102,13 +102,37 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void SpecificTargetId_EngagesOnlyThatEmpireRegardlessOfAttackString()
+        public void SpecificPlayerSetting_EngagesOnlyTheTargetIdEmpire()
         {
+            SetWolfAttackPolicy(BattleEngine.SpecificPlayerAttack);
+            serverState.AllEmpires[wolf.Owner].BattlePlans["Default"].TargetId = friendLamb.Owner;
+
+            Assert.IsTrue(battleEngine.AreEnemies(wolf, friendLamb), "The specific-player setting engages exactly the TargetId empire, Friend or not.");
+            Assert.IsFalse(battleEngine.AreEnemies(wolf, enemyLamb), "...and nobody else, not even an Enemy.");
+        }
+
+        [Test]
+        public void None_WithAStaleTargetId_StillEngagesNobody()
+        {
+            // behavior-specs-10/turn-generation-engine.md §4: Attack Who "Nobody (0): never";
+            // TargetId only means anything under the specific-player setting (4 + player).
+            // Previously the TargetId test ran before the Attack value, so this engaged the
+            // friend (and bombed its planets).
             SetWolfAttackPolicy("None");
             serverState.AllEmpires[wolf.Owner].BattlePlans["Default"].TargetId = friendLamb.Owner;
 
-            Assert.IsTrue(battleEngine.AreEnemies(wolf, friendLamb), "A specific TargetId match should engage that empire even under an otherwise passive Attack policy.");
+            Assert.IsFalse(battleEngine.AreEnemies(wolf, friendLamb));
             Assert.IsFalse(battleEngine.AreEnemies(wolf, enemyLamb));
+        }
+
+        [Test]
+        public void Enemies_WithAStaleTargetId_IgnoresTheTargetId()
+        {
+            SetWolfAttackPolicy("Enemies");
+            serverState.AllEmpires[wolf.Owner].BattlePlans["Default"].TargetId = friendLamb.Owner;
+
+            Assert.IsFalse(battleEngine.AreEnemies(wolf, friendLamb));
+            Assert.IsTrue(battleEngine.AreEnemies(wolf, enemyLamb));
         }
     }
 }

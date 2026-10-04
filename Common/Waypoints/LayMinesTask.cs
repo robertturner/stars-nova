@@ -30,7 +30,7 @@ namespace Nova.Common.Waypoints
     using Nova.Common;
     
     /// <summary>
-    /// Performs Star Colonisation.
+    /// The Lay Mine Field waypoint task (task code 6).
     /// </summary>
     public class LayMinesTask : IWaypointTask
     {
@@ -46,21 +46,46 @@ namespace Nova.Common.Waypoints
             get{return "Lay Mines";}
         }
         
+        /// <summary>
+        /// The duration value that is never decremented, so the order runs indefinitely
+        /// (behavior-specs-10/turn-generation-engine.md section 3, "Cancellation and duration";
+        /// fleet-movement-scanning-cargo.md section 5: a new Lay Mine Field order gets duration 5).
+        /// </summary>
+        public const int Indefinitely = 5;
+
+        /// <summary>
+        /// The order's duration counter, read by the server before each year's laying: 0 means
+        /// this is the last year (the task is then cleared), <see cref="Indefinitely"/> is never
+        /// decremented, any other value is decremented by one.
+        /// </summary>
+        public int Duration = Indefinitely;
+
         public LayMinesTask()
         {
-             
+
         }
-        
+
         /// <summary>
-        /// Load: Read in a ColoniseTask from and XmlNode representation.
+        /// Load: Read in a LayMinesTask from an XmlNode representation.
         /// </summary>
-        /// <param name="node">An XmlNode containing a representation of a ProductionUnit</param>
+        /// <param name="node">An XmlNode containing a representation of a LayMinesTask</param>
         public LayMinesTask(XmlNode node)
         {
             if (node == null)
             {
                 return;
-            }    
+            }
+
+            XmlNode subnode = node.FirstChild;
+            while (subnode != null)
+            {
+                if (subnode.Name.ToLowerInvariant() == "duration" && subnode.FirstChild != null)
+                {
+                    Duration = int.Parse(subnode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
+                }
+
+                subnode = subnode.NextSibling;
+            }
         }
         
         public bool IsValid(Fleet fleet, Mappable target, EmpireData sender, EmpireData receiver)
@@ -80,41 +105,20 @@ namespace Nova.Common.Waypoints
             return true;           
         }
         
+        /// <summary>
+        /// Nothing happens on arrival: the yearly laying (amounts, duration counter, field merge)
+        /// is done after movement by ServerState/LayMines.cs, which can reach the minefield table.
+        /// </summary>
         public bool Perform(Fleet fleet, Mappable target, EmpireData sender, EmpireData receiver)
         {
-            // See if a Minefield is already here (owned by us). We allow a
-            // certaintolerance in distance because it is unlikely that the
-            // waypoint has been set exactly right.
-            
-            //TODO: Implement per empire minefields.
-            /*foreach (Minefield minefield in serverState.AllMinefields.Values)
-            {
-                if (PointUtilities.IsNear(fleet.Position, minefield.Position))
-                {
-                    if (minefield.Owner == fleet.Owner)
-                    {
-                        minefield.NumberOfMines += fleet.NumberOfMines;
-                        return true;
-                    }
-                }
-            }
-    
-            // No Minefield found. Start a new one.
-    
-            Minefield newField = new Minefield();
-    
-            newField.Position = fleet.Position;
-            newField.Owner = fleet.Owner;
-            newField.NumberOfMines = fleet.NumberOfMines;
-    
-            serverState.AllMinefields[newField.Key] = newField;*/
             return true;
         }
         
         public XmlElement ToXml(XmlDocument xmldoc)
         {
             XmlElement xmlelTask = xmldoc.CreateElement("LayMinesTask");
-            
+            Global.SaveData(xmldoc, xmlelTask, "Duration", Duration.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
             return xmlelTask;
         }
     }

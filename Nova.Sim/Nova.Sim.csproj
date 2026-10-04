@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Headless whole-game simulation harness (docs/SIMULATION.md): creates a game in a work
+         folder, drives every player with Nova.Ai's DefaultAi in-process and runs the real
+         OrderWriter -> OrderReader -> TurnGenerator -> ServerData.Save/Restore loop, checking
+         invariants and collecting metrics every turn. Plain net9.0 (no UI) so it runs anywhere
+         the server and AI assemblies run. The library part (SimulationRunner and friends) is
+         also referenced by Tests/Tests.csproj for the Tests/Simulation suites. -->
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>Nova.Sim</AssemblyName>
+    <RootNamespace>Nova.Sim</RootNamespace>
+    <OutputType>Exe</OutputType>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Configurations>Debug;Release</Configurations>
+    <Platforms>AnyCPU</Platforms>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <OutputPath>..\Build\Debug\</OutputPath>
+    <BaseOutputPath>..\Build\</BaseOutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <OutputPath>..\Build\Release\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Common\Common.csproj" />
+    <ProjectReference Include="..\ServerState\Server.csproj" />
+    <ProjectReference Include="..\Nova.Ai\Nova.Ai.csproj" />
+    <ProjectReference Include="..\Nova.Client\Nova.Client.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -74,7 +74,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (xmlnode.Name.ToLower())
+                    switch (xmlnode.Name.ToLowerInvariant())
                     {
                         case "root":
                             xmlnode = xmlnode.FirstChild;
@@ -109,7 +109,7 @@ namespace Nova.Common
                             while (deletedFleetsNode != null)
                             {
                                 // only the fleet.key is stored in the xml file
-                                long key = long.Parse(deletedFleetsNode.FirstChild.Value);
+                                long key = long.Parse(deletedFleetsNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
                                 DeletedFleets.Add(key);
                                 deletedFleetsNode = deletedFleetsNode.NextSibling;
                             }

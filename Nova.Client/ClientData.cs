@@ -76,7 +76,7 @@ namespace Nova.Client
             {
                 try
                 {
-                    switch (xmlnode.Name.ToLower())
+                    switch (xmlnode.Name.ToLowerInvariant())
                     {
                         case "root":
                             xmlnode = xmlnode.FirstChild;
@@ -93,7 +93,7 @@ namespace Nova.Client
                             textNode = xmlnode.FirstChild;
                             while (textNode != null)
                             {
-                                switch (textNode.Attributes["Type"].Value.ToString().ToLower())
+                                switch (textNode.Attributes["Type"].Value.ToString().ToLowerInvariant())
                                 {
                                     case "research":
                                         Commands.Push(new ResearchCommand(textNode));

@@ -25,6 +25,13 @@
             <TextBlock Grid.Column="0" Text="Target" VerticalAlignment="Center" Margin="0,0,8,0" />
             <ComboBox Grid.Column="1" ItemsSource="{Binding TargetFieldOptions}" SelectedItem="{Binding SelectedTargetField}" HorizontalAlignment="Stretch" />
         </Grid>
+        <!-- research-tech-tree.md section 4: the field to switch to once the target gains a
+             level (same field, a named field, or the lowest field). -->
+        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+            <TextBlock Grid.Column="0" Text="Next" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding NextFieldOptions}" SelectedIndex="{Binding SelectedNextFieldIndex}" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="Where research goes once the target field gains a level" />
+        </Grid>
         <Grid ColumnDefinitions="Auto,*" Margin="0,2">
             <TextBlock Grid.Column="0" Text="Budget %" VerticalAlignment="Center" Margin="0,0,8,0" />
             <NumericUpDown Grid.Column="1" Value="{Binding EditableBudget}" Minimum="0" Maximum="100" FormatString="0"
@@ -68,7 +75,12 @@
         <ItemsControl ItemsSource="{Binding Benefits}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="panels:ResearchBenefitRowViewModel">
-                    <TextBlock Text="{Binding Text}" Foreground="{Binding Color}" Margin="0,1" />
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                        <TextBlock Grid.Column="0" Text="{Binding Text}" Foreground="{Binding Color}" TextWrapping="Wrap" />
+                        <!-- The detail card's one status line (research-tech-tree.md §4). -->
+                        <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{Binding StatusColor}"
+                                   FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </Grid>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>

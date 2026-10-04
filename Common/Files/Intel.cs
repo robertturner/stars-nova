@@ -104,7 +104,7 @@ namespace Nova.Common
             {
                 try
                 {
-                    switch (xmlnode.Name.ToLower())
+                    switch (xmlnode.Name.ToLowerInvariant())
                     {
                         case "root":
                             xmlnode = xmlnode.FirstChild;

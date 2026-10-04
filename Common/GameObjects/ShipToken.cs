@@ -95,7 +95,22 @@ namespace Nova.Common
             get;
             set;
         }
-        
+
+        /// <summary>
+        /// The token's packed 16-bit damage word as last stored by the battle engine, minefields
+        /// or repair (Nova.Common.Combat.DamageWord: low 7 bits the percentage of ships damaged,
+        /// high 9 bits each damaged ship's damage in 1/500 of its armor; behavior-specs-10/
+        /// combat-resolution.md section 8, turn-generation-engine.md section 11). Zero means
+        /// undamaged or not recorded. It is persisted with the token; DamageWord.For only trusts
+        /// it while it still reproduces <see cref="Armor"/> exactly, so a word made stale by
+        /// code that changes Armor directly (or a save without the field) is re-derived instead.
+        /// </summary>
+        public int PackedDamage
+        {
+            get;
+            set;
+        }
+
         /// <summary>
         /// Creates a Token of ships.
         /// </summary>
@@ -118,7 +133,17 @@ namespace Nova.Common
             Design = newDesign;
             Quantity = quantity;
             Armor = newDesign.Armor * quantity;
-            Shields = newDesign.Shield;
+
+            // Shields is the TOTAL across every ship in the token, same convention as Armor -
+            // confirmed by every consumer (BattleEngine's damage/attractiveness math divides by
+            // Quantity to get a per-ship figure; TurnGenerator's own per-turn shield-recharge step
+            // explicitly does "token.Design.Shield * token.Quantity" with a comment saying exactly
+            // this). This constructor was the one place that didn't scale by Quantity - a fresh
+            // multi-ship token (e.g. a freshly-built or just-split/merged fleet, before the next
+            // turn's recharge step ever ran) started combat with only a single ship's worth of
+            // total shields, parallel to the already-fixed "fresh ship shows 0 armor" bug (see
+            // ShipDesign.Armor's own comment).
+            Shields = newDesign.Shield * quantity;
         }
         
         
@@ -134,7 +159,7 @@ namespace Nova.Common
             
             while (mainNode != null)
             {
-                switch (mainNode.Name.ToLower())
+                switch (mainNode.Name.ToLowerInvariant())
                 {
                     case "design":
                         Design = new ShipDesign(long.Parse(mainNode.FirstChild.Value, System.Globalization.NumberStyles.HexNumber));
@@ -146,7 +171,17 @@ namespace Nova.Common
                     
                     case "armor":
                         Armor = double.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
-                    break;                    
+                    break;
+
+                    case "damageword":
+                        // Absent in older saves (then 0, and the word is re-derived from Armor).
+                        int packed;
+                        if (mainNode.FirstChild != null
+                            && int.TryParse(mainNode.FirstChild.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out packed))
+                        {
+                            PackedDamage = packed & 0xffff;
+                        }
+                    break;
                 }
             
                 mainNode = mainNode.NextSibling;
@@ -164,7 +199,11 @@ namespace Nova.Common
 
             Global.SaveData(xmldoc, xmlelCom, "Design", Design.Key.ToString("X"));
             Global.SaveData(xmldoc, xmlelCom, "Quantity", Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            Global.SaveData(xmldoc, xmlelCom, "Armor", Armor.ToString(System.Globalization.CultureInfo.InvariantCulture));            
+            Global.SaveData(xmldoc, xmlelCom, "Armor", Armor.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (PackedDamage != 0)
+            {
+                Global.SaveData(xmldoc, xmlelCom, "DamageWord", PackedDamage.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
 
             return xmlelCom; 
         }

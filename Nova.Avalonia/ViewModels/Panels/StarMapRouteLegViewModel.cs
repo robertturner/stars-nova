@@ -1,5 +1,6 @@
 using System;
 using Avalonia;
+using Avalonia.Collections;
 using Avalonia.Media;
 
 namespace Nova.Avalonia.ViewModels.Panels;
@@ -44,10 +45,16 @@ public class StarMapRouteLegViewModel
     /// </summary>
     public Points ArrowPoints { get; }
 
-    public StarMapRouteLegViewModel(double startX, double startY, double endX, double endY, bool isFirstLeg, bool isFinalLeg)
+    /// <summary>Route-overlap dashing (behavior-specs-10/client-interface.md, "Route-overlap
+    /// overlay", view-option bit 0x80): a leg repeating an earlier leg's endpoint pair (or its
+    /// reversal) is drawn dashed - see Nova.Client.Map.RouteOverlap. Null = solid.</summary>
+    public AvaloniaList<double>? DashArray { get; }
+
+    public StarMapRouteLegViewModel(double startX, double startY, double endX, double endY, bool isFirstLeg, bool isFinalLeg, bool isDashed = false)
     {
         Start = new Point(startX, startY);
         End = new Point(endX, endY);
+        DashArray = isDashed ? new AvaloniaList<double> { 2, 2 } : null;
 
         LineColor = isFirstLeg ? Brushes.Yellow : Brushes.Cyan;
         LineThickness = isFirstLeg ? 3 : 2;

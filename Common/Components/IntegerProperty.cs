@@ -141,7 +141,7 @@ namespace Nova.Common.Components
             {
                 try
                 {
-                    if (subnode.Name.ToLower() == "value")
+                    if (subnode.Name.ToLowerInvariant() == "value")
                     {
                         Value = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                     }

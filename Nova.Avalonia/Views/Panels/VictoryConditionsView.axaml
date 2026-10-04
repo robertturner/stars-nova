@@ -1,0 +1,27 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
+             xmlns:client="using:Nova.Client"
+             x:Class="Nova.Avalonia.Views.Panels.VictoryConditionsView"
+             x:DataType="panels:VictoryConditionsViewModel">
+    <!-- The in-session Victory Conditions summary - see VictoryConditionsViewModel. -->
+    <ScrollViewer>
+    <StackPanel Margin="8" Spacing="4">
+        <TextBlock Text="Victory Conditions" FontWeight="Bold" Opacity="0.8" />
+        <ItemsControl ItemsSource="{Binding Rows}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="client:VictorySummaryRow">
+                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+                        <CheckBox Grid.Column="0" IsChecked="{Binding Enabled, Mode=OneWay}" IsHitTestVisible="False" Focusable="False" />
+                        <TextBlock Grid.Column="1" Text="{Binding Condition}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                        <TextBlock Grid.Column="2" Text="{Binding Threshold}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Text="{Binding ConditionsLine}" TextWrapping="Wrap" Margin="0,8,0,0" />
+        <TextBlock Text="{Binding YearGateLine}" TextWrapping="Wrap" />
+        <Button Content="Refresh" Command="{Binding RefreshCommand}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+    </StackPanel>
+    </ScrollViewer>
+</UserControl>
