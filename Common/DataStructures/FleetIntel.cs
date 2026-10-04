@@ -228,11 +228,19 @@ namespace Nova.Common
                 Speed       = fleet.Speed;
                 InOrbit     = (fleet.InOrbit == null) ? false : true;
                 IsStarbase  = fleet.IsStarbase;
+
+                // A foreign fleet report carries the ships it saw but no damage: only an owned
+                // fleet's report keeps its armor/damage (behavior-specs-11/combat-resolution.md
+                // section 6.2, "the damage word outside battle ... foreign reports carry none";
+                // save-turn-file-format.md, own-fleet damage words).
+                bool own = scan >= ScanLevel.Owned;
                 Composition = new Dictionary<long, ShipToken>();
                 foreach (KeyValuePair<long, ShipToken> entry in fleet.Composition)
                 {
-                    ShipToken seen = new ShipToken(entry.Value.Design, entry.Value.Quantity, entry.Value.Armor);
-                    seen.PackedDamage = entry.Value.PackedDamage;
+                    ShipToken seen = own
+                        ? new ShipToken(entry.Value.Design, entry.Value.Quantity, entry.Value.Armor)
+                        : new ShipToken(entry.Value.Design, entry.Value.Quantity, entry.Value.Design.Armor * entry.Value.Quantity);
+                    seen.PackedDamage = own ? entry.Value.PackedDamage : 0;
                     seen.Shields = entry.Value.Shields;
                     Composition.Add(entry.Key, seen);
                 }

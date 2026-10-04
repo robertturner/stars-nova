@@ -93,7 +93,7 @@ items. The headline numbers above predate this update; the per-file tables below
 - **Expert +10% starting population** (#52): `Race.GetStartingPopulation(expertComputerPlayer)` adds the
   tenth for `PlayerSettings.AiSkill >= Race.ExpertAiSkill` (3), with a generated-home-world test.
 
-**Landed (each with a unit test; main suite 3104/3104, `Nova.Avalonia.Tests` 105 passed / 1 skipped):**
+**Landed (each with a unit test; main suite 3106/3106, `Nova.Avalonia.Tests` 105 passed / 1 skipped):**
 
 | Report item | Fix |
 |---|---|
@@ -125,6 +125,7 @@ items. The headline numbers above predate this update; the per-file tables below
 | #30 score visibility | a new `GameSettings.PublicPlayerScores` option (New Game checkbox) and `IntelWriter.VisibleScores`: a player receives race k's record only when k is its own, k is eliminated, the game is over (a winner mark exists), or Public Player Scores is on and the turn counter exceeds 19 (2420 onward). Other records stay private. **Goldens regenerated** (the new persisted fields changed the save hashes). |
 | #3 message mapping (remaining) | the minefield transit and detonation recipient mapping in `CheckForMinefields` was already the spec's (197-200 to the fleet's owner, 201-204 to the field's owner; 351-353 to the fleet's owner and 354-356 to the field's owner); the two stale XML comments were swapped and are corrected. No behaviour change. |
 | #22 battle movement order | `BattleEngine.MovementOrder` now gives each token its per-ship weight W (mass + cargo share, not multiplied by the stack count), draws its 0-14 random term, and sorts by E = W + 2(r-7)W/100 descending with array-order ties (`EffectiveMovementWeight`); the order is computed once per round and reused for the round's three steps, so they share r. The old linear `LighterMovesFirstChance`/20% parity swap and `TokenWeight` are gone. |
+| #23 damage word (partial) | foreign fleet reports no longer leak damage: `FleetIntel.Update` copies no damage word and shows full armor on any report below `ScanLevel.Owned`; an owned report keeps its word. The full "the word is the only state" conversion (merge/exchange/new-ship join formulas) is still open. |
 | (TODO-FEATURES #1) Ship Design tab | a single tap on a design shows its details straight away, including cargo capacity and the full summary figures (`Nova.Client.DesignDetails`) |
 
 **Still open** from the overturns table / "What's next": #2's step-29 waypoint resynchronisation (message 248; the port has no waypoint aimed at a special object - the map picker lists only fleets and planets - so the spec's step 5 is not ported),
