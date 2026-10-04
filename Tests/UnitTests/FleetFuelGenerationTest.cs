@@ -133,5 +133,22 @@ namespace Nova.Tests.UnitTests
             Assert.AreEqual(1000, fleet.FuelAvailable,
                 "The pre-existing ramscoop step-table math must be untouched by this fix");
         }
+
+        [Test]
+        public void AMineHit_RemovesTheMovesFuelGeneration()
+        {
+            Fleet fleet = MakeSingleEngineFleet(ramScoop: true);
+            Race race = new Race();
+            double availableTime = 1000;
+
+            fleet.Move(ref availableTime, race);
+            Assert.AreEqual(1000, fleet.FuelAvailable, "precondition: the scoop refills the tank");
+
+            fleet.RemoveLastMoveFuelGeneration();
+
+            // The move consumed the 100 mg tank; with the year's ram-scoop gain skipped (a mine
+            // hit, fleet-movement-scanning-cargo.md section 5) the tank stays empty.
+            Assert.AreEqual(0, fleet.FuelAvailable, "a mine hit skips the move's ram-scoop fuel gain");
+        }
     }
 }

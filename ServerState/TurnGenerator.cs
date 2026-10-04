@@ -729,6 +729,10 @@ namespace Nova.Server
                     if (minefieldHit == MinefieldHit.Hit)
                     {
                         fleetsThatSawAction.Add(fleet.Key);
+
+                        // A mine hit skips the year's ram-scoop fuel gain (fleet-movement-scanning-
+                        // cargo.md section 5): the move already credited it, so take it back.
+                        fleet.RemoveLastMoveFuelGeneration();
                         if (fleetMoveResult == Fleet.TravelStatus.Arrived && fleet.Position != waypointZero.Position)
                         {
                             // Stopped short of the waypoint: resume the leg next year.

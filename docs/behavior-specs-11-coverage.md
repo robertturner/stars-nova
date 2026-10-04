@@ -91,7 +91,7 @@ items. The headline numbers above predate this update; the per-file tables below
 - new-game §3 **second planet's own state** (#8) and **Simplified setup / written defaults** (#9):
   `StarMapInitialiser` and `NewGameSetup.SimplifiedPlayerCountTable` / `ApplySimplifiedDefaults` / `ResetToDefaults`.
 
-**Landed (each with a unit test; main suite 3067/3067, `Nova.Avalonia.Tests` 105 passed / 1 skipped):**
+**Landed (each with a unit test; main suite 3068/3068, `Nova.Avalonia.Tests` 105 passed / 1 skipped):**
 
 | Report item | Fix |
 |---|---|
@@ -100,7 +100,7 @@ items. The headline numbers above predate this update; the per-file tables below
 | #16 theft | `TransportHandler.MayTakeFrom` no longer excludes colonists: every slot is stealable from a fleet or (full theft) a planet |
 | #28 own-packet visibility | an own packet is not seen automatically (only within scanner range); a PP packet scanner only scans above warp 4 |
 | #12 packet merge test | the merge test is the existing packet's mass **before** the merge, not the sum |
-| #3 minefield routine (partial) | damage exactly equal to the armor survives; detonation exempts only the field owner's own Mini/Super Mine Layer hulls, reveals nothing and leaves no wreckage |
+| #3 minefield routine | damage exactly equal to the armor survives; detonation exempts only the field owner's own Mini/Super Mine Layer hulls, reveals nothing and leaves no wreckage; a mine hit now removes the move's ram-scoop fuel generation (`Fleet.RemoveLastMoveFuelGeneration`) |
 | #5 ram-scoop radiation | the colonist loss applies only to a fleet that moved under its own engines, and is at least 1 unit whenever any are aboard |
 | #25 wreckage details | the grace mark goes only on the first receiving object; Scrap Fleet forces a new object; all-zero amounts invent 0-9 kT each; a bloodless battle makes no object |
 | (not a spec row) golden test-isolation leak | `SimulationEnvironment` resets the process-wide `AllComponents` cache inside and after its private root, so a prior test's component load can no longer change the golden hashes |
@@ -110,7 +110,7 @@ items. The headline numbers above predate this update; the per-file tables below
 | (TODO-FEATURES #1) Ship Design tab | a single tap on a design shows its details straight away, including cargo capacity and the full summary figures (`Nova.Client.DesignDetails`) |
 
 **Still open** from the overturns table / "What's next": #1 (minefield/wormhole detection masks and the r/4 rule), #2 (wormhole lifecycle),
-#3's remaining ram-scoop-fuel-gain-skip and message-recipient swap, #10 production templates, #11 catalog 10l, #13/#15 packet terraforming and
+#3's remaining 197-200 / 201-204 message-recipient swap, #10 production templates, #11 catalog 10l, #13/#15 packet terraforming and
 remote mining, #17 Transfer Fleet, #18-#24 combat/damage, #26-#29 turn order / Trader / packets / victory, #30 score visibility, #31's
 server-side cap/name enforcement (blocked on the AI design planner's slot management and name lengths), #33-#41 AI, #42 planet route, and the
 rest of #44-#51 client work.

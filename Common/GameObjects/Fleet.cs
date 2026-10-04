@@ -761,11 +761,14 @@ namespace Nova.Common
             FuelAvailable = Math.Max(0, FuelAvailable - fuelUsed);
 
             double distanceTravelled = speed * travelTime;
+            double beforeGeneration = FuelAvailable;
             FuelAvailable += FuelGeneration(warpFactor, distanceTravelled);
             if (FuelAvailable > TotalFuelCapacity)
             {
                 FuelAvailable = TotalFuelCapacity;
             }
+
+            lastMoveFuelGeneration = FuelAvailable - beforeGeneration;
 
             // Added check if fleet run out of full it's speed will be changed 
             // to free warp speed.
@@ -774,6 +777,21 @@ namespace Nova.Common
                 target.WarpFactor = this.FreeWarpSpeed;
             }
             return arrived;
+        }
+
+        /// <summary>Fuel the last <see cref="Move"/> actually added to the tank (0 when it added
+        /// none), so a mine hit can remove it: the original credits the ram-scoop fuel gain of a
+        /// move only after a move without a mine hit (fleet-movement-scanning-cargo.md section 5).</summary>
+        private double lastMoveFuelGeneration;
+
+        /// <summary>
+        /// Removes this move's generated fuel after a mine hit. The move still paid its fuel, but
+        /// the year's ram-scoop gain is skipped (fleet-movement-scanning-cargo.md section 5).
+        /// </summary>
+        public void RemoveLastMoveFuelGeneration()
+        {
+            FuelAvailable = Math.Max(0, FuelAvailable - lastMoveFuelGeneration);
+            lastMoveFuelGeneration = 0;
         }
 
         /// <summary>
