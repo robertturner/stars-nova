@@ -380,8 +380,9 @@ namespace Nova.Tests.UnitTests
     }
 
     /// <summary>
-    /// Radiating Hydro-Ram Scoop colonist losses (coverage fleet row 10). The 85 mR exemption is
-    /// the spec's; the int((86 - centre) / 2)% yearly loss is the Stars!wiki figure.
+    /// Radiating Hydro-Ram Scoop colonist losses (fleet-movement-scanning-cargo.md §2). The 85 mR
+    /// exemption, the int((86 - centre) / 2)% yearly loss, the "moved under its own engines" gate
+    /// and the one-unit minimum are the spec's.
     /// </summary>
     [TestFixture]
     public class RamScoopRadiationStepTest : H3Kit
@@ -416,11 +417,38 @@ namespace Nova.Tests.UnitTests
             Fleet other = AddFleet(mover, new NovaPoint(0, 0), MakeDesign(partName: "Long Hump 6"), 1);
             other.Cargo.ColonistsInKilotons = 100;
 
-            new RamScoopRadiationStep().Process(serverState);
+            new RamScoopRadiationStep(new HashSet<long> { scoop.Key }).Process(serverState);
 
             Assert.AreEqual(67, scoop.Cargo.ColonistsInKilotons, "33% of 100 kT");
             Assert.AreEqual(100, other.Cargo.ColonistsInKilotons);
             Assert.AreEqual(1, serverState.AllMessages.Count);
+        }
+
+        [Test]
+        public void AFleetThatDidNotMoveUnderItsOwnEngines_TakesNoLoss()
+        {
+            mover.Race = RaceWithRadiationCentre(20);
+            Fleet scoop = AddFleet(mover, new NovaPoint(0, 0), MakeDesign(partName: RamScoopRadiationStep.RadiatingEngineName), 1);
+            scoop.Cargo.ColonistsInKilotons = 100;
+
+            // Empty moved-set: this fleet did not move under its own engines (a Stargate jump, a
+            // Cheap Engines balk, a warp-0 hold or no movement left).
+            new RamScoopRadiationStep(new HashSet<long>()).Process(serverState);
+
+            Assert.AreEqual(100, scoop.Cargo.ColonistsInKilotons);
+            Assert.AreEqual(0, serverState.AllMessages.Count);
+        }
+
+        [Test]
+        public void ASmallLoadLosesAtLeastOneUnit_AndNeverMoreThanItCarries()
+        {
+            mover.Race = RaceWithRadiationCentre(80); // 3% a year
+            Fleet scoop = AddFleet(mover, new NovaPoint(0, 0), MakeDesign(partName: RamScoopRadiationStep.RadiatingEngineName), 1);
+            scoop.Cargo.ColonistsInKilotons = 3; // 3% of 3 truncates to 0, raised to 1 unit
+
+            new RamScoopRadiationStep().Process(serverState);
+
+            Assert.AreEqual(2, scoop.Cargo.ColonistsInKilotons, "at least 1 unit whenever colonists are aboard");
         }
     }
 

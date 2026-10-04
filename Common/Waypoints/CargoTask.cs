@@ -226,16 +226,15 @@ namespace Nova.Common.Waypoints
             
             Star star = target as Star;
 
-            // behavior-specs-10/fleet-movement-scanning-cargo.md §4, "Caps on a load": taking
-            // cargo from another race's planet works only with the cargo-theft scanner ability
-            // ("Theft": a Robber Baron Scanner takes a planet's surface minerals; colonists are
-            // never taken), otherwise such a load is blocked (the owner is told and the task
-            // ends). An unowned planet is not "another race's" and may be loaded from.
-            // Unloads are always valid here: minerals may go onto any planet, and colonists bound
-            // for a planet that is not ours are judged in Unload (the colonist outcome table) -
-            // only a colonist unload ever reaches the invasion code.
-            // With theft the load goes ahead and Load skips the colonist slot, as the Transport
-            // handler judges theft slot by slot (TransportHandler.MayTakeFrom).
+            // behavior-specs-11/fleet-movement-scanning-cargo.md §4, "Caps on a load": taking
+            // cargo from another race's planet works only with the full cargo-theft scanner
+            // ability (a Robber Baron Scanner), otherwise such a load is blocked (the owner is
+            // told and the task ends). An unowned planet is not "another race's" and may be loaded
+            // from. Unloads are always valid here: minerals may go onto any planet, and colonists
+            // bound for a planet that is not ours are judged in Unload (the colonist outcome
+            // table) - only a colonist unload ever reaches the invasion code. With theft the load
+            // goes ahead for every slot, colonists included, as the Transport handler judges theft
+            // slot by slot (TransportHandler.MayTakeFrom).
             bool theft = fleet.CanStealFromPlanets;
             if (Mode == CargoMode.Load && star.Owner != fleet.Owner && star.Owner != Global.Nobody && !theft)
             {
@@ -349,7 +348,8 @@ namespace Nova.Common.Waypoints
             // boranium, germanium, colonists) each amount is cut to the hold's free space - which
             // is recomputed after every slot, so earlier slots get first claim - and then to what
             // the planet holds, so the source never goes below zero. A slot the fleet may not
-            // take from this planet (colonists from another race, even with theft) is skipped.
+            // take from this planet (a foreign planet without full theft) is skipped, colonists
+            // included.
             // "A Load exactly N that finds less loads what there is and counts as done."
             foreach (CargoSlot slot in CargoSlots)
             {

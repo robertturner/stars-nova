@@ -311,8 +311,9 @@ namespace Nova.Server
             fleet.Position = hitPoint;
             fleet.InOrbit = null;
 
-            // The designs are learned from the stacks as they were hit (before any is destroyed).
-            RevealAndLearn(fleet, field);
+            // The designs are learned from the stacks as they were hit (before any is destroyed),
+            // and a transit hit reveals the field to the fleet's race.
+            RevealAndLearn(fleet, field, reveal: true);
             DamageOutcome outcome = DamageFleet(fleet, field, false);
             TakeFieldLoss(field);
             SendMessages(fleet, field, outcome.AnyDamage, outcome.ShipsLost, outcome.ShipsBefore, outcome.Destroyed);
@@ -325,10 +326,10 @@ namespace Nova.Server
         /// routine with the detonating field as its third input; fleet-movement-scanning-cargo.md
         /// section 5 "Detonation"): every fleet inside the field's circle that has not already
         /// been caught by a detonating field this year takes the field's per-type damage once,
-        /// with no roll and no stop - the field owner's own fleets included, except stacks on the
-        /// Mini Mine Layer and Super Mine Layer hulls. As for a strike, the field becomes visible to
-        /// the fleet's race and a Space Demolition owner learns the designs
-        /// (ship-design-and-components.md: "or is caught by a detonating one"). The field takes NO
+        /// with no roll and no stop - the field owner's own fleets included, except the owner's own
+        /// stacks on the Mini Mine Layer and Super Mine Layer hulls. A Space Demolition owner learns
+        /// the designs (ship-design-and-components.md: "or is caught by a detonating one"), but the
+        /// field is NOT revealed to the fleet's race. The field takes NO
         /// per-fleet strike loss here: the spec gives a detonating field's cost as the +25 points
         /// of decay only (an interpretation - the shared routine's loss step is not stated either
         /// way for detonation). Starbases are not caught. Messages 351-353 (field owner) and
@@ -363,7 +364,9 @@ namespace Nova.Server
                 alreadyHit?.Add(fleet.Key);
                 caught++;
 
-                RevealAndLearn(fleet, field);
+                // A detonation does NOT reveal the field to the fleet's race (only a transit hit
+                // does); a Space Demolition field owner still learns the designs.
+                RevealAndLearn(fleet, field, reveal: false);
                 DamageOutcome outcome = DamageFleet(fleet, field, true);
                 if (outcome.AnyDamage)
                 {
@@ -420,7 +423,10 @@ namespace Nova.Server
                 {
                     ShipToken token = entry.Value;
                     int engines = EngineCount(token.Design);
-                    if (token.Quantity <= 0 || engines <= 0 || (detonation && IsMineLayerHull(token.Design)))
+                    // A detonating field spares only the FIELD OWNER's own mine-layer hulls; another
+                    // race's layer hulls (friend or not) take the damage like any other ship.
+                    if (token.Quantity <= 0 || engines <= 0
+                        || (detonation && fleet.Owner == field.Owner && IsMineLayerHull(token.Design)))
                     {
                         continue;
                     }
@@ -447,9 +453,9 @@ namespace Nova.Server
                     int armorPerShip = token.Design.Armor;
                     long total = DamageWord.For(token).TotalDamage(token.Quantity, armorPerShip) + armorDamage;
                     long perShip = (total + token.Quantity - 1) / token.Quantity;
-                    // A ship whose damage reaches its whole armor cannot survive (the damage word
-                    // holds at most 499/500), so "exceeds" includes equality here, as in battle.
-                    if (perShip >= armorPerShip)
+                    // Only damage strictly above the armor destroys the stack; a figure exactly equal
+                    // to the armor leaves every ship alive at that damage (section 5 "Damage").
+                    if (perShip > armorPerShip)
                     {
                         outcome.ShipsLost += token.Quantity;
                         wreckage += token.Design.Cost * token.Quantity;
@@ -469,8 +475,9 @@ namespace Nova.Server
             }
 
             // Destroyed ships leave wreckage at the stop point (a third of their cost, as for
-            // battle wreckage - combat-resolution.md section 7).
-            if (outcome.ShipsLost > 0)
+            // battle wreckage - combat-resolution.md section 7). A detonating field leaves none:
+            // its only cost is the +25 points of yearly decay (section 5 "Detonation").
+            if (outcome.ShipsLost > 0 && !detonation)
             {
                 BattleEngine.AddWreckage(serverState, fleet.Position, wreckage * (1.0 / 3.0));
             }
@@ -486,19 +493,22 @@ namespace Nova.Server
         /// :74575-74607): a full copy of each design goes into the owner's intel on the fleet's
         /// race, replacing a hull-only scan record.
         /// </summary>
-        private void RevealAndLearn(Fleet fleet, Minefield field)
+        private void RevealAndLearn(Fleet fleet, Minefield field, bool reveal)
         {
             if (field.Owner == fleet.Owner)
             {
                 return;
             }
 
-            if (field.VisibleTo == null)
+            if (reveal)
             {
-                field.VisibleTo = new HashSet<int>();
-            }
+                if (field.VisibleTo == null)
+                {
+                    field.VisibleTo = new HashSet<int>();
+                }
 
-            field.VisibleTo.Add(fleet.Owner);
+                field.VisibleTo.Add(fleet.Owner);
+            }
 
             if (!serverState.AllEmpires.TryGetValue(field.Owner, out EmpireData fieldOwner)
                 || fieldOwner.Race == null

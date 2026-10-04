@@ -153,6 +153,22 @@ namespace Nova.Common.Components
             saveFilePath = null;
             isLoaded = false;
         }
+
+        /// <summary>
+        /// Drops the loaded definitions (and the located component/graphics paths) so the next
+        /// access reloads them from whichever components file is registered right now. The
+        /// definitions themselves are static, so a component loaded under one Nova root (e.g. a
+        /// game whose graphics resolve to one path) otherwise leaks its resolved image paths into
+        /// every later load in the process; callers that redirect the Nova root (a simulation
+        /// environment, a test) use this to get a clean, self-consistent load.
+        /// </summary>
+        public static void ResetCache()
+        {
+            components = new ConcurrentDictionary<string, Component>();
+            saveFilePath = null;
+            graphicsFilePath = null;
+            isLoaded = false;
+        }
         
         
         /// <summary>

@@ -560,15 +560,21 @@ namespace Nova.Tests.UnitTests
             Assert.That(Texts(server), Has.Some.Contains("has added 100kT of minerals"));
         }
 
+        // §10b: the merge test is on the existing packet's mass BEFORE the merge, so a packet
+        // already at 16,000 kT takes one more order (to 16,300) and a packet at the limit does not.
         [Test]
-        public void Launch_DoesNotMergePastTheMassLimit()
+        public void Launch_MergesWhileTheExistingPacketIsUnderTheMassLimit()
         {
             ServerData server = PacketWorld("JOAT", out Star origin, out _, out EmpireData empire);
             PacketProductionUnit ironium = new PacketProductionUnit(empire.Race, PacketMineral.Ironium, false);
 
-            PacketLaunch.Launch(server, origin, ironium, 160); // 16,000 kT
-            PacketLaunch.Launch(server, origin, ironium, 3);   // 16,300: not "under" the limit
+            PacketLaunch.Launch(server, origin, ironium, 160); // 16,000 kT: under 16,300
+            PacketLaunch.Launch(server, origin, ironium, 3);   // merges, total 16,300
 
+            Assert.AreEqual(1, server.AllMineralPackets.Count);
+            Assert.AreEqual(16_300, server.AllMineralPackets.Values.Single().TotalKilotons);
+
+            PacketLaunch.Launch(server, origin, ironium, 1);   // 16,300 is not "under" the limit
             Assert.AreEqual(2, server.AllMineralPackets.Count);
         }
 
@@ -722,7 +728,7 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void Scan_PacketPhysicsSensesEveryPacket_OthersOnlyTheirOwn()
+        public void Scan_PacketPhysicsSensesEveryPacket_OthersOnlyInScannerRange()
         {
             EmpireData packetPhysics = new EmpireData { Id = 1 };
             packetPhysics.Race.Traits.SetPrimary("PP");
@@ -741,8 +747,60 @@ namespace Nova.Tests.UnitTests
 
             Assert.IsTrue(packetPhysics.MineralPacketReports.ContainsKey(othersPacket.Key));
             Assert.IsTrue(packetPhysics.MineralPacketReports.ContainsKey(ppPacket.Key));
-            Assert.IsTrue(other.MineralPacketReports.ContainsKey(othersPacket.Key));
+            // A non-Packet-Physics race with no scanner sees nothing - not even its own packet
+            // (fleet-movement-scanning-cargo.md §3: an own packet is not written automatically).
+            Assert.IsFalse(other.MineralPacketReports.ContainsKey(othersPacket.Key), "an own packet is not seen automatically");
             Assert.IsFalse(other.MineralPacketReports.ContainsKey(ppPacket.Key), "no scanner in range");
+        }
+
+        [Test]
+        public void Scan_AnOwnPacketIsSeenOnlyWhileAScannerReachesIt()
+        {
+            EmpireData empire = new EmpireData { Id = 2 };
+            empire.Race.Traits.SetPrimary("JOAT");
+            ServerData server = NewServer(empire);
+            Star target = MakeStar("Far", 5000, 5000, (ushort)Global.Nobody, null);
+            server.AllStars.Add(target.Name, target);
+
+            Star home = MakeStar("Home", 0, 0, 2, empire.Race);
+            home.ScanRange = 50;
+            server.AllStars.Add(home.Name, home);
+
+            MineralPacket near = AddPacket(server, 2, target, new NovaPoint(40, 0), 5, 10);
+            MineralPacket far = AddPacket(server, 2, target, new NovaPoint(60, 0), 5, 10);
+
+            new ScanStep(new ScriptedRandom()).Process(server);
+
+            Assert.IsTrue(empire.MineralPacketReports.ContainsKey(near.Key), "40 ly is inside the planet's 50 ly");
+            Assert.IsFalse(empire.MineralPacketReports.ContainsKey(far.Key), "60 ly is outside the planet's 50 ly");
+        }
+
+        [Test]
+        public void Scan_APacketPhysicsPacketAtWarpFourDoesNotScan()
+        {
+            EmpireData packetPhysics = new EmpireData { Id = 1 };
+            packetPhysics.Race.Traits.SetPrimary("PP");
+            EmpireData other = new EmpireData { Id = 2 };
+            other.Race.Traits.SetPrimary("JOAT");
+            ServerData server = NewServer(packetPhysics, other);
+            packetPhysics.EmpireReports.Add(2, new EmpireIntel(other));
+            other.EmpireReports.Add(1, new EmpireIntel(packetPhysics));
+            Star target = MakeStar("Far", 5000, 5000, (ushort)Global.Nobody, null);
+            server.AllStars.Add(target.Name, target);
+
+            // Warp 4: a 16 ly range would reach the fleet below, but only packets flying faster
+            // than warp 4 scan (fleet-movement-scanning-cargo.md §3).
+            AddPacket(server, 1, target, new NovaPoint(1000, 1000), 4, 10);
+
+            Fleet near = new Fleet(9001) { Owner = 2, Position = new NovaPoint(1010, 1000) };
+            ShipDesign design = PlainDesign(9101);
+            near.Composition.Add(new ShipToken(design, 1).Key, new ShipToken(design, 1));
+            near.Waypoints.Add(new Waypoint { Position = near.Position });
+            other.OwnedFleets.Add(near);
+
+            new ScanStep(new ScriptedRandom()).Process(server);
+
+            Assert.IsFalse(packetPhysics.FleetReports.ContainsKey(near.Key), "a warp-4 packet does not scan");
         }
 
         [Test]

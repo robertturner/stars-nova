@@ -113,6 +113,13 @@ namespace Nova.Server
         private Resources totalSalvage = new Resources();
 
         /// <summary>
+        /// True once at least one ship has been destroyed at the battle location being processed:
+        /// the wreckage routine is only invoked then, so a battle with no losses creates no object
+        /// (and the "all-zero amounts invent salvage" guard applies only to a real wreck).
+        /// </summary>
+        private bool wrecksThisLocation;
+
+        /// <summary>
         /// The planet the battle being processed is over (null in deep space or when DoBattle is
         /// driven directly) - decides the salvage fraction and where dumped cargo goes.
         /// </summary>
@@ -294,6 +301,7 @@ namespace Nova.Server
                 }
 
                 totalSalvage = new Resources();
+                wrecksThisLocation = false;
                 destroyedTechByOwner = new Dictionary<int, TechLevel>();
 
                 battleStar = sample.InOrbit as Star;
@@ -320,8 +328,10 @@ namespace Nova.Server
                 {
                     battleStar.ResourcesOnHand += salvage;
                 }
-                else
+                else if (wrecksThisLocation)
                 {
+                    // The wreckage routine is called only when a ship actually died; with none it
+                    // never ran, so a bloodless deep-space battle leaves no object.
                     AddWreckage(sample.Position, salvage);
                 }
 
@@ -1398,13 +1408,18 @@ namespace Nova.Server
         /// </summary>
         public static void AddWreckage(ServerData serverState, NovaPoint position, Resources minerals)
         {
-            if (serverState == null || position == null || minerals == null)
-            {
-                return;
-            }
+            AddWreckage(serverState, position, minerals, forceNew: false);
+        }
 
-            int[] left = { Math.Max(0, minerals.Ironium), Math.Max(0, minerals.Boranium), Math.Max(0, minerals.Germanium) };
-            if (left[0] + left[1] + left[2] <= 0)
+        /// <summary>
+        /// As <see cref="AddWreckage(ServerData, NovaPoint, Resources)"/>, with
+        /// <paramref name="forceNew"/> making the first object at the position a brand-new one
+        /// rather than a top-up of whatever is already there (Scrap Fleet always creates a new
+        /// object; the battle, cargo-dump and minefield callers top up).
+        /// </summary>
+        public static void AddWreckage(ServerData serverState, NovaPoint position, Resources minerals, bool forceNew)
+        {
+            if (serverState == null || position == null || minerals == null)
             {
                 return;
             }
@@ -1417,8 +1432,35 @@ namespace Nova.Server
                 }
             }
 
+            int[] left = { Math.Max(0, minerals.Ironium), Math.Max(0, minerals.Boranium), Math.Max(0, minerals.Germanium) };
+            if (left[0] + left[1] + left[2] <= 0)
+            {
+                // All-zero amounts invent salvage: 0-9 kT of each mineral at random, redrawn until
+                // the total is positive (combat-resolution.md §7 "Guards").
+                do
+                {
+                    left[0] = GameRandom.Current.Next(0, 10);
+                    left[1] = GameRandom.Current.Next(0, 10);
+                    left[2] = GameRandom.Current.Next(0, 10);
+                }
+                while (left[0] + left[1] + left[2] <= 0);
+            }
+
             string baseKey = position.ToHashString();
-            for (int slot = 0; left[0] + left[1] + left[2] > 0; slot++)
+            int slot = 0;
+            if (forceNew)
+            {
+                while (serverState.AllDeepSpaceMinerals.ContainsKey(slot == 0 ? baseKey : baseKey + "#" + slot))
+                {
+                    slot++;
+                }
+            }
+
+            // The one-year grace mark is set on the FIRST object that receives minerals (newly
+            // created or topped up); an overflow object created inside the loop is not marked
+            // (combat-resolution.md §7 "Grace mark").
+            bool gracePending = true;
+            for (; left[0] + left[1] + left[2] > 0; slot++)
             {
                 string key = slot == 0 ? baseKey : baseKey + "#" + slot;
                 if (!serverState.AllDeepSpaceMinerals.TryGetValue(key, out DeepSpaceMinerals wreckage))
@@ -1439,10 +1481,12 @@ namespace Nova.Server
 
                 if (add[0] + add[1] + add[2] > 0)
                 {
-                    // The wreckage routine sets the one-year decay grace flag (turn-generation-
-                    // engine.md §1 step 21, §3). Ambiguity: the spec names only "the wreckage
-                    // creator setting it"; it is set here on a top-up too.
-                    wreckage.DecayGrace = true;
+                    if (gracePending)
+                    {
+                        wreckage.DecayGrace = true;
+                        gracePending = false;
+                    }
+
                     wreckage.Minerals = held + new Resources(add[0], add[1], add[2], 0);
                 }
             }
@@ -1463,6 +1507,8 @@ namespace Nova.Server
             {
                 return;
             }
+
+            wrecksThisLocation = true;
 
             // A Bleeding Edge owner's costs are recomputed at current tech with the doubling
             // switched off (combat-resolution.md §7, ship-design-and-components.md §8: the

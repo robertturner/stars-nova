@@ -66,6 +66,12 @@ namespace Nova.Server
         // rate (turn-generation-engine.md section 11). Consumed by RepairStep; cleared with the above.
         private readonly HashSet<long> fleetsThatMovedThisYear = new HashSet<long>();
 
+        // Fleets that moved under their own engines this pass (not a Stargate jump, a Cheap Engines
+        // balk, a warp-0 hold or a fleet with no movement left): the only fleets the Radiating
+        // Hydro-Ram Scoop's colonist hazard can touch (fleet-movement-scanning-cargo.md §2).
+        // Consumed by RamScoopRadiationStep; cleared with the sets above.
+        private readonly HashSet<long> fleetsThatMovedUnderEngines = new HashSet<long>();
+
         // Repair pass: step 25 of behavior-specs-10/turn-generation-engine.md section 1, after the
         // post-movement stage (battle 23, bombardment 23b, Mystery Trader 23c) and before the year
         // counter (33) and the design pass (36, key 90). (Key 26, not 25: keys 24/25 are the
@@ -208,7 +214,7 @@ namespace Nova.Server
             turnSteps.Add(TRANSFERFLEETSTEP, new TransferFleetStep());
             turnSteps.Add(MINESWEEPSTEP, new MineSweepStep());
             turnSteps.Add(FLEETTERRAFORMSTEP, new FleetTerraformStep());
-            turnSteps.Add(RAMSCOOPRADIATIONSTEP, new RamScoopRadiationStep());
+            turnSteps.Add(RAMSCOOPRADIATIONSTEP, new RamScoopRadiationStep(fleetsThatMovedUnderEngines));
             turnSteps.Add(PACKETDECAYSTEP, new PacketDecayStep());
             turnSteps.Add(PACKETHALFSTEP, new PacketMovementStep(true));
             turnSteps.Add(PLANETARTIFACTSTEP, new PlanetArtifactStep());
@@ -313,6 +319,7 @@ namespace Nova.Server
 
             fleetsThatSawAction.Clear();
             fleetsThatMovedThisYear.Clear();
+            fleetsThatMovedUnderEngines.Clear();
 
             foreach (Fleet fleet in serverState.IterateAllFleetsInShuffledOrder())
             {
@@ -696,6 +703,14 @@ namespace Nova.Server
                         }
 
                         fleetMoveResult = fleet.Move(ref availableTime, race);
+
+                        // The Radiating Hydro-Ram Scoop's colonist hazard applies only to a fleet
+                        // that moved under its own engines this pass (not a Stargate jump, a Cheap
+                        // Engines balk, a warp-0 hold or a fleet with no movement left).
+                        if (fleet.Position != positionBeforeMove)
+                        {
+                            fleetsThatMovedUnderEngines.Add(fleet.Key);
+                        }
                     }
 
                     // Checked once per turn only (the original's pass-0 test).

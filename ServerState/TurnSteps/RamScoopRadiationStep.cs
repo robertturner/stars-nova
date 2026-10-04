@@ -22,6 +22,7 @@
 namespace Nova.Server.TurnSteps
 {
     using System;
+    using System.Collections.Generic;
     using System.Linq;
 
     using Nova.Common;
@@ -35,15 +36,16 @@ namespace Nova.Server.TurnSteps
     /// engine-subtype check in the client).
     /// </summary>
     /// <remarks>
-    /// Implemented: once a year, a fleet any of whose occupied stacks has a Radiating Hydro-Ram
-    /// Scoop loses part of the colonists it carries, unless its owner is radiation-immune or the
-    /// centre of its radiation band is 85 or more. The yearly loss is NOT given by the specs (the
-    /// in-flight hazard code was "not re-read for the number"); this uses the Stars!wiki figure
-    /// int((86 - C) / 2) percent a year for a radiation centre C (20 -> 33%, 50 -> 18%, 80 -> 3%,
-    /// 85 -> 0, matching the spec's 85 mR threshold), applied to the hold in 100-colonist units
-    /// and truncated, so a load too small for one unit of loss loses nothing. It applies whether
-    /// or not the fleet moved (the spec does not tie it to movement), and runs with the post-
-    /// movement steps before Inner Strength breeding (step 19).
+    /// Implemented: a fleet any of whose occupied stacks has a Radiating Hydro-Ram Scoop loses part
+    /// of the colonists it carries, unless its owner is radiation-immune or the centre of its
+    /// radiation band is 85 or more. Per fleet-movement-scanning-cargo.md §2 the loss applies only
+    /// to a fleet that moved under its own engines this pass (a Stargate jump, a Cheap Engines
+    /// balk, a warp-0 hold and a fleet with no movement left take none) - <see cref="TurnGenerator"/>
+    /// records those fleets in the set this step is given. The yearly loss is the spec's
+    /// int((86 - C) / 2) percent for a radiation centre C (20 -> 33%, 50 -> 18%, 80 -> 3%, 85 -> 0,
+    /// matching the 85 mR threshold), applied to the hold in 100-colonist units and truncated but
+    /// at least 1 unit whenever any colonists are aboard. It runs with the post-movement steps
+    /// before Inner Strength breeding (step 19).
     /// </remarks>
     public class RamScoopRadiationStep : ITurnStep
     {
@@ -52,11 +54,30 @@ namespace Nova.Server.TurnSteps
         /// <summary>Radiation-band centre at and above which the engine is harmless.</summary>
         public const int SafeRadiationCentre = 85;
 
+        /// <summary>Fleets that moved under their own engines this pass; null means no gate (a
+        /// direct unit-test call that wants every matching fleet treated as having moved).</summary>
+        private readonly ISet<long> movedUnderEngines;
+
+        /// <summary>Every matching fleet is treated as having moved (unit tests).</summary>
+        public RamScoopRadiationStep()
+            : this(null)
+        {
+        }
+
+        /// <summary><paramref name="movedUnderEngines"/> is the set of fleets that moved under
+        /// their own engines this pass; only those take the loss.</summary>
+        public RamScoopRadiationStep(ISet<long> movedUnderEngines)
+        {
+            this.movedUnderEngines = movedUnderEngines;
+        }
+
         public void Process(ServerData serverState)
         {
             foreach (Fleet fleet in serverState.IterateAllFleets().ToList())
             {
-                if (fleet.IsStarbase || fleet.Cargo == null || fleet.Cargo.ColonistsInKilotons <= 0 || !HasRadiatingEngine(fleet))
+                if (fleet.IsStarbase || fleet.Cargo == null || fleet.Cargo.ColonistsInKilotons <= 0
+                    || !HasRadiatingEngine(fleet)
+                    || (movedUnderEngines != null && !movedUnderEngines.Contains(fleet.Key)))
                 {
                     continue;
                 }
@@ -67,11 +88,15 @@ namespace Nova.Server.TurnSteps
                 }
 
                 int percent = LossPercent(owner.Race);
-                int lost = fleet.Cargo.ColonistsInKilotons * percent / 100;
-                if (lost <= 0)
+                if (percent <= 0)
                 {
                     continue;
                 }
+
+                // The units lost are the hold x P / 100, truncated, but at least one unit (100
+                // colonists) whenever any are aboard and never more than are aboard.
+                int lost = Math.Max(1, fleet.Cargo.ColonistsInKilotons * percent / 100);
+                lost = Math.Min(lost, fleet.Cargo.ColonistsInKilotons);
 
                 fleet.Cargo.ColonistsInKilotons -= lost;
 

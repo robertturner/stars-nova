@@ -486,10 +486,11 @@ namespace Nova.Tests.UnitTests
     }
 
     /// <summary>
-    /// Cargo theft (behavior-specs-10/fleet-movement-scanning-cargo.md §4, "Caps on a load" and
+    /// Cargo theft (behavior-specs-11/fleet-movement-scanning-cargo.md §4, "Caps on a load" and
     /// "Theft"): taking cargo from another race's planet or fleet works only with the theft scanner
-    /// ability. Per the in-game help, the Pick Pocket Scanner steals fleet cargo and the Robber
-    /// Baron Scanner also a planet's surface minerals; colonists are never taken.
+    /// ability. The Pick Pocket Scanner steals from fleets and the Robber Baron Scanner (full theft)
+    /// also from planets; every slot is stealable - minerals and colonists either way, fuel from
+    /// fleets only - and diplomatic relations are not consulted.
     /// </summary>
     [TestFixture]
     public class CargoTheftTest
@@ -520,20 +521,23 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void RobberBaron_StealsAForeignPlanetsSurfaceMinerals_ButNotItsColonists()
+        public void RobberBaron_StealsAForeignPlanetsSurfaceMinerals_AndItsColonists()
         {
-            Fleet fleet = Thief("Robber Barron Scanner"); // components.xml's spelling
+            Fleet miner = Thief("Robber Barron Scanner"); // components.xml's spelling
             Star theirs = CargoTestKit.Star(CargoTestKit.Them, ironium: 70, colonists: 5000);
             CargoTask task = CargoTestKit.Transport((CargoSlot.Ironium, CargoAction.LoadAll, 0));
 
-            CargoTestKit.Run(task, fleet, theirs, us, them);
-            Assert.AreEqual(70, fleet.Cargo.Ironium);
+            CargoTestKit.Run(task, miner, theirs, us, them);
+            Assert.AreEqual(70, miner.Cargo.Ironium);
             Assert.AreEqual(0, theirs.ResourcesOnHand.Ironium);
 
+            // Full theft takes every slot, colonists included: the planet's population drops by
+            // the amount taken (50 kT = 5,000 colonists).
+            Fleet slaver = Thief("Robber Barron Scanner");
             CargoTask colonists = CargoTestKit.Transport((CargoSlot.Colonists, CargoAction.LoadAll, 0));
-            CargoTestKit.Run(colonists, fleet, theirs, us, them);
-            Assert.AreEqual(0, fleet.Cargo.ColonistsInKilotons);
-            Assert.AreEqual(5000, theirs.Colonists);
+            CargoTestKit.Run(colonists, slaver, theirs, us, them);
+            Assert.AreEqual(50, slaver.Cargo.ColonistsInKilotons);
+            Assert.AreEqual(0, theirs.Colonists);
         }
 
         [Test]
@@ -555,6 +559,19 @@ namespace Nova.Tests.UnitTests
             CargoTestKit.Run(planet, fleet, theirs, us, them);
             Assert.AreEqual(0, fleet.Cargo.Boranium);
             Assert.AreEqual(50, theirs.ResourcesOnHand.Boranium);
+        }
+
+        [Test]
+        public void PickPocket_StealsColonistsFromAForeignFleet()
+        {
+            Fleet fleet = Thief(Fleet.PickPocketScannerName);
+            Fleet victim = Victim();
+
+            CargoTask task = CargoTestKit.Transport((CargoSlot.Colonists, CargoAction.LoadAll, 0));
+            CargoTestKit.Run(task, fleet, victim, us, them);
+
+            Assert.AreEqual(20, fleet.Cargo.ColonistsInKilotons);
+            Assert.AreEqual(0, victim.Cargo.ColonistsInKilotons);
         }
 
         [Test]

@@ -315,17 +315,33 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void DamageIsMultipliedByTheEnginesInTheDesign_AndADestroyedFleetLeavesWreckage()
+        public void DamageExactlyEqualToTheArmor_DoesNotDestroyTheStack()
         {
             AddField(fieldOwner, 40, 0, 400);
             ShipDesign twinEngine = MakeDesign(1000, engines: 2);
-            twinEngine.Blueprint.Cost = new Resources(30, 0, 0, 0); // wreckage needs minerals to exist
-            twinEngine.Update();
             Fleet fleet = MakeFleet((twinEngine, 1));
 
             MinefieldHit result = Travel(fleet, 81, new ScriptedRandom(0));
 
-            // (1 x 100 + 400 top-up) x 2 engines = 1,000 = the whole armor.
+            // (1 x 100 + 400 top-up) x 2 engines = 1,000 = the whole armor: every ship survives.
+            Assert.AreEqual(MinefieldHit.Hit, result);
+            Assert.AreEqual(1, fleet.Composition.Count, "a figure exactly equal to the armor does not destroy the stack");
+            Assert.Greater(ArmorOf(fleet), 0, "the ships survive at damage equal to their armor");
+            Assert.AreEqual(0, serverState.AllDeepSpaceMinerals.Count, "nothing was destroyed, so no wreckage");
+        }
+
+        [Test]
+        public void DamageIsMultipliedByTheEnginesInTheDesign_AndADestroyedFleetLeavesWreckage()
+        {
+            AddField(fieldOwner, 40, 0, 400);
+            ShipDesign tripleEngine = MakeDesign(1000, engines: 3);
+            tripleEngine.Blueprint.Cost = new Resources(30, 0, 0, 0); // wreckage needs minerals to exist
+            tripleEngine.Update();
+            Fleet fleet = MakeFleet((tripleEngine, 1));
+
+            MinefieldHit result = Travel(fleet, 81, new ScriptedRandom(0));
+
+            // (1 x 100 + 400 top-up) x 3 engines = 1,500, above the whole armor.
             Assert.AreEqual(MinefieldHit.Destroyed, result);
             Assert.AreEqual(0, fleet.Composition.Count);
             Assert.AreEqual(1, serverState.AllDeepSpaceMinerals.Count, "destroyed ships leave wreckage at the stop point");

@@ -188,6 +188,50 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
+        public void ForceNew_CreatesANewObjectRatherThanToppingUp()
+        {
+            ServerData serverState = new ServerData();
+            NovaPoint spot = new NovaPoint(10, 10);
+            BattleEngine.AddWreckage(serverState, spot, new Resources(100, 0, 0, 0));
+
+            BattleEngine.AddWreckage(serverState, spot, new Resources(50, 0, 0, 0), forceNew: true);
+
+            Assert.AreEqual(2, serverState.AllDeepSpaceMinerals.Count);
+            Assert.AreEqual(100, serverState.AllDeepSpaceMinerals[spot.ToHashString()].Minerals.Ironium, "the existing object is left alone");
+            Assert.AreEqual(50, serverState.AllDeepSpaceMinerals[spot.ToHashString() + "#1"].Minerals.Ironium, "the forced object is new");
+        }
+
+        [Test]
+        public void OnlyTheFirstReceivingObjectGetsTheGraceMark()
+        {
+            ServerData serverState = new ServerData();
+            NovaPoint spot = new NovaPoint(500, 500);
+            BattleEngine.AddWreckage(serverState, spot, new Resources(40000, 0, 0, 0));
+
+            Assert.IsTrue(serverState.AllDeepSpaceMinerals[spot.ToHashString()].DecayGrace, "the first receiving object is marked");
+            Assert.IsFalse(serverState.AllDeepSpaceMinerals[spot.ToHashString() + "#1"].DecayGrace, "the overflow object is not marked");
+        }
+
+        [Test]
+        public void ZeroAmounts_InventSalvageOfAtMostNineKilotonsEach()
+        {
+            ServerData serverState = new ServerData();
+            NovaPoint spot = new NovaPoint(1, 2);
+            using (GameRandom.Use(new Random(1234)))
+            {
+                BattleEngine.AddWreckage(serverState, spot, new Resources(0, 0, 0, 0));
+            }
+
+            DeepSpaceMinerals wreck = serverState.AllDeepSpaceMinerals.Values.Single();
+            int total = wreck.Minerals.Ironium + wreck.Minerals.Boranium + wreck.Minerals.Germanium;
+            Assert.Greater(total, 0);
+            Assert.LessOrEqual(total, 27);
+            Assert.LessOrEqual(wreck.Minerals.Ironium, 9);
+            Assert.LessOrEqual(wreck.Minerals.Boranium, 9);
+            Assert.LessOrEqual(wreck.Minerals.Germanium, 9);
+        }
+
+        [Test]
         public void AtAPlanetsMapPosition_NoObjectIsMade()
         {
             ServerData serverState = new ServerData();
@@ -395,7 +439,35 @@ namespace Nova.Tests.UnitTests
             Assert.AreEqual(1000, outside.Composition.Values.Single().Armor, 1e-9);
             Assert.AreEqual(10, enemy.Position.X, "No stop: the fleet stays where it is");
             Assert.AreEqual(400, field.NumberOfMines, "No per-fleet strike loss for a detonation");
-            Assert.IsTrue(field.IsVisibleTo(mover.Id));
+            Assert.IsFalse(field.IsVisibleTo(mover.Id), "A detonation does not reveal the field to the fleet's race");
+        }
+
+        [Test]
+        public void Detonation_DamagesAnotherRacesMineLayerHulls_OnlyTheOwnersAreSpared()
+        {
+            Minefield field = AddField(layer, 0, 0, 400, detonate: true);
+            Fleet foreignLayers = AddFleet(mover, new NovaPoint(0, 0),
+                (MakeDesign(1000, "Mini Mine Layer"), 1), (MakeDesign(1000, "Super Mine Layer"), 1));
+
+            new CheckForMinefields(serverState, new ScriptedRandom()).Detonate(field, new HashSet<long>());
+
+            List<ShipToken> stacks = foreignLayers.Composition.Values.ToList();
+            Assert.Less(stacks[0].Armor, 1000, "Another race's Mini Mine Layer hull takes the damage");
+            Assert.Less(stacks[1].Armor, 1000, "Another race's Super Mine Layer hull takes the damage");
+        }
+
+        [Test]
+        public void Detonation_LeavesNoWreckage()
+        {
+            Minefield field = AddField(layer, 0, 0, 400, detonate: true);
+            ShipDesign fragile = MakeDesign(400);
+            fragile.Blueprint.Cost = new Resources(30, 0, 0, 0); // wreckage would need minerals to exist
+            fragile.Update();
+            AddFleet(mover, new NovaPoint(0, 0), (fragile, 5));
+
+            new CheckForMinefields(serverState, new ScriptedRandom()).Detonate(field, new HashSet<long>());
+
+            Assert.AreEqual(0, serverState.AllDeepSpaceMinerals.Count, "a detonation leaves no wreckage");
         }
 
         [Test]

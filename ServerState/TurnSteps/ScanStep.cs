@@ -266,18 +266,22 @@ namespace Nova.Server.TurnSteps
                 return Enumerable.Empty<Mappable>();
             }
 
+            // Only packets flying faster than warp 4 scan (fleet-movement-scanning-cargo.md §3:
+            // "only packets flying faster than warp 4 scan"); a warp-4 packet's range would be 16 ly.
             return serverState.AllMineralPackets.Values
-                .Where(packet => packet.Owner == empire.Id && !packet.IsEmpty)
+                .Where(packet => packet.Owner == empire.Id && !packet.IsEmpty && packet.Warp > 4)
                 .Cast<Mappable>()
                 .ToList();
         }
 
         /// <summary>
         /// Recomputes the mineral packets the empire sees this year (EmpireData.MineralPacketReports,
-        /// copies carried in its turn file): its own, every packet in flight for a Packet Physics
-        /// race ("can sense every player's packets in flight", race-traits.md §2), and any packet
-        /// within the normal range of one of its scan sources (squared distance at most range
-        /// squared). The specs give packets no cloak, so none is applied (spec gap).
+        /// copies carried in its turn file): every packet in flight for a Packet Physics race
+        /// ("can sense every player's packets in flight", race-traits.md §2), and any packet within
+        /// the normal range of one of its scan sources (squared distance at most range squared; a
+        /// source of range 0 sees only a packet at its own position). An own packet is NOT seen
+        /// automatically (fleet-movement-scanning-cargo.md §3): it is written only while it lies in
+        /// range. The specs give packets no cloak, so none is applied (spec gap).
         /// </summary>
         private void UpdateVisiblePackets(EmpireData empire, List<KeyValuePair<NovaPoint, int>> scanSources)
         {
@@ -286,10 +290,9 @@ namespace Nova.Server.TurnSteps
 
             foreach (MineralPacket packet in serverState.AllMineralPackets.Values)
             {
-                bool visible = packet.Owner == empire.Id
-                    || sensesAllPackets
-                    || scanSources.Any(source => source.Value > 0
-                        && PointUtilities.DistanceSquare(source.Key, packet.Position) <= (double)source.Value * source.Value);
+                bool visible = sensesAllPackets
+                    || scanSources.Any(source =>
+                        PointUtilities.DistanceSquare(source.Key, packet.Position) <= (double)source.Value * source.Value);
 
                 if (visible)
                 {

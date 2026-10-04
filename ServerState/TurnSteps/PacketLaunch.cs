@@ -42,8 +42,9 @@ namespace Nova.Server.TurnSteps
     ///   rating (one more for Interstellar Traveler), capped at 3.</item>
     /// <item>The payload (units x the unit payload, each mineral capped at 32,760 kT) merges into
     ///   an existing packet of the same owner leaving the same planet with the same speed, target
-    ///   and class, provided the merged total stays under 16,300 kT (message 212); otherwise a new
-    ///   packet is created at the planet (message 211).</item>
+    ///   and class, provided that packet's mass BEFORE the merge is still under 16,300 kT (message
+    ///   212; the new minerals are then added with no further test); otherwise a new packet is
+    ///   created at the planet (message 211).</item>
     /// </list>
     /// "Leaving the same planet" is read as "launched from this planet and not yet moved" (a
     /// packet launched this turn, before step 21's half step) - see the report's ambiguity list.
@@ -101,7 +102,7 @@ namespace Nova.Server.TurnSteps
             MineralPacket existing = serverState.AllMineralPackets.Values
                 .Where(p => p.Owner == star.Owner && !p.HasMoved && p.OriginName == star.Name
                     && p.TargetName == target.Name && p.Warp == speed && p.OverspeedClass == overspeedClass
-                    && p.TotalKilotons + payloadKilotons < MineralPacketRules.MergeMassLimit)
+                    && p.TotalKilotons < MineralPacketRules.MergeMassLimit)
                 .OrderBy(p => p.Key)
                 .FirstOrDefault();
 

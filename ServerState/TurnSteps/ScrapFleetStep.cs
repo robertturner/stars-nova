@@ -84,7 +84,7 @@ namespace Nova.Server.TurnSteps
                         // overflowing into further objects at the spot (combat-resolution.md §5/§7).
                         if (scrapTask.Wreckage != null && scrapTask.Wreckage.Mass > 0)
                         {
-                            BattleEngine.AddWreckage(serverState, scrapTask.WreckagePosition, scrapTask.Wreckage);
+                            BattleEngine.AddWreckage(serverState, scrapTask.WreckagePosition, scrapTask.Wreckage, forceNew: true);
                         }
 
                         serverState.AllMessages.AddRange(scrapTask.Messages);

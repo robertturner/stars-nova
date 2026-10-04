@@ -446,9 +446,9 @@ namespace Nova.Common.Waypoints
         /// <summary>
         /// May the fleet load this slot from the target? Its own planets and fleets, and unowned
         /// planets, always. Another race's planet or fleet only with the cargo-theft scanner ability
-        /// (§4, "Caps on a load"; "Theft"): a Robber Baron Scanner takes surface minerals from a
-        /// planet, either theft scanner takes minerals and fuel from a fleet. Colonists are never
-        /// taken from another race. Planets have no fuel slot.
+        /// (§4, "Caps on a load"; "Theft"): a Robber Baron Scanner (full theft) takes from a planet,
+        /// either theft scanner takes from a fleet. No slot is excluded in theft mode - minerals,
+        /// colonists and (from fleets) fuel can all be taken; a planet has no fuel slot.
         /// </summary>
         public static bool MayTakeFrom(Fleet fleet, Mappable target, CargoSlot slot)
         {
@@ -464,7 +464,7 @@ namespace Nova.Common.Waypoints
                     return true;
                 }
 
-                return slot != CargoSlot.Colonists && fleet.CanStealFromPlanets;
+                return fleet.CanStealFromPlanets;
             }
 
             if (target is Fleet other)
@@ -474,7 +474,7 @@ namespace Nova.Common.Waypoints
                     return true;
                 }
 
-                return slot != CargoSlot.Colonists && fleet.CanStealFromFleets;
+                return fleet.CanStealFromFleets;
             }
 
             return false;

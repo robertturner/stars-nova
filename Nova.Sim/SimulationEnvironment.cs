@@ -5,6 +5,7 @@ namespace Nova.Sim
     using System.IO;
 
     using Nova.Common;
+    using Nova.Common.Components;
 
     /// <summary>Thrown in place of Report.FatalError's Environment.Exit while a simulation runs,
     /// so a fatal game error becomes a reportable failure instead of killing the process (or the
@@ -117,6 +118,13 @@ namespace Nova.Sim
                     conf[Global.GraphicsFolderKey] = graphics;
                 }
             }
+
+            // AllComponents is a process-wide cache: if another game/test loaded it first, the
+            // components carry image paths resolved against that load's Nova root, and every
+            // later game inherits them (changing the saved state). Drop it so this run reloads
+            // the definitions through the private nova.conf just written, then lets the next
+            // run do the same (Dispose).
+            AllComponents.ResetCache();
         }
 
         /// <summary>Replaces the GameSettings singleton with a fresh default instance (its
@@ -247,6 +255,10 @@ namespace Nova.Sim
                 {
                     active = null;
                 }
+
+                // The run's components were loaded through this environment's private Nova root;
+                // drop them so anything after this reloads against the restored root.
+                AllComponents.ResetCache();
             }
         }
     }
