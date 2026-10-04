@@ -91,14 +91,27 @@ namespace Nova.Tests.UnitTests
 
         // ------------------------------------------------------------------ catalog
 
+        /// <summary>production-queue.md 10l items 4 and 9: the AUTO "Mineral Packets" entry is
+        /// offered always, while the four MANUAL packet items appear only with a mass driver.</summary>
         [Test]
-        public void Catalog_OffersPackets_OnlyWithAMassDriver()
+        public void Catalog_AlwaysOffersTheAutoPacket_AndTheManualItemsOnlyWithAMassDriver()
         {
             World(out Star noBase);
-            Assert.IsEmpty(PacketOrders.CatalogItems(noBase, NewRace("JOAT")));
+            IReadOnlyList<PacketProductionUnit> noBaseItems = PacketOrders.CatalogItems(noBase, NewRace("JOAT"));
+            Assert.AreEqual(1, noBaseItems.Count, "only the auto entry without a driver");
+            Assert.IsTrue(noBaseItems[0].AutoBuild);
+            Assert.AreEqual(PacketMineral.Mixed, noBaseItems[0].Mineral);
 
             noBase.Starbase = MakeStarbase(1); // a starbase with no driver
-            Assert.IsEmpty(PacketOrders.CatalogItems(noBase, NewRace("JOAT")));
+            IReadOnlyList<PacketProductionUnit> noDriver = PacketOrders.CatalogItems(noBase, NewRace("JOAT"));
+            Assert.AreEqual(1, noDriver.Count);
+            Assert.IsTrue(noDriver[0].AutoBuild);
+
+            noBase.Starbase = MakeStarbase(1, 5);
+            IReadOnlyList<PacketProductionUnit> withDriver = PacketOrders.CatalogItems(noBase, NewRace("JOAT"));
+            Assert.AreEqual(5, withDriver.Count, "the auto entry plus the four manual ones");
+            Assert.IsTrue(withDriver[0].AutoBuild);
+            Assert.IsTrue(withDriver.Skip(1).All(item => !item.AutoBuild));
         }
 
         [Test]

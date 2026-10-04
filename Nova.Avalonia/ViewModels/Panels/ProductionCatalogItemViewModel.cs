@@ -1,3 +1,4 @@
+using System;
 using Nova.Common;
 
 namespace Nova.Avalonia.ViewModels.Panels;
@@ -33,13 +34,36 @@ public class ProductionCatalogItemViewModel
     /// section 10).</summary>
     public bool ManualOnly { get; }
 
-    public ProductionCatalogItemViewModel(IProductionUnit unit, string? displayName = null, bool isTerraform = false, bool autoOnly = false, bool manualOnly = false)
+    /// <summary>The unit is the type-27 "best planetary scanner" (production-queue.md 10l item 7).</summary>
+    public bool IsScanner { get; }
+
+    /// <summary>The quantity the Add field is pre-filled with when this row is selected
+    /// (production-queue.md 10l: Factory / Mine / Defenses with the build room, Terraform
+    /// Environment with the headroom, everything else with 1).</summary>
+    public int PresetQuantity { get; }
+
+    /// <summary>The most one order of this row may add (the build room / headroom, or the queue
+    /// line's 1,023 ceiling).</summary>
+    public int MaxQuantity { get; }
+
+    public ProductionCatalogItemViewModel(
+        IProductionUnit unit,
+        string? displayName = null,
+        bool isTerraform = false,
+        bool autoOnly = false,
+        bool manualOnly = false,
+        bool isScanner = false,
+        int presetQuantity = 1,
+        int maxQuantity = 1023)
     {
         Unit = unit;
         this.displayName = displayName;
         IsTerraform = isTerraform;
         AutoOnly = autoOnly;
         ManualOnly = manualOnly && !autoOnly;
+        IsScanner = isScanner;
+        PresetQuantity = Math.Max(1, presetQuantity);
+        MaxQuantity = Math.Max(1, maxQuantity);
         CostSummary = ResourceFormat.Cost(unit.Cost);
     }
 }

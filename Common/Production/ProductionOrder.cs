@@ -1,4 +1,4 @@
-﻿#region Copyright Notice
+#region Copyright Notice
 // ============================================================================
 // Copyright (C) 2010, 2011 stars-nova
 //
@@ -501,6 +501,10 @@ namespace Nova.Common
 
                         case "packetunit":
                             Unit = new PacketProductionUnit(subnode);
+                        break;
+
+                        case "scannerunit":
+                            Unit = new ScannerProductionUnit(subnode);
                         break;
                     }
                 }

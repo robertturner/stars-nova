@@ -119,6 +119,13 @@ namespace Nova.Server
                     ApplyGenesisDevice(star);
                 }
 
+                // Item type 27 (production-queue.md section 10d): completing a planetary scanner
+                // installs the BEST scanner the owner may build, not the subtype-0 price paid.
+                if (done > 0 && productionOrder.Unit is ScannerProductionUnit)
+                {
+                    InstallBestScanner(star);
+                }
+
                 // Mineral packets: the completion routine is called once with the unit count
                 // (production-queue.md §10, §10b), so this entry's units form one launch.
                 if (done > 0 && productionOrder.Unit is PacketProductionUnit packetUnit)
@@ -172,6 +179,15 @@ namespace Nova.Server
                 return;
             }
 
+            if (order.Unit is ScannerProductionUnit)
+            {
+                // Message 185: a scanner order on a planet that already has a scanner is cancelled
+                // (production-queue.md 10i).
+                PostToOwner(star, "The scanner order on " + star.Name
+                    + " has been cancelled because the planet already has a scanner.");
+                return;
+            }
+
             bool terraform = order.Unit is TerraformProductionUnit;
             string what = terraform ? "terraforming" : order.Unit.Name;
             string text = cutTo == 0
@@ -214,6 +230,28 @@ namespace Nova.Server
             message.Audience = 0;
             message.Text = "Strong fundamental forces have rebirthed " + star.Name + ".";
             serverState.AllMessages.Add(message);
+        }
+
+        /// <summary>
+        /// A "Planetary Scanner" unit completed on this planet: install the best scanner the owner
+        /// may build (production-queue.md section 10d, <c>FUN_1008_58de</c>) and tell the owner
+        /// (message 124). Does nothing when the owner has no scanner component available.
+        /// </summary>
+        private void InstallBestScanner(Star star)
+        {
+            if (!serverState.AllEmpires.TryGetValue(star.Owner, out EmpireData empire))
+            {
+                return;
+            }
+
+            Component best = ScannerProductionUnit.BestScanner(empire);
+            if (best == null)
+            {
+                return;
+            }
+
+            ScannerProductionUnit.Install(star, best, empire.Race);
+            PostToOwner(star, star.Name + " has built a new " + best.Name + " planetary scanner.");
         }
 
         /// <summary>The hard limit of fleets per race (production-queue.md 10e).</summary>

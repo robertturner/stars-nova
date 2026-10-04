@@ -52,32 +52,30 @@ namespace Nova.Client
         public const string NoDestination = "(none)";
 
         /// <summary>
-        /// The packet items the production catalog offers for <paramref name="star"/>: the auto
-        /// "Mineral Packets" entry, then the manual Mixed / Ironium / Boranium / Germanium items,
-        /// each priced for <paramref name="race"/>. Empty unless the planet's starbase carries a
-        /// mass driver (§10b: "Requirements: a starbase on the planet whose design carries a mass
-        /// driver ... and a destination set on the planet").
-        /// AMBIGUITY: the spec states the purchase-time requirement (an auto entry buys nothing,
-        /// a manual one is deleted with message 297), not whether the catalog itself hides the
-        /// items; read as "offered only with a mass driver", the destination NOT required (it can
-        /// be set after queueing, and the order waits or is cancelled at turn time as the spec
-        /// says).
+        /// The packet items the production catalog offers for <paramref name="star"/> (10l items 4
+        /// and 9): the auto "Mineral Packets" entry (type 6) is offered ALWAYS - even with no mass
+        /// driver and no destination, where it simply buys nothing each turn (status 2, 10k item 4) -
+        /// followed by the four manual Mixed / Ironium / Boranium / Germanium items, which are
+        /// offered only while the starbase carries a mass driver (§10b). A destination is never
+        /// required (it can be set after queueing; a manual order without one is cancelled at turn
+        /// time with message 297). Each is priced for <paramref name="race"/>.
         /// </summary>
         public static IReadOnlyList<PacketProductionUnit> CatalogItems(Star star, Race race)
         {
-            if (!MineralPacketRules.HasAccelerator(star))
-            {
-                return Array.Empty<PacketProductionUnit>();
-            }
-
-            return new[]
+            var items = new List<PacketProductionUnit>
             {
                 new PacketProductionUnit(race, PacketMineral.Mixed, true),
-                new PacketProductionUnit(race, PacketMineral.Mixed, false),
-                new PacketProductionUnit(race, PacketMineral.Ironium, false),
-                new PacketProductionUnit(race, PacketMineral.Boranium, false),
-                new PacketProductionUnit(race, PacketMineral.Germanium, false),
             };
+
+            if (MineralPacketRules.HasAccelerator(star))
+            {
+                items.Add(new PacketProductionUnit(race, PacketMineral.Mixed, false));
+                items.Add(new PacketProductionUnit(race, PacketMineral.Ironium, false));
+                items.Add(new PacketProductionUnit(race, PacketMineral.Boranium, false));
+                items.Add(new PacketProductionUnit(race, PacketMineral.Germanium, false));
+            }
+
+            return items;
         }
 
         /// <summary>A fresh unit for a new queue order of the same kind as a catalog unit (packet

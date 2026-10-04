@@ -1,4 +1,4 @@
-﻿#region Copyright Notice
+#region Copyright Notice
 // ============================================================================
 // Copyright (C) 2011 The Stars-Nova Project
 //
@@ -499,8 +499,12 @@ namespace Nova.Server.TurnSteps
 
                         foreach (Star star in empire.OwnedStars.Values)
                         {
+                            // Only planets that ALREADY have a scanner are upgraded (message 343).
+                            // A planet with no scanner (ScannerType "None") must build the type-27
+                            // "Planetary Scanner" item; a research breakthrough never installs a
+                            // first scanner on it (production-queue.md section 10d).
                             if (star.Owner == empire.Id &&
-                                star.ScannerType != string.Empty)
+                                ScannerProductionUnit.HasScanner(star))
                             {
                                 star.ScannerType = component.Name;
 

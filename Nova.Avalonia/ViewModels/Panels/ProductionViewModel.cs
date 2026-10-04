@@ -29,6 +29,10 @@ public partial class ProductionViewModel : Tool
     private readonly SelectionService selection;
     private Star? selectedStar;
 
+    /// <summary>Guards against the re-entrant Refresh a command's NotifyMutated would otherwise
+    /// trigger while a Refresh (and its catalog-driven orphan cleanup) is still running.</summary>
+    private bool isRefreshing;
+
     private string planetName = "";
 
     public string PlanetName
@@ -110,6 +114,14 @@ public partial class ProductionViewModel : Tool
                 else if (value?.ManualOnly == true)
                 {
                     AutoBuildOnAdd = false;
+                }
+
+                // production-queue.md 10l: the quantity field is pre-filled with the whole build
+                // room (Factory / Mine / Defenses) or the terraform headroom, and with 1 for the
+                // unlimited rows.
+                if (value != null)
+                {
+                    AddQuantity = value.PresetQuantity;
                 }
 
                 OnPropertyChanged(nameof(ShowTerraformAutoChoice));
@@ -227,104 +239,100 @@ public partial class ProductionViewModel : Tool
 
     private void Refresh(object? selected)
     {
-        if (selected is Star star)
+        if (isRefreshing)
         {
-            selectedStar = star;
-            PlanetName = star.Name;
-            HasPlanet = true;
-            HasColonizedPlanet = star.Colonists > 0;
-            AvailableItems = BuildCatalog(star);
-            SelectedAvailableItem = AvailableItems.FirstOrDefault();
-            AddQuantity = 1;
-            AutoBuildOnAdd = false;
-            RefreshTemplateSlots();
-            RebuildQueueRows(star);
+            return;
         }
-        else
+
+        isRefreshing = true;
+        try
         {
-            selectedStar = null;
-            PlanetName = "";
-            HasPlanet = false;
-            HasColonizedPlanet = false;
-            AvailableItems = Array.Empty<ProductionCatalogItemViewModel>();
-            Queue = Array.Empty<ProductionItemViewModel>();
-            Message = selected switch
+            if (selected is Star star)
             {
-                Fleet => "Fleets don't have a production queue - select a planet instead.",
-                StarIntel => "Only visible for planets you own.",
-                _ => "Select a planet to see its production queue.",
-            };
-            HasMessage = true;
+                selectedStar = star;
+                PlanetName = star.Name;
+                HasPlanet = true;
+                HasColonizedPlanet = star.Colonists > 0;
+
+                // production-queue.md 10l: opening the dialog drops every queue entry the catalog
+                // no longer offers (a manual packet on a planet that lost its driver, a scanner
+                // order on a planet that has one, ...) from the dialog's working copy.
+                IReadOnlyList<ProductionCatalogEntry> catalog = ProductionCatalog.Build(star, clientState.EmpireState);
+                DropOrphanQueueEntries(star, catalog);
+
+                AvailableItems = BuildCatalog(catalog);
+                AddQuantity = 1;
+                AutoBuildOnAdd = false;
+                SelectedAvailableItem = AvailableItems.FirstOrDefault();
+                RefreshTemplateSlots();
+                RebuildQueueRows(star);
+            }
+            else
+            {
+                selectedStar = null;
+                PlanetName = "";
+                HasPlanet = false;
+                HasColonizedPlanet = false;
+                AvailableItems = Array.Empty<ProductionCatalogItemViewModel>();
+                Queue = Array.Empty<ProductionItemViewModel>();
+                Message = selected switch
+                {
+                    Fleet => "Fleets don't have a production queue - select a planet instead.",
+                    StarIntel => "Only visible for planets you own.",
+                    _ => "Select a planet to see its production queue.",
+                };
+                HasMessage = true;
+            }
+        }
+        finally
+        {
+            isRefreshing = false;
         }
     }
 
     /// <summary>
-    /// Mirrors ProductionDialog.OnLoad's design-list construction: the 5 fixed installations,
-    /// plus every owned ship design that isn't this star's own starbase and isn't too big for
-    /// its dock capacity (0 if there's no starbase at all, so no ship designs qualify).
+    /// Drops every queued order with no matching catalog row (production-queue.md 10l). Deletes
+    /// are applied one at a time, recomputing the filter after each, because a ProductionCommand
+    /// raises NotifyMutated and re-indexes the queue.
     /// </summary>
-    private List<ProductionCatalogItemViewModel> BuildCatalog(Star star)
+    private void DropOrphanQueueEntries(Star star, IReadOnlyList<ProductionCatalogEntry> catalog)
     {
-        Race race = clientState.EmpireState.Race;
-        var items = new List<ProductionCatalogItemViewModel>
+        while (true)
         {
-            new ProductionCatalogItemViewModel(new FactoryProductionUnit(race)),
-            new ProductionCatalogItemViewModel(new MineProductionUnit(race)),
-            new ProductionCatalogItemViewModel(new DefenseProductionUnit(race)),
-            new ProductionCatalogItemViewModel(new AlchemyProductionUnit(race)),
-        };
-
-        // production-queue.md row 37: the manual "Terraform Environment" item is offered only on
-        // a planet with terraform headroom for its owner; the auto Min / Max entries are always
-        // offered (they are gated at purchase time instead - Min while the planet is habitable
-        // and not shrinking, both by the headroom).
-        if (TerraformProductionUnit.CatalogOffersTerraformEnvironment(star, clientState.EmpireState))
-        {
-            items.Add(new ProductionCatalogItemViewModel(new TerraformProductionUnit(race), ProductionCaptions.TerraformEnvironment, isTerraform: true));
-        }
-
-        items.Add(new ProductionCatalogItemViewModel(new TerraformProductionUnit(race), "Min / Max Terraform (Auto Build)", isTerraform: true, autoOnly: true));
-
-        // A Genesis Device is a one-shot planet reset that only becomes orderable once the empire
-        // has both been granted the special component and researched its (very high) tech level -
-        // EmpireData.AvailableComponents already folds both conditions in.
-        if (clientState.EmpireState.AvailableComponents.Contains("Genesis Device"))
-        {
-            // The empire-aware constructor prices the device with this race's miniaturization
-            // (and cost traits) at its current tech levels, so the catalog shows the real price.
-            items.Add(new ProductionCatalogItemViewModel(new GenesisDeviceProductionUnit(clientState.EmpireState)));
-        }
-
-        // Mineral packets (production-queue.md section 10, types 6 and 14-17): only on a planet
-        // whose starbase carries a mass driver (section 10b) - the auto "Mineral Packets" entry
-        // (always mixed) and the four manual items (Nova.Client.PacketOrders.CatalogItems).
-        foreach (PacketProductionUnit packet in PacketOrders.CatalogItems(star, race))
-        {
-            items.Add(new ProductionCatalogItemViewModel(packet, packet.AutoBuild ? packet.Name + " (Auto Build)" : null,
-                autoOnly: packet.AutoBuild, manualOnly: !packet.AutoBuild));
-        }
-
-        Fleet? starbase = star.Starbase;
-        int dockCapacity = starbase?.TotalDockCapacity ?? 0;
-        long starbaseDesignId = Global.None;
-        if (starbase != null && starbase.Composition.Count > 0)
-        {
-            starbaseDesignId = starbase.Composition.Values.First().Design.Id;
-        }
-
-        foreach (ShipDesign design in clientState.EmpireState.Designs.Values)
-        {
-            if (design.Id == starbaseDesignId)
+            ProductionCatalogQueueFilter filter = ProductionCatalog.FilterQueue(star, clientState.EmpireState, catalog);
+            if (filter.Dropped.Count == 0)
             {
-                continue; // this design is the starbase already in orbit here
+                return;
             }
 
-            if (!design.IsStarbase && dockCapacity < design.Mass)
+            int index = star.ManufacturingQueue.Queue.IndexOf(filter.Dropped[0]);
+            if (index < 0)
             {
-                continue; // too big for this star's dock (or there's no starbase at all)
+                return;
             }
 
-            items.Add(new ProductionCatalogItemViewModel(new ShipProductionUnit(design)));
+            ApplyCommand(new ProductionCommand(CommandMode.Delete, null!, star.Name, index));
+        }
+    }
+
+    /// <summary>
+    /// Wraps the pure <see cref="ProductionCatalog"/> rows (behavior-specs-11/production-queue.md
+    /// 10l) as UI rows, carrying each one's pre-fill and quantity ceiling.
+    /// </summary>
+    private static List<ProductionCatalogItemViewModel> BuildCatalog(IReadOnlyList<ProductionCatalogEntry> catalog)
+    {
+        var items = new List<ProductionCatalogItemViewModel>();
+        foreach (ProductionCatalogEntry entry in catalog)
+        {
+            items.Add(new ProductionCatalogItemViewModel(
+                entry.Unit,
+                entry.DisplayName,
+                isTerraform: entry.IsTerraform,
+                autoOnly: entry.AutoOnly,
+                manualOnly: entry.ManualOnly,
+                isScanner: entry.IsScanner,
+                presetQuantity: entry.PresetQuantity,
+                maxQuantity: entry.MaxQuantity));
         }
 
         return items;
@@ -411,8 +419,15 @@ public partial class ProductionViewModel : Tool
             // A fresh unit per order: a packet unit carries its own partial progress.
             unit = PacketOrders.FreshUnit(packet, clientState.EmpireState.Race);
         }
+        else if (unit is ScannerProductionUnit)
+        {
+            unit = new ScannerProductionUnit();
+        }
 
-        var order = new ProductionOrder(AddQuantity, unit, AutoBuildOnAdd);
+        // Never add more than the catalog row allows (the build room / headroom, or the 1,023
+        // queue-line ceiling) - production-queue.md 10l.
+        int quantity = Math.Min(AddQuantity, SelectedAvailableItem.MaxQuantity);
+        var order = new ProductionOrder(quantity, unit, AutoBuildOnAdd);
         var command = new ProductionCommand(CommandMode.Add, order, selectedStar.Name, selectedStar.ManufacturingQueue.Queue.Count);
         ApplyCommand(command);
     }
