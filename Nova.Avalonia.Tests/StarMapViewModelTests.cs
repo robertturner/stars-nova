@@ -208,6 +208,32 @@ public class StarMapViewModelTests
         Assert.That(map.ScanCircles.Select(c => c.Diameter / 2), Has.Some.EqualTo(ScanCircleRules.DisplayRadius(home.ScanRange, 50)).Within(0.001));
     }
 
+    /// <summary>Row 40: a Packet Physics race gets a Mass-Driver range circle, bundled with the
+    /// scan-circle toggle; no other race does.</summary>
+    [AvaloniaTest]
+    public void MassDriverOverlay_IsDrawnForPacketPhysicsOnly()
+    {
+        (ClientData ppClient, _, StarMapDocumentViewModel ppMap) = Open(TestGame.PacketRace);
+        ppMap.ShowScanCircles = true;
+        Star ppHome = TestGame.HomeStar(ppClient);
+        int driver = MineralPacketRules.BestDriverWarp(ppHome.Starbase);
+        Assume.That(driver, Is.GreaterThan(0), "a Packet Physics empire starts with a mass-driver starbase");
+
+        Assert.That(ppMap.ScanCircles.Any(circle => circle.Kind == ScanCircleKind.MassDriver), Is.True, "the PP home world gets the overlay");
+        Assert.That(
+            ppMap.ScanCircles.Any(circle => circle.Kind == ScanCircleKind.MassDriver
+                && System.Math.Abs((circle.Diameter / 2) - MassDriverRangeRules.RangeCircleRadius(driver)) < 0.001),
+            Is.True,
+            "the radius follows the driver level");
+
+        ppMap.ShowScanCircles = false;
+        Assert.That(ppMap.ScanCircles, Is.Empty, "the Mass-Driver circle shares the scan-circle toggle");
+
+        (_, _, StarMapDocumentViewModel sdMap) = Open(TestGame.DemolitionRace);
+        sdMap.ShowScanCircles = true;
+        Assert.That(sdMap.ScanCircles.Any(circle => circle.Kind == ScanCircleKind.MassDriver), Is.False, "no overlay for another PRT (which in any case has no driver)");
+    }
+
     /// <summary>Row 44: the nine fixed zoom steps; the zoom commands clamp at both ends.</summary>
     [AvaloniaTest]
     public void Zoom_HasNineSteps_AndClampsAtBothEnds()
@@ -235,6 +261,36 @@ public class StarMapViewModelTests
 
         map.ResetZoomCommand.Execute(null);
         Assert.That(map.Zoom, Is.EqualTo(1.0));
+    }
+
+    /// <summary>Row 41: each field type gets its own pattern, and the owner mask hides a field
+    /// whose category is cleared.</summary>
+    [AvaloniaTest]
+    public void MinefieldOverlay_UsesTheTypePattern_AndTheOwnerMask()
+    {
+        ClientData client = TestGame.Load(TestGame.DemolitionRace);
+        Star home = TestGame.HomeStar(client);
+        var field = new Minefield { Owner = client.EmpireState.Id, Id = 901, NumberOfMines = 100, FieldType = MinefieldType.Heavy };
+        field.Position = new NovaPoint(home.Position.X, home.Position.Y);
+        client.InputTurn.AllMinefields[field.Key] = field;
+        client.EmpireState.VisibleMinefields.Add(field.Key);
+
+        var selection = new SelectionService();
+        var map = new StarMapDocumentViewModel("StarMap", "Star Map", client, selection);
+        map.ShowMinefields = true;
+
+        StarMapMineFieldViewModel marker = map.Minefields.First(m => ReferenceEquals(m.Selectable, field));
+        Assert.That(marker.Pattern, Is.EqualTo(MinefieldPattern.Heavy), "the type selects the fill pattern");
+        Assert.That(marker.Category, Is.EqualTo(MinefieldVisibility.Own));
+        Assert.That(marker.IsVisible, Is.True);
+
+        map.ShowOwnMinefields = false;
+        Assert.That(marker.IsVisible, Is.False, "clearing the own bit hides the field");
+        map.MinefieldsNoneCommand.Execute(null);
+        Assert.That(marker.IsVisible, Is.False);
+        map.MinefieldsAllCommand.Execute(null);
+        Assert.That(marker.IsVisible, Is.True);
+        Assert.That(map.MinefieldMaskIsAll, Is.True);
     }
 
     /// <summary>Rows 31 and 46: the six-way "Planets:" mode drives every star's overlay (read

@@ -419,22 +419,19 @@ namespace Nova.Tests.UnitTests
         // ---------------- minefield display ----------------
 
         [Test]
-        public void MinefieldDisplay_Transit_ShowsTheTypeTable()
+        public void MinefieldInspector_HasNoDisplaySelector_OnlyTheFieldRows()
         {
             Minefield field = new Minefield { NumberOfMines = 400, FieldType = MinefieldType.Heavy, Position = new NovaPoint(1, 2) };
 
-            Dictionary<string, string> transit = MinefieldDisplay.Rows(field, MinefieldDisplay.Option.Transit, "You").ToDictionary(r => r.Key, r => r.Value);
-            Assert.AreEqual("Warp 6", transit["Safe speed"]);
-            StringAssert.StartsWith("1.0%", transit["Hit chance"]);
-            StringAssert.StartsWith("500 (600", transit["Damage per ship"]);
-            StringAssert.StartsWith("2000 (2500", transit["Fleet minimum"]);
-
-            Dictionary<string, string> overview = MinefieldDisplay.Rows(field, MinefieldDisplay.Option.Field, "You").ToDictionary(r => r.Key, r => r.Value);
-            Assert.AreEqual("20 ly", overview["Radius"]);
-            Assert.AreEqual("No", overview["Detonating"]);
-
-            Assert.AreEqual(MinefieldDisplay.Option.Transit, MinefieldDisplay.Parse("1"));
-            Assert.AreEqual(MinefieldDisplay.Option.Field, MinefieldDisplay.Parse("junk"));
+            // behavior-specs-11: the minefield pane's only control is the detonate checkbox; the
+            // old Field/Transit display selector (and its config key) is gone.
+            Dictionary<string, string> rows = MinefieldDisplay.Rows(field, "You").ToDictionary(r => r.Key, r => r.Value);
+            Assert.AreEqual("20 ly", rows["Radius"]);
+            Assert.AreEqual("Heavy", rows["Type"]);
+            Assert.AreEqual("No", rows["Detonating"]);
+            Assert.IsFalse(rows.ContainsKey("Safe speed"), "no Transit rows: the display selector is retracted");
+            Assert.IsFalse(rows.ContainsKey("Hit chance"));
+            Assert.IsNull(typeof(MinefieldDisplay).GetProperty("OptionLabels", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static), "the display options are gone");
         }
 
         // ---------------- research next field ----------------

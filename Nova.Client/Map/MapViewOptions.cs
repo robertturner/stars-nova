@@ -119,6 +119,12 @@ namespace Nova.Client.Map
         private int word2 = DefaultWord2;
         private int scannerPercentage = MaxScannerPercentage;
 
+        /// <summary>The 4-bit minefield owner mask (slot 8's companion at DS 0x4a7c); the field
+        /// overlay button "reads as pressed only when the bit is set and the mask is full"
+        /// (behavior-specs-11/client-interface.md, "Shared view-option slots"). Default: all
+        /// categories shown.</summary>
+        private MinefieldVisibility minefieldMask = MinefieldVisibility.All;
+
         /// <summary>Raised after any change.</summary>
         public event EventHandler Changed;
 
@@ -153,6 +159,20 @@ namespace Nova.Client.Map
         {
             get => (word1 & MinefieldsBit) != 0;
             set => SetWord1(value ? word1 | MinefieldsBit : word1 & ~MinefieldsBit);
+        }
+
+        /// <summary>The minefield owner visibility mask (see the field's own comment).</summary>
+        public MinefieldVisibility MinefieldMask
+        {
+            get => minefieldMask;
+            set
+            {
+                if (minefieldMask != value)
+                {
+                    minefieldMask = value;
+                    Changed?.Invoke(this, EventArgs.Empty);
+                }
+            }
         }
 
         public bool ShowRouteOverlap

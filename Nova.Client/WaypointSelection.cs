@@ -23,13 +23,14 @@ namespace Nova.Client
 {
     /// <summary>
     /// Which waypoint of a fleet's route stays selected after a waypoint is deleted
-    /// (behavior-specs-10/client-interface.md command table, ids 103/104 and the Delete key:
-    /// the selected waypoint is deleted and the selection stays on the previous (103) or the
-    /// following (104) waypoint).
-    /// Waypoint indices are Fleet.Waypoints indices; index 0 is the fleet's own position, which
-    /// the Nova order editors never show as a selectable row, so "previous" falls back to the
-    /// following waypoint when the previous one would be index 0 (and vice versa). -1 means no
-    /// waypoint selected.
+    /// (behavior-specs-11/save-turn-file-format.md and client-interface.md command table, ids
+    /// 103/104 and the Delete key: the selected waypoint is deleted and the selection stays on the
+    /// previous (103) or the following (104) waypoint).
+    /// Waypoint indices are Fleet.Waypoints indices; index 0 is the fleet's own position. Nova's
+    /// order editors never show waypoint 0 as a selectable row, but the spec is explicit that
+    /// deleting the first leg leaves waypoint 0 - the fleet itself - current, not the following
+    /// waypoint. This returns 0 in that case; a view model that cannot show a row for it treats
+    /// 0 as "the fleet itself is the subject". -1 means no waypoint selected.
     /// </summary>
     public static class WaypointSelection
     {
@@ -56,12 +57,12 @@ namespace Nova.Client
                     selectedIndex--;
                 }
 
-                return selectedIndex >= 1 && selectedIndex < countAfterDelete ? selectedIndex : -1;
+                return selectedIndex >= 0 && selectedIndex < countAfterDelete ? selectedIndex : -1;
             }
 
-            int previous = deletedIndex - 1;
+            int previous = deletedIndex - 1; // 0 is the fleet itself (waypoint 0)
             int following = deletedIndex; // the next waypoint has moved down into this slot
-            bool hasPrevious = previous >= 1;
+            bool hasPrevious = previous >= 0;
             bool hasFollowing = following < countAfterDelete;
 
             if (keepPrevious)

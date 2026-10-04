@@ -87,10 +87,13 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="panels:StarMapMineFieldViewModel">
-                        <Button Classes="starMapMarker" Command="{Binding SelectCommand}" ToolTip.Tip="{Binding ToolTipText}">
+                        <Button Classes="starMapMarker" Command="{Binding SelectCommand}" ToolTip.Tip="{Binding ToolTipText}"
+                                IsVisible="{Binding IsVisible}">
                             <Panel Width="{Binding Diameter}" Height="{Binding Diameter}">
+                                <!-- The fill is the type's own pattern (Standard/Heavy/Speed Bump);
+                                     the owner colour is the outline, so both read at once. -->
                                 <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}"
-                                         Fill="{Binding Color}" />
+                                         Fill="{Binding PatternFill}" Stroke="{Binding Color}" StrokeThickness="2" />
                                 <Ellipse Width="{Binding Diameter}" Height="{Binding Diameter}"
                                          Stroke="Gold" StrokeThickness="2"
                                          IsVisible="{Binding IsSelected}" />
@@ -354,6 +357,21 @@
                                 <StackPanel Spacing="4" MinWidth="220">
                                     <CheckBox Content="Scan circles (7)" IsChecked="{Binding ShowScanCircles}" />
                                     <CheckBox Content="Minefields (8)" IsChecked="{Binding ShowMinefields}" />
+                                    <!-- Slot 8's 4-bit owner mask (behavior-specs-11/
+                                         client-interface.md, "Minefield visibility overlay"). All/None
+                                         set every bit at once. The original's popup lists one line per
+                                         player; this port groups them by the mask's own four
+                                         categories (see MinefieldOverlay). -->
+                                    <StackPanel Margin="16,0,0,0" Spacing="2">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Content="All" Command="{Binding MinefieldsAllCommand}" Padding="6,0" FontSize="11" />
+                                            <Button Content="None" Command="{Binding MinefieldsNoneCommand}" Padding="6,0" FontSize="11" />
+                                        </StackPanel>
+                                        <CheckBox Content="Own fields" IsChecked="{Binding ShowOwnMinefields}" FontSize="11" />
+                                        <CheckBox Content="Other players' fields" IsChecked="{Binding ShowOtherMinefields}" FontSize="11" />
+                                        <CheckBox Content="Detected enemy fields" IsChecked="{Binding ShowDetectedEnemyMinefields}" FontSize="11" />
+                                        <CheckBox Content="Undetected enemy fields" IsChecked="{Binding ShowUndetectedEnemyMinefields}" FontSize="11" />
+                                    </StackPanel>
                                     <CheckBox Content="Dash overlapping route legs (9)" IsChecked="{Binding ShowRouteOverlap}" />
                                     <CheckBox Content="Planet names (0)" IsChecked="{Binding ShowPlanetNames}" />
                                     <CheckBox Content="Ship counts (Shift+0)" IsChecked="{Binding ShowShipCountBadges}" />

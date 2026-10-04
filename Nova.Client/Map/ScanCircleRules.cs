@@ -77,6 +77,19 @@ namespace Nova.Client.Map
         }
 
         /// <summary>
+        /// The secondary (penetrating-scan) circle's true radius: "Objects whose range lookup also
+        /// reports a positive secondary detection value get a second circle drawn at exactly half
+        /// the primary radius" (behavior-specs-11/client-interface.md, "Scan-range overlay"). It is
+        /// derived from the primary radius, not read from the real penetrating range; use the real
+        /// range lookup only to decide whether the secondary circle is drawn at all. Integer
+        /// division, matching the client's integer arithmetic.
+        /// </summary>
+        public static int SecondaryRadius(int primaryRadius)
+        {
+            return primaryRadius / 2;
+        }
+
+        /// <summary>
         /// The batching helper's overlap culling: walks the circles in queue order and skips any
         /// circle fully nested inside a circle already queued before it (only earlier circles are
         /// tested, so a small circle queued before a large one that covers it is still kept).

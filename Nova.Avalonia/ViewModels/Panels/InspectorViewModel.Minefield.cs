@@ -9,10 +9,9 @@ namespace Nova.Avalonia.ViewModels.Panels;
 
 /// <summary>
 /// The minefield half of the Inspector, and the selected fleet's battle-plan assignment:
-/// - the compact display-option selector (behavior-specs-10/client-interface.md: it "updates
-///   the stored local view preference and redraws the inspector; it does not modify the
-///   minefield") - the options and their rows are Nova.Client.MinefieldDisplay, the preference
-///   is kept in the client's config file;
+/// - the read-only field rows (Nova.Client.MinefieldDisplay). behavior-specs-11 retracts the
+///   old Field/Transit display selector: "The pane has no display-option selector. Its only child
+///   control is one auto-checkbox ... (detonate this minefield next year)."
 /// - the Detonate order for an owned Space Demolition standard field (DetonateCommand), queued
 ///   like every other order and mirrored on the client's own copy of the field;
 /// - the fleet's battle plan (a BattlePlansCommand carries the plans and assignments).
@@ -27,27 +26,6 @@ public partial class InspectorViewModel
     {
         get => isMinefieldSelected;
         private set => SetProperty(ref isMinefieldSelected, value);
-    }
-
-    public IReadOnlyList<string> MinefieldDisplayOptions => MinefieldDisplay.OptionLabels;
-
-    private int minefieldDisplayIndex = (int)LoadMinefieldDisplayPreference();
-
-    public int MinefieldDisplayIndex
-    {
-        get => minefieldDisplayIndex;
-        set
-        {
-            int clamped = Math.Clamp(value, 0, MinefieldDisplay.OptionLabels.Length - 1);
-            if (SetProperty(ref minefieldDisplayIndex, clamped))
-            {
-                SaveMinefieldDisplayPreference(clamped);
-                if (selectedMinefield != null)
-                {
-                    ShowMinefieldDetails(selectedMinefield);
-                }
-            }
-        }
     }
 
     private bool canDetonateMinefield;
@@ -107,7 +85,7 @@ public partial class InspectorViewModel
                 ? intel.RaceName
                 : $"Empire #{minefield.Owner}";
 
-        Rows = MinefieldDisplay.Rows(minefield, (MinefieldDisplay.Option)minefieldDisplayIndex, owner)
+        Rows = MinefieldDisplay.Rows(minefield, owner)
             .Select(row => new InspectorRow(row.Key, row.Value))
             .ToList();
 
@@ -124,31 +102,6 @@ public partial class InspectorViewModel
         selectedMinefield = null;
         IsMinefieldSelected = false;
         CanDetonateMinefield = false;
-    }
-
-    private static MinefieldDisplay.Option LoadMinefieldDisplayPreference()
-    {
-        try
-        {
-            return MinefieldDisplay.Parse(new Config()[MinefieldDisplay.PreferenceKey]);
-        }
-        catch (Exception)
-        {
-            return MinefieldDisplay.Option.Field;
-        }
-    }
-
-    private static void SaveMinefieldDisplayPreference(int option)
-    {
-        try
-        {
-            using var conf = new Config();
-            conf[MinefieldDisplay.PreferenceKey] = option.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        }
-        catch (Exception)
-        {
-            // A preference that cannot be stored is simply not remembered.
-        }
     }
 
     // ---------------------------------------------------------------------------------

@@ -2,6 +2,16 @@ using Avalonia.Media;
 
 namespace Nova.Avalonia.ViewModels.Panels;
 
+/// <summary>Which of the scan-overlay's circles this is: the ordinary scanner wash, the
+/// half-radius penetrating-scan circle, or the Packet Physics mass-driver range circle (they share
+/// the same view-option toggle bit).</summary>
+public enum ScanCircleKind
+{
+    Primary,
+    Penetrating,
+    MassDriver,
+}
+
 /// <summary>
 /// A translucent scan-range wash drawn under the stars/fleets layer, matching the WinForms
 /// StarMap's own long-range/penetrating scanner circles (see StarMap.cs's "(1a)/(1b)/(2)"
@@ -20,11 +30,15 @@ public class StarMapScanCircleViewModel
 
     public IBrush Fill { get; }
 
-    public StarMapScanCircleViewModel(double centerX, double centerY, double radius, IBrush fill)
+    /// <summary>Which circle family this is (behavior-specs-11/client-interface.md).</summary>
+    public ScanCircleKind Kind { get; }
+
+    public StarMapScanCircleViewModel(double centerX, double centerY, double radius, IBrush fill, ScanCircleKind kind = ScanCircleKind.Primary)
     {
         Diameter = radius * 2;
         Left = centerX - radius;
         Top = centerY - radius;
         Fill = fill;
+        Kind = kind;
     }
 }

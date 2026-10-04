@@ -72,8 +72,13 @@ public class StarMapDocumentViewModel : Document
     private readonly List<MapCircle> primaryScanSources = new();
     private readonly List<MapCircle> penetratingScanSources = new();
 
+    // Packet Physics' Mass-Driver range circles (one per own starbase carrying a driver); only
+    // populated for a PP race, and only drawn while the scan-circle toggle is on.
+    private readonly List<MapCircle> massDriverSources = new();
+
     private static readonly IBrush LongRangeScanBrush = new SolidColorBrush(Color.FromArgb(128, 128, 0, 0));
     private static readonly IBrush PenScanBrush = new SolidColorBrush(Color.FromArgb(128, 128, 128, 0));
+    private static readonly IBrush MassDriverRangeBrush = new SolidColorBrush(Color.FromArgb(128, 0, 0, 160));
 
     /// <summary>
     /// The map's packed view options (behavior-specs-10/client-interface.md, "Shared view-option
@@ -209,6 +214,53 @@ public class StarMapDocumentViewModel : Document
         }
     }
 
+    // ---------------- minefield owner mask (slot 8's companion) ----------------
+
+    /// <summary>The 4-bit minefield owner mask (behavior-specs-11/client-interface.md, "Minefield
+    /// visibility overlay" and the "Minefield visibility popup" in client-ui-dialog-catalog.md).</summary>
+    public MinefieldVisibility MinefieldMask
+    {
+        get => ViewOptions.MinefieldMask;
+        set
+        {
+            ViewOptions.MinefieldMask = value;
+            ApplyViewOptions();
+        }
+    }
+
+    public bool ShowOwnMinefields
+    {
+        get => (ViewOptions.MinefieldMask & MinefieldVisibility.Own) != 0;
+        set => MinefieldMask = value ? ViewOptions.MinefieldMask | MinefieldVisibility.Own : ViewOptions.MinefieldMask & ~MinefieldVisibility.Own;
+    }
+
+    public bool ShowOtherMinefields
+    {
+        get => (ViewOptions.MinefieldMask & MinefieldVisibility.Others) != 0;
+        set => MinefieldMask = value ? ViewOptions.MinefieldMask | MinefieldVisibility.Others : ViewOptions.MinefieldMask & ~MinefieldVisibility.Others;
+    }
+
+    public bool ShowDetectedEnemyMinefields
+    {
+        get => (ViewOptions.MinefieldMask & MinefieldVisibility.DetectedEnemy) != 0;
+        set => MinefieldMask = value ? ViewOptions.MinefieldMask | MinefieldVisibility.DetectedEnemy : ViewOptions.MinefieldMask & ~MinefieldVisibility.DetectedEnemy;
+    }
+
+    public bool ShowUndetectedEnemyMinefields
+    {
+        get => (ViewOptions.MinefieldMask & MinefieldVisibility.UndetectedEnemy) != 0;
+        set => MinefieldMask = value ? ViewOptions.MinefieldMask | MinefieldVisibility.UndetectedEnemy : ViewOptions.MinefieldMask & ~MinefieldVisibility.UndetectedEnemy;
+    }
+
+    /// <summary>True when every category is shown (slot 8's toolbar button pressed state).</summary>
+    public bool MinefieldMaskIsAll => ViewOptions.MinefieldMask == MinefieldVisibility.All;
+
+    /// <summary>The mask popup's "All" line.</summary>
+    public IRelayCommand MinefieldsAllCommand { get; }
+
+    /// <summary>The mask popup's "None" line.</summary>
+    public IRelayCommand MinefieldsNoneCommand { get; }
+
     /// <summary>Route-overlap dashing (bit 0x80, key 9).</summary>
     public bool ShowRouteOverlap
     {
@@ -322,6 +374,8 @@ public class StarMapDocumentViewModel : Document
         });
         MeasureDistanceCommand = new RelayCommand(ArmMeasureDistance, () => selection.Selected is Mappable);
         Search = new StarMapSearchViewModel(() => mapObjects, FocusEntry);
+        MinefieldsAllCommand = new RelayCommand(() => MinefieldMask = MinefieldVisibility.All);
+        MinefieldsNoneCommand = new RelayCommand(() => MinefieldMask = MinefieldVisibility.None);
 
         // GameSettings.Restore() replaces the whole static GameSettings.Data instance
         // (Data = (GameSettings)s.Deserialize(state)) - re-deriving SettingsPathName here from
@@ -348,6 +402,8 @@ public class StarMapDocumentViewModel : Document
             }
         }
 
+        Race race = empire.Race;
+
         // Widest reach of anything actually drawn on THIS map, so the margin below is only as
         // big as it needs to be (see edgeMargin's own comment).
         double maxScanRadius = empire.OwnedStars.Values.Select(star => (double)star.ScanRange)
@@ -362,12 +418,18 @@ public class StarMapDocumentViewModel : Document
             .Select(report => EstimateNameHalfWidth(report.Name))
             .DefaultIfEmpty(0)
             .Max();
-        edgeMargin = new[] { MinimumMargin, maxScanRadius, maxMinefieldRadius, maxNameHalfWidth }.Max();
+        // Packet Physics' Mass-Driver range overlay joins the margin (see MassDriverRangeRules).
+        double maxMassDriverRadius = race != null && race.HasTrait("PP")
+            ? empire.OwnedStars.Values
+                .Select(star => (double)MassDriverRangeRules.RangeCircleRadius(MineralPacketRules.BestDriverWarp(star.Starbase)))
+                .DefaultIfEmpty(0)
+                .Max()
+            : 0;
+        edgeMargin = new[] { MinimumMargin, maxScanRadius, maxMinefieldRadius, maxMassDriverRadius, maxNameHalfWidth }.Max();
 
         MapWidth = GameSettings.Data.MapWidth + (edgeMargin * 2);
         MapHeight = GameSettings.Data.MapHeight + (edgeMargin * 2);
 
-        Race race = empire.Race;
         bool isClaimAdjuster = race != null && race.HasTrait("CA");
 
         // The amount-mode bar's "shared reference maximum" (SPEC GAP: its value is not given).
@@ -566,21 +628,60 @@ public class StarMapDocumentViewModel : Document
 
             if (ownFleet.PenScanRange > 0)
             {
-                penetratingScanSources.Add(new MapCircle(ownFleet.Position.X + edgeMargin, ownFleet.Position.Y + edgeMargin, ownFleet.PenScanRange));
+                // behavior-specs-11: the secondary/penetrating circle is drawn at exactly half the
+                // primary radius; the real penetration figure only decides whether it is drawn.
+                penetratingScanSources.Add(new MapCircle(
+                    ownFleet.Position.X + edgeMargin,
+                    ownFleet.Position.Y + edgeMargin,
+                    ScanCircleRules.SecondaryRadius(ownFleet.ScanRange)));
             }
         }
 
-        // Minefields - visibility already computed above.
+        // Packet Physics' Mass-Driver range overlay (one circle per own starbase with a driver).
+        if (race != null && race.HasTrait("PP"))
+        {
+            foreach (Star ownStar in empire.OwnedStars.Values)
+            {
+                int driver = MineralPacketRules.BestDriverWarp(ownStar.Starbase);
+                if (driver > 0)
+                {
+                    massDriverSources.Add(new MapCircle(
+                        ownStar.Position.X + edgeMargin,
+                        ownStar.Position.Y + edgeMargin,
+                        MassDriverRangeRules.RangeCircleRadius(driver)));
+                }
+            }
+        }
+
+        // Minefields - visibility already computed above. Each field is filled with its own
+        // type's pattern and belongs to one owner-mask category (behavior-specs-11/
+        // client-interface.md, "Minefield visibility overlay").
         var minefields = new List<StarMapMineFieldViewModel>();
         IBrush ownMineColor = new SolidColorBrush(Color.FromArgb(128, 0, 128, 0));
         IBrush enemyMineColor = new SolidColorBrush(Color.FromArgb(128, 128, 0, 128));
 
         foreach ((Minefield minefield, bool isOwn) in visibleMinefields)
         {
-            var marker = new StarMapMineFieldViewModel(minefield.Name, minefield.Position.X + edgeMargin, minefield.Position.Y + edgeMargin, minefield.Radius, isOwn ? ownMineColor : enemyMineColor, minefield, selection)
+            bool isEnemy = !isOwn
+                && empire.EmpireReports.TryGetValue(minefield.Owner, out EmpireIntel relation)
+                && relation.Relation == PlayerRelation.Enemy;
+            bool detected = empire.VisibleMinefields.Contains(minefield.Key);
+            MinefieldVisibility category = MinefieldOverlay.CategoryOf(isOwn, isEnemy, detected);
+
+            var marker = new StarMapMineFieldViewModel(
+                minefield.Name,
+                minefield.Position.X + edgeMargin,
+                minefield.Position.Y + edgeMargin,
+                minefield.Radius,
+                isOwn ? ownMineColor : enemyMineColor,
+                MinefieldOverlay.PatternOf(minefield.FieldType),
+                category,
+                minefield,
+                selection)
             {
                 ToolTipText = MapObjectText.Identify(MapObjectKind.Minefield, minefield.Name, OwnershipOf(minefield.Owner), OwnerName(minefield.Owner)),
             };
+            marker.IsVisible = (ViewOptions.MinefieldMask & category) != 0;
             minefields.Add(marker);
             mapObjects.Add(new MapObjectEntry(minefield, minefield.Name, MapObjectKind.Minefield, minefield.Position.X + edgeMargin, minefield.Position.Y + edgeMargin));
         }
@@ -670,6 +771,11 @@ public class StarMapDocumentViewModel : Document
             fleet.ShowBadge = ViewOptions.ShowShipCountBadges;
         }
 
+        foreach (StarMapMineFieldViewModel minefield in Minefields)
+        {
+            minefield.IsVisible = (ViewOptions.MinefieldMask & minefield.Category) != 0;
+        }
+
         ScanCircles = BuildScanCircles();
         RouteLegs = BuildRouteLegs(selection.Selected as Fleet);
 
@@ -680,14 +786,21 @@ public class StarMapDocumentViewModel : Document
         OnPropertyChanged(nameof(ShowPlanetNames));
         OnPropertyChanged(nameof(ShowShipCountBadges));
         OnPropertyChanged(nameof(ScannerPercentage));
+        OnPropertyChanged(nameof(MinefieldMask));
+        OnPropertyChanged(nameof(ShowOwnMinefields));
+        OnPropertyChanged(nameof(ShowOtherMinefields));
+        OnPropertyChanged(nameof(ShowDetectedEnemyMinefields));
+        OnPropertyChanged(nameof(ShowUndetectedEnemyMinefields));
+        OnPropertyChanged(nameof(MinefieldMaskIsAll));
     }
 
     /// <summary>
     /// The scan washes: each true radius passes the scanner-percentage correction
     /// (ScanCircleRules.DisplayRadius), then any circle fully nested inside an earlier circle of
-    /// the same kind is culled (ScanCircleRules.CullNested). Primary and penetrating circles are
-    /// culled separately: they are drawn in different colours, and the spec says the culling
-    /// "does not otherwise change what is visible".
+    /// the same kind is culled (ScanCircleRules.CullNested). The three kinds are culled
+    /// separately: they are drawn in different colours, and the spec says the culling "does not
+    /// otherwise change what is visible". The Mass-Driver circles ride the same scan-circle
+    /// toggle, so they are bundled here (behavior-specs-11/client-interface.md).
     /// </summary>
     private IReadOnlyList<StarMapScanCircleViewModel> BuildScanCircles()
     {
@@ -697,12 +810,13 @@ public class StarMapDocumentViewModel : Document
         }
 
         var circles = new List<StarMapScanCircleViewModel>();
-        AddScanCircles(circles, primaryScanSources, LongRangeScanBrush);
-        AddScanCircles(circles, penetratingScanSources, PenScanBrush);
+        AddScanCircles(circles, primaryScanSources, LongRangeScanBrush, ScanCircleKind.Primary);
+        AddScanCircles(circles, penetratingScanSources, PenScanBrush, ScanCircleKind.Penetrating);
+        AddScanCircles(circles, massDriverSources, MassDriverRangeBrush, ScanCircleKind.MassDriver);
         return circles;
     }
 
-    private void AddScanCircles(List<StarMapScanCircleViewModel> circles, List<MapCircle> sources, IBrush fill)
+    private void AddScanCircles(List<StarMapScanCircleViewModel> circles, List<MapCircle> sources, IBrush fill, ScanCircleKind kind)
     {
         int percentage = ViewOptions.ScannerPercentage;
         List<MapCircle> scaled = sources
@@ -711,7 +825,7 @@ public class StarMapDocumentViewModel : Document
 
         foreach (int index in ScanCircleRules.CullNested(scaled))
         {
-            circles.Add(new StarMapScanCircleViewModel(scaled[index].X, scaled[index].Y, scaled[index].Radius, fill));
+            circles.Add(new StarMapScanCircleViewModel(scaled[index].X, scaled[index].Y, scaled[index].Radius, fill, kind));
         }
     }
 

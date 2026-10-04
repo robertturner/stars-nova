@@ -43,6 +43,68 @@ public class PanelViewTests
         window.Close();
     }
 
+    /// <summary>Row 45: changing the zoom keeps the same world point at the centre of the
+    /// viewport (the view's own recentre handler, not just the maths).</summary>
+    [AvaloniaTest]
+    public void StarMapView_ZoomRecentresOnTheSameWorldPoint()
+    {
+        ClientData client = TestGame.Load();
+        var selection = new SelectionService();
+        var map = new StarMapDocumentViewModel("StarMap", "Star Map", client, selection);
+        Window window = Headless.Show(new StarMapDocumentView { DataContext = map }, 800, 600);
+
+        ScrollViewer scroll = Headless.All<ScrollViewer>(window).First();
+        Headless.Pump();
+        Assume.That(scroll.Viewport.Width, Is.GreaterThan(0), "the map viewport has been laid out");
+
+        // Put world (50, 40) at the centre at 100%.
+        double oldScale = map.Zoom;
+        scroll.Offset = new global::Avalonia.Vector(
+            System.Math.Max(0, (50 * oldScale) - (scroll.Viewport.Width / 2)),
+            System.Math.Max(0, (40 * oldScale) - (scroll.Viewport.Height / 2)));
+        Headless.Pump();
+        double centreX = (scroll.Offset.X + (scroll.Viewport.Width / 2)) / oldScale;
+        double centreY = (scroll.Offset.Y + (scroll.Viewport.Height / 2)) / oldScale;
+
+        map.ZoomLevel += 1; // 125%
+        Headless.Pump();
+        Headless.Pump();
+
+        double newScale = map.Zoom;
+        double newCentreX = (scroll.Offset.X + (scroll.Viewport.Width / 2)) / newScale;
+        double newCentreY = (scroll.Offset.Y + (scroll.Viewport.Height / 2)) / newScale;
+        Assert.That(newCentreX, Is.EqualTo(centreX).Within(1.0), "the same world X stays centred");
+        Assert.That(newCentreY, Is.EqualTo(centreY).Within(1.0), "the same world Y stays centred");
+        window.Close();
+    }
+
+    /// <summary>Row 41: a minefield renders with its own type pattern (and the engine never
+    /// throws while building the DrawingBrush).</summary>
+    [AvaloniaTest]
+    public void StarMapView_DrawsMinefieldsWithTheirTypePattern()
+    {
+        ClientData client = TestGame.Load(TestGame.DemolitionRace);
+        Star home = TestGame.HomeStar(client);
+        var field = new Minefield
+        {
+            Owner = client.EmpireState.Id,
+            Id = 902,
+            NumberOfMines = 100,
+            FieldType = MinefieldType.Heavy,
+        };
+        field.Position = new Nova.Common.DataStructures.NovaPoint(home.Position.X + 5, home.Position.Y + 5);
+        client.InputTurn.AllMinefields[field.Key] = field;
+        client.EmpireState.VisibleMinefields.Add(field.Key);
+
+        var selection = new SelectionService();
+        var map = new StarMapDocumentViewModel("StarMap", "Star Map", client, selection);
+        map.ShowMinefields = true;
+        Window window = Headless.Show(new StarMapDocumentView { DataContext = map }, 800, 600);
+
+        Assert.That(Headless.DistinctColours(window), Is.GreaterThan(4), "the patterned field rendered");
+        window.Close();
+    }
+
     [AvaloniaTest]
     public void InspectorView_ShowsTheSelectedFleet_WithTextEntryAndSelectors()
     {

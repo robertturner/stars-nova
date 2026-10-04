@@ -163,9 +163,28 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void ScanCircle_NestedCirclesAreCulledAgainstEarlierOnes()
+        public void ScanCircle_SecondaryIsHalfThePrimary()
         {
-            var circles = new List<MapCircle>
+            // behavior-specs-11/client-interface.md: the penetrating-scan circle is drawn at
+            // exactly half the primary radius, not from the real penetration range.
+            Assert.AreEqual(75, ScanCircleRules.SecondaryRadius(150));
+            Assert.AreEqual(3, ScanCircleRules.SecondaryRadius(7), "integer division");
+            Assert.AreEqual(0, ScanCircleRules.SecondaryRadius(1));
+        }
+
+        [Test]
+        public void MassDriverRange_IsTheDriverWarpSquared()
+        {
+            // behavior-specs-11 SPEC GAP: the spec gives no formula; the port's stand-in is the
+            // driver's rated warp squared (see MassDriverRangeRules).
+            Assert.AreEqual(25, MassDriverRangeRules.RangeCircleRadius(5), "Mass Driver 5");
+            Assert.AreEqual(169, MassDriverRangeRules.RangeCircleRadius(13), "Ultra Driver 13");
+            Assert.AreEqual(0, MassDriverRangeRules.RangeCircleRadius(0), "no driver draws nothing");
+        }
+
+        [Test]
+        public void ScanCircle_NestedCirclesAreCulledAgainstEarlierOnes()
+        {            var circles = new List<MapCircle>
             {
                 new MapCircle(100, 100, 50),   // 0 kept
                 new MapCircle(110, 100, 30),   // 1 inside 0 -> culled
@@ -176,6 +195,30 @@ namespace Nova.Tests.UnitTests
             };
 
             CollectionAssert.AreEqual(new[] { 0, 2, 4, 5 }, ScanCircleRules.CullNested(circles));
+        }
+
+        // ---------------- minefield overlay ----------------
+
+        [Test]
+        public void MinefieldOverlay_ThreePatternsAndTheFourBitMask()
+        {
+            // behavior-specs-11/client-interface.md: one fill pattern per minefield type.
+            Assert.AreEqual(MinefieldPattern.Standard, MinefieldOverlay.PatternOf(MinefieldType.Standard));
+            Assert.AreEqual(MinefieldPattern.Heavy, MinefieldOverlay.PatternOf(MinefieldType.Heavy));
+            Assert.AreEqual(MinefieldPattern.SpeedBump, MinefieldOverlay.PatternOf(MinefieldType.SpeedBump));
+
+            Assert.AreEqual(MinefieldVisibility.Own, MinefieldOverlay.CategoryOf(true, false, false));
+            Assert.AreEqual(MinefieldVisibility.Others, MinefieldOverlay.CategoryOf(false, false, true));
+            Assert.AreEqual(MinefieldVisibility.DetectedEnemy, MinefieldOverlay.CategoryOf(false, true, true));
+            Assert.AreEqual(MinefieldVisibility.UndetectedEnemy, MinefieldOverlay.CategoryOf(false, true, false));
+
+            Assert.AreEqual(0x0F, (int)MinefieldVisibility.All, "four independent bits");
+            Assert.AreEqual(0, (int)MinefieldVisibility.None);
+            Assert.IsTrue(MinefieldOverlay.IsVisible(MinefieldVisibility.All, false, true, false));
+            Assert.IsFalse(MinefieldOverlay.IsVisible(MinefieldVisibility.None, true, false, true));
+            Assert.IsTrue(MinefieldOverlay.IsVisible(MinefieldVisibility.Own, true, false, false));
+            Assert.IsFalse(MinefieldOverlay.IsVisible(MinefieldVisibility.Own, false, false, true));
+            Assert.IsTrue(MinefieldOverlay.IsVisible(MinefieldVisibility.DetectedEnemy, false, true, true));
         }
 
         // ---------------- route overlap ----------------

@@ -2,7 +2,7 @@
 // ============================================================================
 // Copyright (C) 2026 The Stars-Nova Project
 //
-// This file is part of Stars-Nova.
+// This file is part of Stars! Nova.
 // See <http://sourceforge.net/projects/stars-nova/>.
 //
 // This program is free software; you can redistribute it and/or modify
@@ -27,32 +27,20 @@ namespace Nova.Client
     using Nova.Common;
 
     /// <summary>
-    /// The minefield inspector's display options (behavior-specs-10/client-interface.md: "The
-    /// minefield inspector includes a compact child selector for its active display option.
-    /// Selecting a different option updates the stored local view preference and redraws the
-    /// inspector; it does not modify the minefield itself.").
-    /// SPEC GAP: the options themselves are not listed. Neutral set: the field's own figures
-    /// (Field), and what crossing it costs, from the code-confirmed type table of
-    /// fleet-movement-scanning-cargo.md section 5 "Minefield rules" (Transit). The choice is a
-    /// local preference (persisted through the client's config file by the Inspector).
+    /// The read-only rows the minefield inspector shows for the selected field
+    /// (behavior-specs-11/client-interface.md, "Minefield inspector"; corrected by the planet-view
+    /// pass: "The pane has no display-option selector. Its only child control is one
+    /// auto-checkbox ... (detonate this minefield next year).").
+    /// The old Field/Transit display selector and its config-file preference are a Nova invention
+    /// and have been dropped: this class only builds the field's own figures, and the detonate
+    /// checkbox lives in the Inspector.
     /// </summary>
     public static class MinefieldDisplay
     {
-        public enum Option
-        {
-            Field = 0,
-            Transit = 1,
-        }
-
-        public static readonly string[] OptionLabels = { "Field", "Transit" };
-
-        /// <summary>The config key under which the chosen option is stored.</summary>
-        public const string PreferenceKey = "MinefieldInspectorDisplay";
-
         public static readonly string[] TypeNames = { "Standard", "Heavy", "Speed Bump" };
 
-        /// <summary>The inspector rows for the field under the chosen option.</summary>
-        public static List<KeyValuePair<string, string>> Rows(Minefield field, Option option, string ownerName)
+        /// <summary>The inspector rows for the field (owner, type, position, radius, mines, detonating).</summary>
+        public static List<KeyValuePair<string, string>> Rows(Minefield field, string ownerName)
         {
             List<KeyValuePair<string, string>> rows = new List<KeyValuePair<string, string>>();
             if (field == null)
@@ -66,19 +54,6 @@ namespace Nova.Client
                 type = 0;
             }
 
-            if (option == Option.Transit)
-            {
-                rows.Add(Row("Type", TypeNames[type]));
-                rows.Add(Row("Safe speed", "Warp " + Minefield.SafeWarpByType[type].ToString(CultureInfo.InvariantCulture)));
-                rows.Add(Row("Hit chance", (Minefield.HitRatePerMilleByType[type] / 10.0).ToString("0.0", CultureInfo.InvariantCulture)
-                    + "% per light-year per warp above safe"));
-                rows.Add(Row("Damage per ship", Minefield.DamagePerShipByType[type].ToString(CultureInfo.InvariantCulture)
-                    + " (" + Minefield.ScoopDamagePerShipByType[type].ToString(CultureInfo.InvariantCulture) + " ram-scoop)"));
-                rows.Add(Row("Fleet minimum", Minefield.FleetMinimumByType[type].ToString(CultureInfo.InvariantCulture)
-                    + " (" + Minefield.ScoopFleetMinimumByType[type].ToString(CultureInfo.InvariantCulture) + " ram-scoop)"));
-                return rows;
-            }
-
             rows.Add(Row("Owner", ownerName ?? string.Empty));
             rows.Add(Row("Type", TypeNames[type]));
             rows.Add(Row("Position", field.Position != null ? field.Position.ToString() : string.Empty));
@@ -86,18 +61,6 @@ namespace Nova.Client
             rows.Add(Row("Number of mines", field.NumberOfMines.ToString(CultureInfo.InvariantCulture)));
             rows.Add(Row("Detonating", field.Detonate ? "Yes" : "No"));
             return rows;
-        }
-
-        /// <summary>The stored option, or Field for anything unrecognised.</summary>
-        public static Option Parse(string stored)
-        {
-            if (int.TryParse(stored, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value)
-                && value >= 0 && value < OptionLabels.Length)
-            {
-                return (Option)value;
-            }
-
-            return Option.Field;
         }
 
         private static KeyValuePair<string, string> Row(string label, string value)

@@ -83,16 +83,12 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <!-- Minefield: the compact display-option selector (a local view
-                                 preference; client-interface.md) and, for an owned Space
-                                 Demolition standard field, the Detonate order (DetonateCommand,
-                                 applied at the next turn generation). -->
+                            <!-- Minefield: the field's own rows and, for an owned Space Demolition
+                                 standard field, the Detonate order (DetonateCommand, applied at the
+                                 next turn generation). behavior-specs-11 retracts the old
+                                 Field/Transit display selector - the detonate checkbox is this
+                                 pane's only control. -->
                             <StackPanel IsVisible="{Binding IsMinefieldSelected}" Spacing="4" Margin="0,8,0,0">
-                                <Grid ColumnDefinitions="Auto,*">
-                                    <TextBlock Grid.Column="0" Text="Show" Opacity="0.7" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <ComboBox Grid.Column="1" ItemsSource="{Binding MinefieldDisplayOptions}"
-                                              SelectedIndex="{Binding MinefieldDisplayIndex}" HorizontalAlignment="Stretch" />
-                                </Grid>
                                 <CheckBox Content="Detonate" IsChecked="{Binding MinefieldDetonate}" IsVisible="{Binding CanDetonateMinefield}"
                                           ToolTip.Tip="While set, every fleet inside the field takes mine damage once a year, and the field decays faster" />
                             </StackPanel>

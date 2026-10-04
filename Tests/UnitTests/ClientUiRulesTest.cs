@@ -234,16 +234,17 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void WaypointDelete_FirstEditableWaypoint_FallsBackToTheFollowingOne()
+        public void WaypointDelete_FirstEditableWaypoint_SelectsTheFleetItself()
         {
-            // Waypoint 0 (the fleet's own position) is not a selectable row in Nova.
-            Assert.AreEqual(1, WaypointSelection.AfterDelete(1, 1, 3, keepPrevious: true));
+            // behavior-specs-11: deleting the first leg (waypoint 1) leaves waypoint 0 - the
+            // fleet itself - current; it does NOT fall through to the following waypoint.
+            Assert.AreEqual(0, WaypointSelection.AfterDelete(1, 1, 3, keepPrevious: true));
         }
 
         [Test]
-        public void WaypointDelete_OnlyWaypoint_ClearsTheSelection()
+        public void WaypointDelete_OnlyWaypoint_LeavesTheFleetItselfCurrent()
         {
-            Assert.AreEqual(-1, WaypointSelection.AfterDelete(1, 1, 1, keepPrevious: true));
+            Assert.AreEqual(0, WaypointSelection.AfterDelete(1, 1, 1, keepPrevious: true), "waypoint 0 (the fleet) is current");
         }
 
         [Test]
