@@ -1,5 +1,7 @@
 namespace Nova.Tests.UnitTests
 {
+    using System.Collections.Generic;
+
     using NUnit.Framework;
 
     using Nova.Common;
@@ -76,6 +78,34 @@ namespace Nova.Tests.UnitTests
             Assert.AreEqual(expectedRange, scanner.NormalScan);
             Assert.AreEqual(expectedRange, scanner.PenetratingScan,
                 $"{name}'s PenetratingScan should equal its NormalScan ({expectedRange}), not half of it.");
+        }
+
+        [Test]
+        public void RobberBaronScanner_PenetratingScan_IsOneTwenty()
+        {
+            Scanner scanner = (Scanner)Fetch("Robber Barron Scanner").Properties["Scanner"];
+
+            Assert.AreEqual(220, scanner.NormalScan, "Robber Baron Scanner normal scan");
+            Assert.AreEqual(120, scanner.PenetratingScan,
+                "Robber Baron Scanner penetrating scan (fleet-movement-scanning-cargo.md section 3)");
+        }
+
+        [TestCase("Mega Poly Shell", 80, 40)]
+        [TestCase("Multi Contained Munition", 150, 75)]
+        [TestCase("Langston Shell", 50, 25)]
+        public void NonScannerParts_ContributeTheirScanRangesToADesign(string name, int normal, int penetrating)
+        {
+            Component part = Fetch(name);
+            Component blueprint = new Component { Name = "Test Hull", Mass = 50 };
+            Hull hull = new Hull { Modules = new List<HullModule>(), ArmorStrength = 100, FuelCapacity = 100 };
+            hull.Modules.Add(new HullModule { AllocatedComponent = part, ComponentCount = 1 });
+            blueprint.Properties.Add("Hull", hull);
+
+            ShipDesign design = new ShipDesign(1) { Blueprint = blueprint };
+            design.Update();
+
+            Assert.AreEqual(normal, design.ScanRangeNormal, $"{name} normal scan");
+            Assert.AreEqual(penetrating, design.ScanRangePenetrating, $"{name} penetrating scan");
         }
     }
 }

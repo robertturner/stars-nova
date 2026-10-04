@@ -1071,6 +1071,10 @@ namespace Nova.Common.Components
                     {
                         SumProperty(module.AllocatedComponent.Properties[key], key, module.ComponentCount);
                     }
+
+                    // Three non-scanner parts also scan, per unit (behavior-specs-11/
+                    // fleet-movement-scanning-cargo.md §3).
+                    AddNonScannerPartScan(module.AllocatedComponent, module.ComponentCount);
                 }
             }
 
@@ -1083,9 +1087,18 @@ namespace Nova.Common.Components
             }
 
             // The design's scanner range: the fourth root of the sum of every scanner's range to
-            // the fourth power, taken once over all of them (see scannerNormalFourthPowers).
-            if (Summary.Properties.TryGetValue("Scanner", out ComponentProperty combinedScanner) && combinedScanner is Scanner combined)
+            // the fourth power, taken once over all of them (see scannerNormalFourthPowers). A
+            // design whose only scanner contribution comes from one of the three non-scanner parts
+            // below has no "Scanner" property yet, so create the combined one.
+            if (scannerNormalFourthPowers > 0 || scannerPenetratingFourthPowers > 0)
             {
+                if (!Summary.Properties.TryGetValue("Scanner", out ComponentProperty combinedScanner)
+                    || combinedScanner is not Scanner combined)
+                {
+                    combined = new Scanner();
+                    Summary.Properties["Scanner"] = combined;
+                }
+
                 combined.NormalScan = (int)Math.Pow(scannerNormalFourthPowers, 0.25);
                 combined.PenetratingScan = (int)Math.Pow(scannerPenetratingFourthPowers, 0.25);
             }
@@ -1568,8 +1581,45 @@ namespace Nova.Common.Components
                     break;
             }
         }
-        
-        
+
+        /// <summary>
+        /// Three non-scanner parts also scan, per unit (behavior-specs-11/
+        /// fleet-movement-scanning-cargo.md section 3, "Three non-scanner parts"): Mega Poly Shell
+        /// 80 / 40, Multi Contained Munition 150 / 75, Langston Shell 50 / 25 (normal /
+        /// penetrating). Their ranges feed the same fourth-power sum as a proper scanner part.
+        /// </summary>
+        private void AddNonScannerPartScan(Component part, int componentCount)
+        {
+            if (part == null || componentCount <= 0)
+            {
+                return;
+            }
+
+            int normal;
+            int penetrating;
+            switch (part.Name)
+            {
+                case "Mega Poly Shell":
+                    normal = 80;
+                    penetrating = 40;
+                    break;
+                case "Multi Contained Munition":
+                    normal = 150;
+                    penetrating = 75;
+                    break;
+                case "Langston Shell":
+                    normal = 50;
+                    penetrating = 25;
+                    break;
+                default:
+                    return;
+            }
+
+            scannerNormalFourthPowers += componentCount * Math.Pow(normal, 4);
+            scannerPenetratingFourthPowers += componentCount * Math.Pow(penetrating, 4);
+        }
+
+
         /// <summary>
         /// Calculate fuel consumption.
         /// </summary>

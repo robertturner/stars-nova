@@ -8746,7 +8746,7 @@ This scanner alows you to steal minerals from other races planets.</Description>
     </Race_Restrictions>
     <Image>Scanner/Robber_Baron_Scanner.png</Image>
     <Property>
-      <PenetratingScan>110</PenetratingScan>
+      <PenetratingScan>120</PenetratingScan>
       <NormalScan>220</NormalScan>
       <Type>Scanner</Type>
     </Property>
