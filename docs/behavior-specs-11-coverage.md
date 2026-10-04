@@ -75,6 +75,44 @@ test tick from the `*CoverageTest`, `EngineRowsT3Test`, `ComponentStatsConforman
 not credited, and 32 rows lost one because their test now asserts the superseded reading. Row granularity still varies by file, so treat the
 percentage as directional.
 
+---
+
+## Update (2026-10-04) — verification pass and follow-up fixes
+
+A follow-up pass re-checked this report against the current tree (the per-file tables below are the spec-10 tables carried forward, so some rows had
+outrun the code). It found several "gaps" already implemented, and landed the open, implementable items from "What's next" item 1 plus two client
+items. The headline numbers above predate this update; the per-file tables below remain the detailed inventory.
+
+**Verified already implemented in the tree (no change needed):**
+- new-game §3 **ordinary planets start with 0 surface minerals** (#6): `StarMapInitialiser.GenerateStars` leaves every ordinary planet at zero;
+  only planet 0 (the home-world template) and the Packet Physics / Interstellar Traveler second planet get tonnage.
+- new-game §3 **star-count formula, fixed 12-ly sweep and clumping** (#7): `GameSettings.PresetStarCount` (Sparse subtracts, truncation),
+  `StarMapGenerator.PlaceStarsByCount` (`PresetStarSeparation = 12`) and `RelaxStars`.
+- new-game §3 **second planet's own state** (#8) and **Simplified setup / written defaults** (#9):
+  `StarMapInitialiser` and `NewGameSetup.SimplifiedPlayerCountTable` / `ApplySimplifiedDefaults` / `ResetToDefaults`.
+
+**Landed (each with a unit test; main suite 3065/3065, `Nova.Avalonia.Tests` 104 passed / 1 skipped):**
+
+| Report item | Fix |
+|---|---|
+| #4 gatling mine-sweep | fixed R = 4 for Mini Gun / Gatling Gun / Gatling Neutrino Cannon / Big Mutha Cannon, +1 on a starbase (commit `b0f4f81`) |
+| #14 research PRT exclusion / level 26 | no race test anywhere in research; a target at level 26 with "same" moves to the lowest field (`b0f4f81`) |
+| #16 theft | `TransportHandler.MayTakeFrom` no longer excludes colonists: every slot is stealable from a fleet or (full theft) a planet |
+| #28 own-packet visibility | an own packet is not seen automatically (only within scanner range); a PP packet scanner only scans above warp 4 |
+| #12 packet merge test | the merge test is the existing packet's mass **before** the merge, not the sum |
+| #3 minefield routine (partial) | damage exactly equal to the armor survives; detonation exempts only the field owner's own Mini/Super Mine Layer hulls, reveals nothing and leaves no wreckage |
+| #5 ram-scoop radiation | the colonist loss applies only to a fleet that moved under its own engines, and is at least 1 unit whenever any are aboard |
+| #25 wreckage details | the grace mark goes only on the first receiving object; Scrap Fleet forces a new object; all-zero amounts invent 0-9 kT each; a bloodless battle makes no object |
+| (not a spec row) golden test-isolation leak | `SimulationEnvironment` resets the process-wide `AllComponents` cache inside and after its private root, so a prior test's component load can no longer change the golden hashes |
+| #47 battle-plan deletion | fleets on the deleted plan move to the plan **just above** it (`BattlePlanRules.PlanAbove`), not the first plan |
+| #32 scanner data | Robber Baron Scanner penetrating is 120 (was 110); the three non-scanner parts scan per unit (Mega Poly Shell 80/40, Multi Contained Munition 150/75, Langston Shell 50/25) and feed the design's fourth-power scanner sum |
+| (TODO-FEATURES #1) Ship Design tab | a single tap on a design shows its details straight away, including cargo capacity and the full summary figures (`Nova.Client.DesignDetails`) |
+
+**Still open** from the overturns table / "What's next": #1 (minefield/wormhole detection masks and the r/4 rule), #2 (wormhole lifecycle),
+#3's remaining ram-scoop-fuel-gain-skip and message-recipient swap, #10 production templates, #11 catalog 10l, #13/#15 packet terraforming and
+remote mining, #17 Transfer Fleet, #18-#24 combat/damage, #26-#29 turn order / Trader / packets / victory, #30 score visibility, #31 design caps,
+#33-#41 AI, #42 planet route, and the rest of #44-#51 client work.
+
 ## Where spec-11 overturns earlier work
 
 Code (including the three spec-10 implementation passes) that spec-11 now contradicts, plus stand-ins it replaces. Ordered by importance
@@ -1614,14 +1652,14 @@ table, the P0/P1 passes, §7, the D/H roles) of the "Still missing" list, and th
 
 Suggested order for a spec-11 implementation pass (implement, test, verify the test fails against the old behaviour), drawn from "Implementable now, ranked":
 
-1. **Engine corrections with a test already asserting the wrong thing** (small, high leverage): the gatling sweep rate; the minefield routine (equal-to-armor, detonation exemption / reveal / wreckage); the ram-scoop gate and minimum; theft of colonists; the research PRT exclusion and the level-26 rule; the wreckage grace mark; the packet merge test; own-packet visibility.
-2. **New-game generation** (changes every game's opening): 0 surface minerals on ordinary planets; the star-count density formula; the 12-ly sweep; the clumping pass; the Simplified table and written defaults; then the second planet and Starting Distance placement.
+1. **Engine corrections with a test already asserting the wrong thing** (small, high leverage): the gatling sweep rate; the minefield routine (equal-to-armor, detonation exemption / reveal / wreckage); the ram-scoop gate and minimum; theft of colonists; the research PRT exclusion and the level-26 rule; the wreckage grace mark; the packet merge test; own-packet visibility. **DONE (2026-10-04)**, except the minefield row's ram-scoop-fuel-gain-skip and message-recipient swap.
+2. **New-game generation** (changes every game's opening): 0 surface minerals on ordinary planets; the star-count density formula; the 12-ly sweep; the clumping pass; the Simplified table and written defaults; then the second planet and Starting Distance placement. **DONE in the tree already (verified 2026-10-04)** for the surface minerals, star count, 12-ly sweep, clumping, Simplified table/defaults and second planet; only the home-world Starting Distance placement details remain to re-check.
 3. **Scanning and wormholes**: the known / located masks and the r/4 rules, then the wormhole lifecycle.
 4. **Combat and damage**: the exact movement order; the authoritative damage word with its merge / split / join formulas (which also unlocks Transfer Fleet and the merge redistribution); the salvage dispatcher.
 5. **Turn order and the Trader**: pair 8, Trader visibility, message 78, the mode-0 order.
 6. **Production and victory**: templates (slot 0), the catalog 10l, Packet Physics terraforming, allocation limits; victory met bits / winner mark / two races, score visibility, the Score window with Switch.
 7. **AI**: the packet advisors and the category 5 fixes first (contained), then the research share, the P5 / P0 / P1 passes, the builder corrections, and - as the large items - the starbase designer with role tags, rendezvous, and the coarse-defence source.
-8. **Client**: `MapViewOptions` and the planet views; name builders and mode 7; battle-plan delete; rename; Find; the Technology Browser; the Goto two-press; then the summary pane, status strip and popups; the Route feature end to end once the engine side lands.
+8. **Client**: `MapViewOptions` and the planet views; name builders and mode 7; ~~battle-plan delete~~ **DONE (2026-10-04)**; rename; Find; the Technology Browser; the Goto two-press; then the summary pane, status strip and popups; the Route feature end to end once the engine side lands.
 9. **Decisions needed from you**: waypoint insertion after-the-current (the spec team now recommends against the port's choice) and the delete fallback; names/badges off by default (0x00E0); whether P2 scraps the starting Santa Maria (literal) or exempts it; where the Random race roll runs (design time vs universe creation); keeping the Field/Transit minefield selector, waypoint Move Up/Down and "Append" as disclosed port additions; the report export shape (you said skip).
 
 Pick a lane, or tell me which spec gaps you want to close first.
