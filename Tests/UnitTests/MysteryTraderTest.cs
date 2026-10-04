@@ -837,14 +837,17 @@ namespace Nova.Tests.UnitTests
         public void BattleSalvage_NeverGrantsMiniMorphOrGenesisDevice()
         {
             EmpireData empire = human;
-            BattleEngine battleEngine = new BattleEngine(serverState, new BattleReport());
-            Fleet fleet = AddFleet(empire, 0, 0, 0);
-            ShipToken token = fleet.Composition.Values.Single();
-            List<Stack> battlingStacks = new List<Stack> { new Stack(fleet, 0, token) };
-
-            for (int i = 0; i < 400; i++)
+            SalvageTables tables = new SalvageTables();
+            foreach (int bit in new[] { 0, 1, 2, 3, 4, 5, 6, 7, 9, 11 })
             {
-                battleEngine.GrantOneTimeSpecialComponent(battlingStacks);
+                tables.RarePercent[bit] = 25;
+            }
+
+            Random random = new Random(99);
+            for (int i = 0; i < 1000 && empire.GrantedSpecialComponents.Count < 10; i++)
+            {
+                empire.TechGainedThisTurn = false;
+                SalvageDispatcher.TryGain(empire, tables, random);
             }
 
             CollectionAssert.AreEquivalent(SpecialComponentGrants.SalvageableComponents, empire.GrantedSpecialComponents);

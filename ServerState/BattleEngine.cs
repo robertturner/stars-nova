@@ -138,15 +138,15 @@ namespace Nova.Server
         private readonly Dictionary<Stack, int> tokenMovement = new Dictionary<Stack, int>();
 
         /// <summary>
-        /// The highest required tech level seen across every design destroyed this battle, per
-        /// owning race - reset per battle location alongside totalSalvage. Feeds
-        /// GrantBattleTechGains once the battle ends: "any race that had at least one ship
-        /// survive the battle... becomes eligible for a chance to gain partial tech levels based
-        /// on the enemy tech present in ships destroyed during the fight" - see
-        /// docs/behavior-specs-5/combat-resolution.md §7 Aftermath and §9's tech-gain
-        /// orchestration note.
+        /// The salvage tables (research thresholds and the rare-part percentage table) built from
+        /// every design destroyed this battle, per owning race - reset per battle location alongside
+        /// totalSalvage. Feeds <see cref="GrantBattleTechGains"/> once the battle ends: "any race
+        /// that had at least one ship survive the battle... becomes eligible for a chance to gain
+        /// partial tech levels based on the enemy tech present in ships destroyed during the fight"
+        /// - see docs/behavior-specs-11/combat-resolution.md §7 Aftermath and turn-generation-
+        /// engine.md §5's salvage dispatcher.
         /// </summary>
-        private Dictionary<int, TechLevel> destroyedTechByOwner = new Dictionary<int, TechLevel>();
+        private Dictionary<int, SalvageTables> destroyedTablesByOwner = new Dictionary<int, SalvageTables>();
 
         /// <summary>
         /// Creates a new battle engine.
@@ -302,7 +302,7 @@ namespace Nova.Server
 
                 totalSalvage = new Resources();
                 wrecksThisLocation = false;
-                destroyedTechByOwner = new Dictionary<int, TechLevel>();
+                destroyedTablesByOwner = new Dictionary<int, SalvageTables>();
 
                 battleStar = sample.InOrbit as Star;
                 if (battleStar == null && sample.InOrbit != null)
@@ -340,7 +340,6 @@ namespace Nova.Server
                 dumpedFleets.Clear();
 
                 GrantBattleTechGains(battlingStacks);
-                GrantOneTimeSpecialComponent(battlingStacks);
 
                 ReportBattle();
 
@@ -2398,48 +2397,35 @@ namespace Nova.Server
 
         /// <summary>
         /// Records that a design belonging to <paramref name="target"/>'s owner was just
-        /// destroyed, tracking the highest required tech level seen per field across every
-        /// destroyed design this battle - the "source" profile GrantBattleTechGains later rolls
-        /// surviving races against. Reuses TechTrading.HighestRequiredTech (already used the same
-        /// way for scrapping/invasion) since a Stack is itself a Fleet with the destroyed token
-        /// still present in its Composition at the point both call sites invoke this.
+        /// destroyed, adding it to that owner's salvage tables (research thresholds from every
+        /// part's required tech and rare-part percentage points). <see cref="GrantBattleTechGains"/>
+        /// later rolls surviving races against the other owners' tables.
         /// </summary>
         private void RecordDestroyedTech(Stack target)
         {
-            TechLevel destroyedTech = TechTrading.HighestRequiredTech(target);
-
-            if (!destroyedTechByOwner.TryGetValue(target.Owner, out TechLevel highest))
+            if (!destroyedTablesByOwner.TryGetValue(target.Owner, out SalvageTables tables))
             {
-                destroyedTechByOwner[target.Owner] = destroyedTech;
-                return;
+                tables = new SalvageTables();
+                destroyedTablesByOwner[target.Owner] = tables;
             }
 
-            foreach (TechLevel.ResearchField field in Enum.GetValues(typeof(TechLevel.ResearchField)))
+            foreach (ShipToken token in target.Composition.Values)
             {
-                if (destroyedTech[field] > highest[field])
-                {
-                    highest[field] = destroyedTech[field];
-                }
+                tables.AddDesign(token.Design, token.Quantity);
             }
         }
 
         /// <summary>
         /// Gives every race with at least one ship that survived this battle (present and
-        /// un-destroyed, or successfully retreated) a chance to gain a tech level from the
-        /// pooled highest tech level of every OTHER race's ships destroyed here - "any race that
-        /// had at least one ship survive the battle... becomes eligible for a chance to gain
-        /// partial tech levels based on the enemy tech present in ships destroyed during the
-        /// fight" (docs/behavior-specs-5/combat-resolution.md §7 Aftermath). This is a distinct
-        /// subsystem from combat resolution itself (§9's own framing) reusing the tech-trading
-        /// mechanic already wired into ScrapTask/InvadeTask (TechTrading.AttemptTechGain) - the
-        /// original's exact 13-way/6-way tech-bonus category tables were never traced with
-        /// enough confidence to reproduce (see the doc's own admission in §9), so this grants
-        /// against Nova's existing 6 research fields instead of attempting to fabricate those
-        /// categories.
+        /// un-destroyed, or successfully retreated) one roll of the shared salvage dispatcher
+        /// (behavior-specs-11/turn-generation-engine.md §5, FUN_10f0_61a2): a 50% gate, then the
+        /// rare-part table built from the other races' destroyed designs, otherwise the next
+        /// research level's price banked into a field's pool. This unifies the earlier separate
+        /// tech-gain and one-time-component grants into the single dispatcher the spec describes.
         /// </summary>
         private void GrantBattleTechGains(List<Stack> battlingStacks)
         {
-            if (destroyedTechByOwner.Count == 0)
+            if (destroyedTablesByOwner.Count == 0)
             {
                 return; // nobody died - nothing to learn from.
             }
@@ -2449,110 +2435,33 @@ namespace Nova.Server
 
             foreach (int race in survivingRaces)
             {
-                TechLevel pooledEnemyTech = new TechLevel(0);
-                bool anyEnemyTech = false;
-
-                foreach (KeyValuePair<int, TechLevel> entry in destroyedTechByOwner)
+                SalvageTables tables = new SalvageTables();
+                foreach (KeyValuePair<int, SalvageTables> entry in destroyedTablesByOwner)
                 {
-                    if (entry.Key == race)
+                    if (entry.Key != race)
                     {
-                        continue;
-                    }
-
-                    anyEnemyTech = true;
-                    foreach (TechLevel.ResearchField field in Enum.GetValues(typeof(TechLevel.ResearchField)))
-                    {
-                        if (entry.Value[field] > pooledEnemyTech[field])
-                        {
-                            pooledEnemyTech[field] = entry.Value[field];
-                        }
+                        tables.Merge(entry.Value);
                     }
                 }
 
-                if (!anyEnemyTech)
+                if (!tables.AnyRare && !tables.AnyResearch)
                 {
                     continue;
                 }
 
-                EmpireData empire = serverState.AllEmpires[race];
-                TechLevel.ResearchField? learned = TechTrading.AttemptTechGain(empire, pooledEnemyTech);
-                if (learned != null)
+                SalvageResult result = SalvageDispatcher.TryGain(serverState.AllEmpires[race], tables, Rng);
+                if (result == null)
                 {
-                    Message message = new Message();
-                    message.Audience = race;
-                    message.Text = "Studying enemy wreckage from the battle at " + battle.Location
-                        + " has taught your scientists Tech Level " + empire.ResearchLevels[learned.Value]
-                        + " in the " + learned.Value + " field.";
-                    message.Type = "Battle";
-                    serverState.AllMessages.Add(message);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Gives every race with at least one ship that survived this battle a chance to be
-        /// awarded one of the 12 special components behavior-specs-7/ship-design-and-components.md
-        /// §14a confirms are gated by a one-time, per-race, per-component random grant - a
-        /// separate mechanism from <see cref="GrantBattleTechGains"/>'s enemy-wreckage tech study
-        /// above, and from the original game's own PRT/LRT component-availability gating.
-        ///
-        /// The spec traces the real mechanism as: on a successful roll (roughly 50/50), pick one
-        /// of 13 candidate slots; 12 of them name a specific component (see
-        /// <see cref="SpecialComponentGrants"/>), and if that component hasn't already been
-        /// granted to this race, a second weighted roll decides whether it's actually awarded now.
-        /// This is a disclosed simplification of that chain: the "13th slot" (a bare tech-level
-        /// bump with no component, per the spec's own hedged "most plausibly" framing) and the
-        /// second roll's exact weighting are both left unimplemented, since neither is concretely
-        /// quantified by the spec - here, a single roughly-50% roll picks uniformly at random from
-        /// whichever of the 12 named components this race hasn't already been granted, so the
-        /// same "never grant twice, roughly even odds per qualifying battle" shape holds without
-        /// fabricating specific unconfirmed numbers.
-        /// </summary>
-        public void GrantOneTimeSpecialComponent(List<Stack> battlingStacks)
-        {
-            HashSet<int> survivingRaces = new HashSet<int>(
-                battlingStacks.Where(stack => !stack.IsDestroyed || stack.HasRetreated).Select(stack => (int)stack.Owner));
-
-            foreach (int race in survivingRaces)
-            {
-                if (Rng.Next(100) <= 49)
-                {
-                    continue; // roughly even odds of no reward at all this battle.
+                    continue;
                 }
 
-                // Salvage never feeds bits 8 (Mini Morph), 10 (Genesis Device) or 12: only the
-                // Mystery Trader reaches them (behavior-specs-10/turn-generation-engine.md §5,
-                // ship-design-and-components.md §14a), so the draw is over the other ten.
-                EmpireData empire = serverState.AllEmpires[race];
-                List<string> stillUngranted = SpecialComponentGrants.SalvageableComponents
-                    .Where(name => !empire.GrantedSpecialComponents.Contains(name))
-                    .ToList();
+                string text = result.PartName != null
+                    ? "Studying the wreckage at " + battle.Location + " has revealed the plans for the "
+                        + result.PartName + "!"
+                    : "Studying the wreckage at " + battle.Location + " has added " + result.BankedResources
+                        + " research points to your " + result.Field + " research.";
 
-                if (stillUngranted.Count == 0)
-                {
-                    continue; // this race has already been awarded all ten salvageable parts.
-                }
-
-                string granted = stillUngranted[Rng.Next(stillUngranted.Count)];
-                empire.GrantedSpecialComponents.Add(granted);
-
-                // Tech level may already exceed this component's requirement (it just wasn't
-                // available to build until now) - if so, make it buildable immediately rather
-                // than waiting for a future tech-level-up that may never come. StarUpdateStep.
-                // TechLevelUp handles the more common case of the grant preceding the tech level.
-                Component component = new AllComponents().Fetch(granted);
-                if (component != null && empire.ResearchLevels >= component.RequiredTech)
-                {
-                    empire.AvailableComponents.Add(component);
-                }
-
-                Message message = new Message
-                {
-                    Audience = race,
-                    Text = "Victory at " + battle.Location + " has earned your race the plans for a " + granted + "!",
-                    Type = "Battle",
-                };
-                serverState.AllMessages.Add(message);
+                serverState.AllMessages.Add(new Message { Audience = race, Text = text, Type = "Battle" });
             }
         }
 

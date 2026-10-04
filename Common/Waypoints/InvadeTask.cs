@@ -1,4 +1,4 @@
-﻿#region Copyright Notice
+#region Copyright Notice
 // ============================================================================
 // Copyright (C) 2008 Ken Reed
 // Copyright (C) 2009-2012 The Stars-Nova Project
@@ -240,14 +240,18 @@ namespace Nova.Common.Waypoints
                             + attackersKilled +
                             " troops were killed in the attack.";
 
-                // Invading a planet belonging to a player who leads in one or more fields is a
-                // tech-trading opportunity for the invader. See
-                // docs/behavior-specs/research-tech-tree.md §6.
-                TechLevel.ResearchField? learned = TechTrading.AttemptTechGain(sender, receiver.ResearchLevels);
-                if (learned != null)
+                // Capturing a planet is the shared salvage dispatcher's third source
+                // (turn-generation-engine.md §5): the former owner's six tech levels stand in for
+                // the design tables.
+                SalvageTables tables = new SalvageTables();
+                tables.AddTechLevel(receiver.ResearchLevels);
+                SalvageResult result = SalvageDispatcher.TryGain(sender, tables, GameRandom.Current);
+                if (result != null)
                 {
-                    messageText += " Capturing the planet has also taught your scientists Tech Level "
-                        + sender.ResearchLevels[learned.Value] + " in the " + learned.Value + " field.";
+                    messageText += result.PartName != null
+                        ? " Capturing the planet has also revealed the plans for the " + result.PartName + "."
+                        : " Capturing the planet has also added " + result.BankedResources
+                            + " research points to your " + result.Field + " research.";
                 }
 
                 wolfMessage.Text = messageText;

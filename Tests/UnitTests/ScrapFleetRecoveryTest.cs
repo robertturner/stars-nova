@@ -251,6 +251,7 @@ namespace Nova.Tests.UnitTests
             // must be made against the planet owner's levels (reading note 5).
             EmpireData scrapper = MakeEmpire(1);
             EmpireData owner = MakeEmpire(2);
+            owner.Race.ResearchCosts = new TechLevel(100); // a normal cost factor, so the banked price is non-zero
             Star star = MakePlanet(owner, true);
 
             // TechTrading's roll is random (about 49% per attempt here), so make many attempts:
@@ -269,8 +270,10 @@ namespace Nova.Tests.UnitTests
                 new ScrapTask().Perform(fleet, star, scrapper, owner);
             }
 
-            Assert.AreEqual(0, SumLevels(scrapper.ResearchLevels), "The scrapper never gains tech from scrapping at another race's starbase");
-            Assert.Greater(SumLevels(owner.ResearchLevels), 0, "The salvage roll is the planet owner's");
+            Assert.AreEqual(0, SumLevels(scrapper.ResearchLevels) + SumLevels(scrapper.ResearchResources),
+                "The scrapper never gains tech from scrapping at another race's starbase");
+            Assert.Greater(SumLevels(owner.ResearchLevels) + SumLevels(owner.ResearchResources), 0,
+                "The salvage roll is the planet owner's (the next level's price is banked into its research pool)");
         }
 
         private static int SumLevels(TechLevel levels)

@@ -302,14 +302,20 @@ namespace Nova.Common.Waypoints
             // has (e.g. a gifted or foreign ship).
             if (hasStarbase && receiver != null && fleet.Composition.Count > 0)
             {
-                TechLevel sourceRequiredTech = TechTrading.HighestRequiredTech(fleet);
-                TechLevel.ResearchField? learned = TechTrading.AttemptTechGain(receiver, sourceRequiredTech);
-                if (learned != null)
+                // The shared salvage dispatcher (turn-generation-engine.md §5): the scrapped
+                // fleet's designs fill the tables, then the one-success roll runs for the planet
+                // owner's race.
+                SalvageTables tables = new SalvageTables();
+                tables.AddFleet(fleet);
+                SalvageResult result = SalvageDispatcher.TryGain(receiver, tables, GameRandom.Current);
+                if (result != null)
                 {
                     Message techMessage = new Message();
                     techMessage.Audience = receiver.Id;
-                    techMessage.Text = "Scrapping " + fleet.Name + " has taught your scientists Tech Level "
-                        + receiver.ResearchLevels[learned.Value] + " in the " + learned.Value + " field.";
+                    techMessage.Text = result.PartName != null
+                        ? "Scrapping " + fleet.Name + " at " + star.Name + " has revealed the plans for the " + result.PartName + "."
+                        : "Scrapping " + fleet.Name + " has added " + result.BankedResources
+                            + " research points to your " + result.Field + " research.";
                     Messages.Add(techMessage);
                 }
             }
