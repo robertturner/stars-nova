@@ -502,12 +502,10 @@ namespace Nova.Server
 
             if (reveal)
             {
-                if (field.VisibleTo == null)
-                {
-                    field.VisibleTo = new HashSet<int>();
-                }
-
-                field.VisibleTo.Add(fleet.Owner);
+                // A mine hit marks the field known to the hit fleet's race (both the known and the
+                // seen-this-generation masks; fleet-movement-scanning-cargo.md section 3). A
+                // detonation does not reveal it.
+                field.MarkKnown(fleet.Owner);
             }
 
             if (!serverState.AllEmpires.TryGetValue(field.Owner, out EmpireData fieldOwner)

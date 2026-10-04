@@ -457,8 +457,8 @@ namespace Nova.Tests.UnitTests
                     Detonate = type == MinefieldType.Standard,
                 };
                 field.Key = empire.GetNextMinefieldKey();
-                field.VisibleTo.Add(5);
-                field.VisibleTo.Add(1);
+                field.Known.Add(5);
+                field.Known.Add(1);
 
                 Minefield loaded = RoundTrip(field.ToXml, node => new Minefield(node), (m, doc) => m.ToXml(doc));
 
@@ -468,7 +468,7 @@ namespace Nova.Tests.UnitTests
                 Assert.AreEqual(2500, loaded.NumberOfMines);
                 Assert.AreEqual(field.SafeSpeed, loaded.SafeSpeed);
                 Assert.AreEqual(field.Detonate, loaded.Detonate);
-                CollectionAssert.AreEquivalent(new[] { 1, 5 }, loaded.VisibleTo);
+                CollectionAssert.AreEquivalent(new[] { 1, 5 }, loaded.Known);
             }
         }
 
@@ -778,7 +778,7 @@ namespace Nova.Tests.UnitTests
             {
                 Minefield field = new Minefield { Name = type + " field", Position = new NovaPoint(100, 100), NumberOfMines = 900, SafeSpeed = 5, FieldType = type, Detonate = type == MinefieldType.Standard };
                 field.Key = hero.GetNextMinefieldKey();
-                field.VisibleTo.Add(2);
+                field.Known.Add(2);
                 server.AllMinefields.Add(field.Key, field);
             }
 

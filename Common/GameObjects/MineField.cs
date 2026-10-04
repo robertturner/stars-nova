@@ -88,11 +88,15 @@ namespace Nova.Common
         public bool Detonate;
 
         /// <summary>
-        /// Empire ids that have been shown this field by striking it (the field "becomes visible
-        /// to the fleet's race", fleet-movement-scanning-cargo.md §5 "The field"). The owner
-        /// always sees its own field and is not listed.
+        /// The per-race *known* mask (the original's word +10): empire ids whose scanners have
+        /// detected this field or whose fleet has struck it. It is never cleared, so a known field
+        /// only needs the full normal range to be seen again, where an unknown one needs the
+        /// quarter range or a penetrating scanner (behavior-specs-11/fleet-movement-scanning-
+        /// cargo.md §3, "Minefield detection, complete rule"). The owner always sees its own field
+        /// and is not listed. The per-generation *seen* mask is
+        /// <see cref="EmpireData.VisibleMinefields"/>, recomputed by ScanStep each year.
         /// </summary>
-        public HashSet<int> VisibleTo = new HashSet<int>();
+        public HashSet<int> Known = new HashSet<int>();
 
         private static int keyId; // TODO (priority 5) Minefield key will be shared amonst all minefields. Lacks a non-static unique id.
 
@@ -115,10 +119,20 @@ namespace Nova.Common
             }
         }
 
-        /// <summary>True when the empire owns the field or has been shown it (<see cref="VisibleTo"/>).</summary>
-        public bool IsVisibleTo(int empireId)
+        /// <summary>True when the empire owns the field or has ever known it (<see cref="Known"/>).</summary>
+        public bool IsKnownTo(int empireId)
         {
-            return empireId == Owner || (VisibleTo != null && VisibleTo.Contains(empireId));
+            return empireId == Owner || (Known != null && Known.Contains(empireId));
+        }
+
+        /// <summary>Marks the field known to a race: a scan detection, a mine hit or a sweep. The
+        /// owner needs no mark (it always sees its own field).</summary>
+        public void MarkKnown(int empireId)
+        {
+            if (empireId != Owner)
+            {
+                (Known ??= new HashSet<int>()).Add(empireId);
+            }
         }
 
         /// <summary>
@@ -144,9 +158,9 @@ namespace Nova.Common
                 Global.SaveData(xmldoc, xmlelMinefield, "Detonate", "true");
             }
 
-            if (VisibleTo != null && VisibleTo.Count > 0)
+            if (Known != null && Known.Count > 0)
             {
-                Global.SaveData(xmldoc, xmlelMinefield, "VisibleTo", string.Join(",", VisibleTo.OrderBy(id => id)));
+                Global.SaveData(xmldoc, xmlelMinefield, "Known", string.Join(",", Known.OrderBy(id => id)));
             }
 
             return xmlelMinefield;
@@ -186,10 +200,11 @@ namespace Nova.Common
                             Detonate = bool.Parse(((XmlText)subnode.FirstChild).Value);
                             break;
 
-                        case "visibleto":
+                        case "known":
+                        case "visibleto": // old saves wrote the persistent mask under this name
                             foreach (string id in ((XmlText)subnode.FirstChild).Value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
                             {
-                                VisibleTo.Add(int.Parse(id, System.Globalization.CultureInfo.InvariantCulture));
+                                Known.Add(int.Parse(id, System.Globalization.CultureInfo.InvariantCulture));
                             }
 
                             break;

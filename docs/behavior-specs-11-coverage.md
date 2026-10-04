@@ -93,7 +93,7 @@ items. The headline numbers above predate this update; the per-file tables below
 - **Expert +10% starting population** (#52): `Race.GetStartingPopulation(expertComputerPlayer)` adds the
   tenth for `PlayerSettings.AiSkill >= Race.ExpertAiSkill` (3), with a generated-home-world test.
 
-**Landed (each with a unit test; main suite 3073/3073, `Nova.Avalonia.Tests` 105 passed / 1 skipped):**
+**Landed (each with a unit test; main suite 3074/3074, `Nova.Avalonia.Tests` 105 passed / 1 skipped):**
 
 | Report item | Fix |
 |---|---|
@@ -113,10 +113,11 @@ items. The headline numbers above predate this update; the per-file tables below
 | #33 AI research share | `AiResearchShare.PercentFor` gives p per personality/turn (0 once all six techs are 24+); `DefaultPlanetAI.ProjectedResources()` deducts p × R / 100 unless the planet's leftover-only flag is set, and `Surplus`, `BuildShips`, `RunBomberDefence`, `RunTopUp` and the packet advisor read it. **The goldens were regenerated** (intended AI behavior change). |
 | #35 AI personality 5 bulk packets (partial) | the entry tests now run before the 1-in-4 roll; a queued packet item abandons the step; the mineral is drawn uniformly and cycled Ironium → Boranium → Germanium; the target range is 91,204 squared (under 302 ly) with the source a candidate and 100,000 as the starting least; the speed field is set to warp 11. The nine-step planet pass itself is not ported. |
 | #37 AI P4 chooser gating (partial) | personality 4's warship chooser now runs only at starbase planets outside the packet-hub slots (1, 3, 6, 8); a hub starbase builds no ships from the planet pass (`Cybertron_NothingAtAPacketHubStarbase_AndTheChooserDoesNotRun`). The other P2/P3/P4 corrections remain. |
+| #1 minefield/wormhole detection | the complete minefield rule replaces the old (range + size + 4)² formula: a per-race permanent `Known` mask, full normal range for a known field, the penetrating range, r/4, and a ship's own inside-the-field test (planets have none, PP packets only their range); a mine hit and a sweep mark the field known. Wormhole detection uses the same full-range-if-located / r/4 / penetrating rule with **no roll** and a serialized `Located` mask. `IntelWriter` now carries only the fields seen this year. **Goldens regenerated** (the removed wormhole roll changed the RNG sequence). The located bit's clear-on-jump waits on the wormhole lifecycle (#2). |
 | #31 design caps / name limit (partial) | the design-name box truncates to 31 characters (`DesignCommand.MaxDesignNameLength`); `DesignCommand.IsAtDesignCap` (16 ship / 10 starbase) is available. Server-side enforcement of the cap or the name length is **deferred**: the AI design builder still adds a design each turn (SIM-2) and names designs over 31 characters (e.g. "Medium Freighter [colonizer] T2105"), so enforcing either changes every AI game and the goldens. |
 | (TODO-FEATURES #1) Ship Design tab | a single tap on a design shows its details straight away, including cargo capacity and the full summary figures (`Nova.Client.DesignDetails`) |
 
-**Still open** from the overturns table / "What's next": #1 (minefield/wormhole detection masks and the r/4 rule), #2 (wormhole lifecycle),
+**Still open** from the overturns table / "What's next": #2 (wormhole lifecycle; #1's located bit is clear-on-jump only once the lifecycle lands),
 #3's remaining 197-200 / 201-204 message-recipient swap, #10 production templates, #11 catalog 10l, #13/#15 packet terraforming and
 remote mining, #17 Transfer Fleet, #18-#24 combat/damage, #26-#29 turn order / Trader / packets / victory, #30 score visibility, #31's
 server-side cap/name enforcement (blocked on the AI design planner's slot management and name lengths), #35's nine-step planet pass and the rest

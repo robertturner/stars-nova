@@ -94,6 +94,9 @@ namespace Nova.Server.TurnSteps
                     }
 
                     field.NumberOfMines -= swept;
+                    // A sweep marks the field known, but not seen, to the sweeper's race
+                    // (fleet-movement-scanning-cargo.md section 3).
+                    field.MarkKnown(sweeper.Owner);
                     SendMessages(serverState, sweeper, field, swept);
 
                     if (field.NumberOfMines <= 0)

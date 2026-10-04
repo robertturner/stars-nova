@@ -76,8 +76,23 @@ namespace Nova.Common
         /// </summary>
         public HashSet<int> UsedBy = new HashSet<int>();
 
+        /// <summary>
+        /// The races (empire ids) that currently have this wormhole end *located*: the original's
+        /// located mask (word +8). Set when one of the race's scanners detects the end, and by a
+        /// transit on the exit end only; cleared for all races when that end jumps
+        /// (behavior-specs-11/fleet-movement-scanning-cargo.md §3). A located end is seen at the
+        /// full normal scanner range; an unlocated one only at r/4 or within penetrating range.
+        /// </summary>
+        public HashSet<int> Located = new HashSet<int>();
+
         public Wormhole()
         {
+        }
+
+        /// <summary>True when the race (empire id) currently has this end located.</summary>
+        public bool IsLocatedBy(int empireId)
+        {
+            return Located != null && Located.Contains(empireId);
         }
 
         /// <summary>True when the race (empire id) has used this wormhole end.</summary>
@@ -100,6 +115,11 @@ namespace Nova.Common
             if (UsedBy.Count > 0)
             {
                 Global.SaveData(xmldoc, xmlelWormhole, "UsedBy", string.Join(",", UsedBy.OrderBy(id => id).Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture))));
+            }
+
+            if (Located != null && Located.Count > 0)
+            {
+                Global.SaveData(xmldoc, xmlelWormhole, "Located", string.Join(",", Located.OrderBy(id => id).Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture))));
             }
 
             return xmlelWormhole;
@@ -130,6 +150,14 @@ namespace Nova.Common
                             foreach (string id in ((XmlText)subnode.FirstChild).Value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
                             {
                                 UsedBy.Add(int.Parse(id.Trim(), System.Globalization.CultureInfo.InvariantCulture));
+                            }
+
+                            break;
+
+                        case "located":
+                            foreach (string id in ((XmlText)subnode.FirstChild).Value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                Located.Add(int.Parse(id.Trim(), System.Globalization.CultureInfo.InvariantCulture));
                             }
 
                             break;

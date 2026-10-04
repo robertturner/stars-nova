@@ -42,11 +42,14 @@ namespace Nova.Common
         /// <summary>Penetrating range of the JOAT built-in scanner per Electronics level (ly).</summary>
         public const int JoatPenetratingRangePerElectronicsLevel = 10;
 
-        /// <summary>Added to a minefield's radius to give its flat detection radius.</summary>
-        public const int MinefieldDetectionPadding = 4;
-
-        /// <summary>A wormhole is cloaked 75% until the observer has discovered it once.</summary>
-        public const int UndiscoveredWormholeCloakPercent = 75;
+        /// <summary>What kind of object a scan source is: the minefield test differs (a ship also
+        /// sees a field it is inside, a Packet Physics packet only within its range).</summary>
+        public enum ScanSourceKind
+        {
+            Ship,
+            Planet,
+            Packet
+        }
 
         /// <summary>
         /// Combines two scanner ranges the way one design's scanners combine: the fourth root of
@@ -149,30 +152,46 @@ namespace Nova.Common
         }
 
         /// <summary>
-        /// A minefield's flat detection radius: its size value plus 4 (section 3, "Minefield
-        /// detection ... the minefield's stored warning/size value plus 4, squared"). The size
-        /// value is read here as the field's radius, sqrt(mines).
+        /// Minefield detection, complete rule (behavior-specs-11/fleet-movement-scanning-cargo.md
+        /// section 3): a field is a circle of radius sqrt(mines); a race that already knows it
+        /// (<paramref name="known"/>) sees it within the full normal range r, and any observer sees
+        /// it within the penetrating range p or within r/4. A ship (not a planet) also sees a
+        /// field its own position is inside (squared distance at most the mine count); a Packet
+        /// Physics packet sees one only within its range. No roll.
         /// </summary>
-        public static int MinefieldDetectionRadius(Minefield field)
-        {
-            return field == null ? 0 : field.Radius + MinefieldDetectionPadding;
-        }
-
-        /// <summary>
-        /// True when a scanner at <paramref name="scannerPosition"/> with normal range
-        /// <paramref name="scanRange"/> detects the field: squared distance at most
-        /// (range + detection radius) squared. Minefields carry no cloak, so the cloak-reduced
-        /// fleet test does not apply.
-        /// </summary>
-        public static bool DetectsMinefield(NovaPoint scannerPosition, int scanRange, Minefield field)
+        public static bool DetectsMinefield(NovaPoint scannerPosition, int normalRange, int penetratingRange, ScanSourceKind kind, bool known, Minefield field)
         {
             if (scannerPosition == null || field == null || field.Position == null)
             {
                 return false;
             }
 
-            double reach = Math.Max(0, scanRange) + MinefieldDetectionRadius(field);
-            return PointUtilities.DistanceSquare(scannerPosition, field.Position) <= reach * reach;
+            double squared = PointUtilities.DistanceSquare(scannerPosition, field.Position);
+            int normal = Math.Max(0, normalRange);
+            int penetrating = Math.Max(0, penetratingRange);
+
+            if (kind == ScanSourceKind.Packet)
+            {
+                return squared <= (double)normal * normal;
+            }
+
+            if (known && squared <= (double)normal * normal)
+            {
+                return true;
+            }
+
+            if (squared <= (double)penetrating * penetrating)
+            {
+                return true;
+            }
+
+            double quarter = normal / 4.0;
+            if (squared <= quarter * quarter)
+            {
+                return true;
+            }
+
+            return kind == ScanSourceKind.Ship && squared <= field.NumberOfMines;
         }
 
         /// <summary>True when the point lies inside the field (squared distance at most the mine count).</summary>
@@ -208,31 +227,33 @@ namespace Nova.Common
         }
 
         /// <summary>
-        /// Wormhole detection: a flat radius test (the observer's unreduced normal range) and,
-        /// while the wormhole is still cloaked to the observer, a 0-99 roll that must reach the
-        /// cloak percentage (section 3, "Wormhole ... detection is ... probabilistic"; section 5,
-        /// wormholes are cloaked 75% until discovered once). No roll is made out of range or once
-        /// the wormhole is known.
+        /// Wormhole detection: a wormhole end is seen within the full normal range r when the race
+        /// already has it located, or within r/4, or within the penetrating range p; no roll
+        /// (behavior-specs-11/fleet-movement-scanning-cargo.md section 3, the located mask).
         /// </summary>
-        public static bool DetectsWormhole(NovaPoint scannerPosition, int scanRange, NovaPoint wormholePosition, bool alreadyDiscovered, Random random)
+        public static bool DetectsWormhole(NovaPoint scannerPosition, int normalRange, int penetratingRange, bool located, NovaPoint wormholePosition)
         {
             if (scannerPosition == null || wormholePosition == null)
             {
                 return false;
             }
 
-            double range = Math.Max(0, scanRange);
-            if (PointUtilities.DistanceSquare(scannerPosition, wormholePosition) > range * range)
-            {
-                return false;
-            }
+            double squared = PointUtilities.DistanceSquare(scannerPosition, wormholePosition);
+            int normal = Math.Max(0, normalRange);
+            int penetrating = Math.Max(0, penetratingRange);
 
-            if (alreadyDiscovered)
+            if (located && squared <= (double)normal * normal)
             {
                 return true;
             }
 
-            return random.Next(100) >= UndiscoveredWormholeCloakPercent;
+            if (squared <= (double)penetrating * penetrating)
+            {
+                return true;
+            }
+
+            double quarter = normal / 4.0;
+            return squared <= quarter * quarter;
         }
     }
 }

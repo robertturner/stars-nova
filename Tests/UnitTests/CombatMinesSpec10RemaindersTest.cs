@@ -381,16 +381,16 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void AStrike_MakesTheFieldVisibleToTheFleetsRace()
+        public void AStrike_MakesTheFieldKnownToTheFleetsRace()
         {
             Minefield field = AddField(layer, 40, 0, 400);
             Fleet fleet = AddFleet(mover, new NovaPoint(0, 0), (MakeDesign(5000), 1));
-            Assert.IsFalse(field.IsVisibleTo(mover.Id));
+            Assert.IsFalse(field.IsKnownTo(mover.Id));
 
             Assert.AreEqual(MinefieldHit.Hit, Strike(fleet));
 
-            Assert.IsTrue(field.IsVisibleTo(mover.Id));
-            Assert.IsTrue(field.IsVisibleTo(layer.Id), "The owner always sees its own field");
+            Assert.IsTrue(field.IsKnownTo(mover.Id));
+            Assert.IsTrue(field.IsKnownTo(layer.Id), "The owner always sees its own field");
         }
 
         [Test]
@@ -439,7 +439,7 @@ namespace Nova.Tests.UnitTests
             Assert.AreEqual(1000, outside.Composition.Values.Single().Armor, 1e-9);
             Assert.AreEqual(10, enemy.Position.X, "No stop: the fleet stays where it is");
             Assert.AreEqual(400, field.NumberOfMines, "No per-fleet strike loss for a detonation");
-            Assert.IsFalse(field.IsVisibleTo(mover.Id), "A detonation does not reveal the field to the fleet's race");
+            Assert.IsFalse(field.IsKnownTo(mover.Id), "A detonation does not reveal the field to the fleet's race");
         }
 
         [Test]
@@ -532,20 +532,20 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void DetonateAndVisibility_SurviveASaveAndReload()
+        public void DetonateAndKnown_SurviveASaveAndReload()
         {
             Minefield field = AddField(layer, 10, 20, 900, detonate: true);
-            field.VisibleTo.Add(3);
-            field.VisibleTo.Add(1);
+            field.Known.Add(3);
+            field.Known.Add(1);
             XmlDocument xml = new XmlDocument();
             XmlElement element = field.ToXml(xml);
 
             Minefield reloaded = new Minefield(element);
 
             Assert.IsTrue(reloaded.Detonate);
-            Assert.IsTrue(reloaded.IsVisibleTo(1));
-            Assert.IsTrue(reloaded.IsVisibleTo(3));
-            Assert.IsFalse(reloaded.IsVisibleTo(4));
+            Assert.IsTrue(reloaded.IsKnownTo(1));
+            Assert.IsTrue(reloaded.IsKnownTo(3));
+            Assert.IsFalse(reloaded.IsKnownTo(4));
         }
     }
 

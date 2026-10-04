@@ -708,7 +708,7 @@ namespace Nova.Server
 
             foreach (Minefield minefield in AllMinefields.Values)
             {
-                CanonicalOrder.CompactSorted(minefield.VisibleTo);
+                CanonicalOrder.CompactSorted(minefield.Known);
             }
 
             foreach (Wormhole wormhole in AllWormholes.Values)

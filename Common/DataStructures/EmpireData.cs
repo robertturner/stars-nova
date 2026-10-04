@@ -912,9 +912,10 @@ namespace Nova.Common
         }
 
         /// <summary>
-        /// True when this empire may be shown the minefield: it owns it, the field has shown
-        /// itself by striking one of its fleets (Minefield.VisibleTo), or the server's ScanStep
-        /// detected it this year (<see cref="VisibleMinefields"/>).
+        /// True when this empire may be shown the minefield: it owns it, or the server's ScanStep
+        /// detected it this year (<see cref="VisibleMinefields"/>). A field the race merely knows
+        /// is not written unless it is detected again this generation
+        /// (behavior-specs-11/fleet-movement-scanning-cargo.md section 3).
         /// </summary>
         public bool CanSeeMinefield(Minefield minefield)
         {
@@ -923,7 +924,7 @@ namespace Nova.Common
                 return false;
             }
 
-            return minefield.IsVisibleTo(Id) || VisibleMinefields.Contains(minefield.Key);
+            return minefield.Owner == Id || VisibleMinefields.Contains(minefield.Key);
         }
 
         

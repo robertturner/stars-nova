@@ -54,6 +54,26 @@ namespace Nova.Server.TurnSteps
             this.random = random;
         }
 
+        /// <summary>One scanner's position and ranges for the minefield and wormhole sweeps.</summary>
+        private readonly struct ScanSource
+        {
+            public ScanSource(NovaPoint position, int normal, int penetrating, ScannerRules.ScanSourceKind kind)
+            {
+                Position = position;
+                Normal = normal;
+                Penetrating = penetrating;
+                Kind = kind;
+            }
+
+            public NovaPoint Position { get; }
+
+            public int Normal { get; }
+
+            public int Penetrating { get; }
+
+            public ScannerRules.ScanSourceKind Kind { get; }
+        }
+
 
         public void Process(ServerData serverState)
         {
@@ -124,7 +144,7 @@ namespace Nova.Server.TurnSteps
             // Fleets this empire has detected this year (by any route), and every scan source's
             // position and normal range, for the minefield and wormhole sweeps after the loop.
             HashSet<long> detectedFleets = new HashSet<long>();
-            List<KeyValuePair<NovaPoint, int>> scanSources = new List<KeyValuePair<NovaPoint, int>>();
+            List<ScanSource> scanSources = new List<ScanSource>();
 
             foreach (Mappable scanner in empire.IterateAllMappables().Concat(PacketPhysicsScanners(empire)))
             {
@@ -177,7 +197,26 @@ namespace Nova.Server.TurnSteps
                     }
                 }
 
-                scanSources.Add(new KeyValuePair<NovaPoint, int>(scanner.Position, scanRange));
+                ScannerRules.ScanSourceKind kind;
+                int sourceNormal = scanRange;
+                int sourcePenetrating = penScanRange;
+                if (scanner is MineralPacket)
+                {
+                    // A Packet Physics packet scans within its ranged squared only; the minefield
+                    // test treats it as a packet (no quarter range, no inside test).
+                    kind = ScannerRules.ScanSourceKind.Packet;
+                    sourcePenetrating = 0;
+                }
+                else if (scanner is Star)
+                {
+                    kind = ScannerRules.ScanSourceKind.Planet;
+                }
+                else
+                {
+                    kind = ScannerRules.ScanSourceKind.Ship;
+                }
+
+                scanSources.Add(new ScanSource(scanner.Position, sourceNormal, sourcePenetrating, kind));
 
                 // Scan everything
                 foreach (Mappable scanned in serverState.IterateAllMappables())
@@ -283,7 +322,7 @@ namespace Nova.Server.TurnSteps
         /// automatically (fleet-movement-scanning-cargo.md §3): it is written only while it lies in
         /// range. The specs give packets no cloak, so none is applied (spec gap).
         /// </summary>
-        private void UpdateVisiblePackets(EmpireData empire, List<KeyValuePair<NovaPoint, int>> scanSources)
+        private void UpdateVisiblePackets(EmpireData empire, List<ScanSource> scanSources)
         {
             empire.MineralPacketReports.Clear();
             bool sensesAllPackets = empire.Race != null && empire.Race.HasTrait("PP");
@@ -292,7 +331,7 @@ namespace Nova.Server.TurnSteps
             {
                 bool visible = sensesAllPackets
                     || scanSources.Any(source =>
-                        PointUtilities.DistanceSquare(source.Key, packet.Position) <= (double)source.Value * source.Value);
+                        PointUtilities.DistanceSquare(source.Position, packet.Position) <= (double)source.Normal * source.Normal);
 
                 if (visible)
                 {
@@ -389,52 +428,52 @@ namespace Nova.Server.TurnSteps
         }
 
         /// <summary>
-        /// Recomputes the minefields the empire can see this year (EmpireData.VisibleMinefields,
-        /// which IntelWriter uses to choose the fields in the player's turn file): its own, those
-        /// that showed themselves by striking its fleets (Minefield.VisibleTo), and those within
-        /// reach of any of its scanners. A scanner reaches a field when the squared distance is at
-        /// most (normal range + the field's flat detection radius) squared, the detection radius
-        /// being the field's size plus 4 (fleet-movement-scanning-cargo.md §3, "Minefield
-        /// detection"; ScannerRules.DetectsMinefield).
+        /// Recomputes the minefields the empire sees this year (EmpireData.VisibleMinefields, which
+        /// IntelWriter uses to choose the fields in the player's turn file): its own, and every
+        /// field detected by the complete rule (fleet-movement-scanning-cargo.md §3; a known field
+        /// within the full normal range, any field within the penetrating range or r/4, a fleet's
+        /// own field it is inside). A detection marks the field known to the race.
         /// </summary>
-        private void UpdateVisibleMinefields(EmpireData empire, List<KeyValuePair<NovaPoint, int>> scanSources)
+        private void UpdateVisibleMinefields(EmpireData empire, List<ScanSource> scanSources)
         {
             empire.VisibleMinefields.Clear();
 
             foreach (Minefield field in serverState.AllMinefields.Values)
             {
-                bool visible = field.IsVisibleTo(empire.Id)
-                    || scanSources.Any(source => ScannerRules.DetectsMinefield(source.Key, source.Value, field));
-
-                if (visible)
+                if (field.Owner == empire.Id)
                 {
+                    empire.VisibleMinefields.Add(field.Key);
+                    continue;
+                }
+
+                bool known = field.IsKnownTo(empire.Id);
+                bool detected = scanSources.Any(source =>
+                    ScannerRules.DetectsMinefield(source.Position, source.Normal, source.Penetrating, source.Kind, known, field));
+
+                if (detected)
+                {
+                    field.MarkKnown(empire.Id);
                     empire.VisibleMinefields.Add(field.Key);
                 }
             }
         }
 
         /// <summary>
-        /// Wormhole detection (fleet-movement-scanning-cargo.md §3: "a flat radius test is
-        /// combined with a random roll (0-99) against the observed object's cloak percentage"; §5:
-        /// wormholes are cloaked 75% until a player has discovered them once). Each scan source
-        /// with the wormhole inside its normal range gets one roll until one succeeds; a wormhole
-        /// the empire already has a report for is no longer cloaked to it and is seen whenever it
-        /// is in range. A detection records the wormhole's current position and the year.
+        /// Wormhole detection (fleet-movement-scanning-cargo.md §3): an end is seen within the full
+        /// normal range r when the race has it located, or within r/4, or within the penetrating
+        /// range p; no roll. A detection sets the race's located bit on that end and records the
+        /// current position and year.
         /// </summary>
-        private void DetectWormholes(EmpireData empire, List<KeyValuePair<NovaPoint, int>> scanSources)
+        private void DetectWormholes(EmpireData empire, List<ScanSource> scanSources)
         {
             foreach (Wormhole wormhole in serverState.AllWormholes.Values)
             {
-                bool discovered = empire.WormholeReports.ContainsKey(wormhole.Key);
-                bool detected = false;
-
-                foreach (KeyValuePair<NovaPoint, int> source in scanSources)
+                bool located = wormhole.IsLocatedBy(empire.Id);
+                bool detected = scanSources.Any(source =>
+                    ScannerRules.DetectsWormhole(source.Position, source.Normal, source.Penetrating, located, wormhole.Position));
+                if (detected)
                 {
-                    if (ScannerRules.DetectsWormhole(source.Key, source.Value, wormhole.Position, discovered, random))
-                    {
-                        detected = true;
-                        break;
-                    }
+                    wormhole.Located.Add(empire.Id);
                 }
 
                 if (!detected)

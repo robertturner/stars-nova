@@ -175,37 +175,60 @@ namespace Nova.Tests.UnitTests
 
         // ------------------------------------------------------------ minefield visibility
 
-        // A 50 ly scanner reaches a 256-mine field (radius 16, detection radius 20) out to 70 ly.
-        [TestCase(70, true)]
-        [TestCase(71, false)]
-        public void MinefieldDetection_UsesTheFieldsSizePlusFour_AddedToTheScanRange(int fieldX, bool expectVisible)
+        // A 50 ly scanner sees an unknown field only within r/4 = 12.5 ly.
+        [TestCase(12, true)]
+        [TestCase(13, false)]
+        public void MinefieldDetection_AnUnknownField_NeedsTheQuarterRange(int fieldX, bool expectVisible)
         {
             AddFleet(observer, BuildDesign(1, "Scout", normalScan: 50), 0, 0);
-            Minefield field = AddMinefield(target, 256, fieldX, 0);
+            // 100 mines = radius 10, so the fleet at 12-13 ly is outside the field (no inside test).
+            Minefield field = AddMinefield(target, 100, fieldX, 0);
 
             new ScanStep(new ScriptedRandom()).Process(serverState);
 
-            Assert.AreEqual(20, ScannerRules.MinefieldDetectionRadius(field));
             Assert.AreEqual(expectVisible, observer.VisibleMinefields.Contains(field.Key));
             Assert.AreEqual(expectVisible, observer.CanSeeMinefield(field));
             Assert.AreEqual(expectVisible, IntelWriter.VisibleMinefieldsFor(serverState, observer).ContainsKey(field.Key));
         }
 
         [Test]
-        public void MinefieldVisibility_TheVictimOfAStrikeSeesTheField_WithNoScannerInRange()
+        public void MinefieldDetection_AShipInsideAField_SeesItWithNoScanner()
         {
-            Minefield field = AddMinefield(target, 256, 1000, 1000);
-            field.VisibleTo.Add(observer.Id);
-            Minefield unseen = AddMinefield(target, 256, 2000, 2000);
+            AddFleet(observer, BuildDesign(1, "Scout", normalScan: 0, penScan: 0), 0, 0);
+            Minefield field = AddMinefield(target, 100, 5, 0); // radius 10: the fleet at 5 ly is inside
 
             new ScanStep(new ScriptedRandom()).Process(serverState);
 
-            Assert.IsTrue(observer.VisibleMinefields.Contains(field.Key));
-            Assert.IsFalse(observer.VisibleMinefields.Contains(unseen.Key));
+            Assert.IsTrue(observer.VisibleMinefields.Contains(field.Key), "a ship inside a field sees it with no scanner");
+        }
+
+        [Test]
+        public void MinefieldDetection_APenetratingScanner_SeesAnUnknownFieldAtItsPenetratingRange()
+        {
+            AddFleet(observer, BuildDesign(1, "Scout", normalScan: 10, penScan: 60), 0, 0);
+            Minefield field = AddMinefield(target, 100, 50, 0); // beyond r and r/4, within p
+
+            new ScanStep(new ScriptedRandom()).Process(serverState);
+
+            Assert.IsTrue(observer.VisibleMinefields.Contains(field.Key), "a penetrating scanner detects an unknown field");
+        }
+
+        [Test]
+        public void MinefieldVisibility_AFieldKnownToTheRace_IsSeenAtTheFullNormalRange()
+        {
+            AddFleet(observer, BuildDesign(1, "Scout", normalScan: 50), 0, 0);
+            Minefield known = AddMinefield(target, 256, 40, 0);   // 40 ly: within r, beyond r/4
+            known.MarkKnown(observer.Id);
+            Minefield unknown = AddMinefield(target, 256, 40, 40); // about 57 ly: beyond r, unknown
+
+            new ScanStep(new ScriptedRandom()).Process(serverState);
+
+            Assert.IsTrue(observer.VisibleMinefields.Contains(known.Key), "a known field within normal range is seen");
+            Assert.IsFalse(observer.VisibleMinefields.Contains(unknown.Key), "an unknown field beyond r/4 is not seen");
 
             Dictionary<long, Minefield> observerTurn = IntelWriter.VisibleMinefieldsFor(serverState, observer);
-            Assert.IsTrue(observerTurn.ContainsKey(field.Key));
-            Assert.IsFalse(observerTurn.ContainsKey(unseen.Key), "a field the player cannot see stays out of its turn file");
+            Assert.IsTrue(observerTurn.ContainsKey(known.Key));
+            Assert.IsFalse(observerTurn.ContainsKey(unknown.Key), "a field the player cannot see stays out of its turn file");
 
             Dictionary<long, Minefield> ownerTurn = IntelWriter.VisibleMinefieldsFor(serverState, target);
             Assert.AreEqual(2, ownerTurn.Count, "the owner always sees its own fields");
@@ -215,55 +238,58 @@ namespace Nova.Tests.UnitTests
         public void VisibleMinefields_AreRecomputedEveryYear()
         {
             Fleet scout = AddFleet(observer, BuildDesign(1, "Scout", normalScan: 50), 0, 0);
-            Minefield field = AddMinefield(target, 256, 60, 0);
+            Minefield field = AddMinefield(target, 100, 40, 0);
+            field.MarkKnown(observer.Id); // so the full normal range applies
 
             new ScanStep(new ScriptedRandom()).Process(serverState);
             Assert.IsTrue(observer.VisibleMinefields.Contains(field.Key));
 
             scout.Position = new NovaPoint(-100, 0);
             new ScanStep(new ScriptedRandom()).Process(serverState);
-            Assert.IsFalse(observer.VisibleMinefields.Contains(field.Key));
+            Assert.IsFalse(observer.VisibleMinefields.Contains(field.Key), "a known field out of range is not seen this year");
         }
 
         // ------------------------------------------------------------ wormholes
 
-        // Undiscovered wormholes are 75% cloaked: a 0-99 roll of 75 or more detects one in range.
-        [TestCase(74, false)]
-        [TestCase(75, true)]
-        public void UndiscoveredWormhole_IsDetectedOnARollOfSeventyFiveOrMore(int roll, bool expectDetected)
+        [Test]
+        public void UndiscoveredWormhole_NeedsTheQuarterRange_ALocatedOneTheFullRange()
         {
             AddFleet(observer, BuildDesign(1, "Scout", normalScan: 100), 0, 0);
-            Wormhole wormhole = AddWormhole(7, 60, 0);
+            Wormhole near = AddWormhole(7, 20, 0);  // 20 ly: within r/4 = 25
+            Wormhole far = AddWormhole(8, 60, 0);   // 60 ly: beyond r/4, within r
 
-            ScriptedRandom random = new ScriptedRandom(roll);
-            new ScanStep(random).Process(serverState);
+            ScriptedRandom noRolls = new ScriptedRandom();
+            new ScanStep(noRolls).Process(serverState);
 
-            Assert.AreEqual(1, random.Calls);
-            Assert.AreEqual(expectDetected, observer.WormholeReports.ContainsKey(wormhole.Key));
+            Assert.AreEqual(0, noRolls.Calls, "detection is deterministic: no roll");
+            Assert.IsTrue(observer.WormholeReports.ContainsKey(near.Key), "an unlocated wormhole is seen within r/4");
+            Assert.IsFalse(observer.WormholeReports.ContainsKey(far.Key), "60 ly is beyond r/4 for an unlocated one");
+
+            // Once located, the same end is seen at the full normal range.
+            far.Located.Add(observer.Id);
+            new ScanStep(new ScriptedRandom()).Process(serverState);
+            Assert.IsTrue(observer.WormholeReports.ContainsKey(far.Key), "a located wormhole is seen at the full range");
         }
 
         [Test]
-        public void Wormhole_OutOfRange_IsNeverRolledFor_AndAKnownOneNeedsNoRoll()
+        public void Wormhole_OutOfRange_IsNotSeen_AndItIsReportedAtItsCurrentPosition()
         {
             Fleet scout = AddFleet(observer, BuildDesign(1, "Scout", normalScan: 100), 0, 0);
             Wormhole wormhole = AddWormhole(7, 101, 0);
 
             ScriptedRandom random = new ScriptedRandom(99);
             new ScanStep(random).Process(serverState);
-            Assert.AreEqual(0, random.Calls, "out of range: no roll");
-            Assert.IsFalse(observer.WormholeReports.ContainsKey(wormhole.Key));
+            Assert.AreEqual(0, random.Calls, "detection is deterministic: no roll");
+            Assert.IsFalse(observer.WormholeReports.ContainsKey(wormhole.Key), "101 ly is beyond r/4 and it is not located");
 
-            scout.Position = new NovaPoint(10, 0);
-            new ScanStep(new ScriptedRandom(99)).Process(serverState);
-            Assert.IsTrue(observer.WormholeReports.ContainsKey(wormhole.Key), "discovered on the 99 roll");
+            scout.Position = new NovaPoint(95, 0); // 6 ly from the end: within r/4
+            new ScanStep(new ScriptedRandom()).Process(serverState);
+            Assert.IsTrue(observer.WormholeReports.ContainsKey(wormhole.Key));
 
-            // Once discovered the wormhole is no longer cloaked: seen in range with no roll, at
-            // its current (drifted) position.
-            wormhole.Position = new NovaPoint(90, 0);
-            ScriptedRandom noRolls = new ScriptedRandom(0);
-            new ScanStep(noRolls).Process(serverState);
-            Assert.AreEqual(0, noRolls.Calls);
-            Assert.AreEqual(90, observer.WormholeReports[wormhole.Key].Position.X);
+            // A wormhole is reported at its current (drifted) position.
+            wormhole.Position = new NovaPoint(94, 0);
+            new ScanStep(new ScriptedRandom()).Process(serverState);
+            Assert.AreEqual(94, observer.WormholeReports[wormhole.Key].Position.X);
         }
 
         [Test]
