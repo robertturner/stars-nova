@@ -83,9 +83,15 @@ public partial class ProductionViewModel
 
         if (replace)
         {
+            // Applying a template replaces only its auto-build part and keeps everything else
+            // (production-queue.md §9, "Applying"): remove every auto-build entry, leaving manual
+            // items, ships and starbases in order; the template's entries are then appended.
             for (int index = selectedStar.ManufacturingQueue.Queue.Count - 1; index >= 0; index--)
             {
-                PushQueued(new ProductionCommand(CommandMode.Delete, null!, selectedStar.Name, index));
+                if (ProductionTemplateEntry.TypeOf(selectedStar.ManufacturingQueue.Queue[index]).HasValue)
+                {
+                    PushQueued(new ProductionCommand(CommandMode.Delete, null!, selectedStar.Name, index));
+                }
             }
         }
 

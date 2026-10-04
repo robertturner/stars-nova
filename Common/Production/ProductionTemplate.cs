@@ -155,7 +155,22 @@ namespace Nova.Common
         /// <summary>Entries per slot (section 9, "each of the 4 slots holds up to 12").</summary>
         public const int MaxEntries = 12;
 
-        public string Name = string.Empty;
+        /// <summary>Slot names are at most 12 characters (production-queue.md §9, "a name of at most 12 characters").</summary>
+        public const int MaxNameLength = 12;
+
+        private string name = string.Empty;
+
+        /// <summary>The slot's name, truncated to the spec's 12-character field.</summary>
+        public string Name
+        {
+            get { return name; }
+            set
+            {
+                name = value == null ? string.Empty
+                    : value.Length > MaxNameLength ? value.Substring(0, MaxNameLength)
+                    : value;
+            }
+        }
 
         public List<ProductionTemplateEntry> Entries = new List<ProductionTemplateEntry>();
 
@@ -297,11 +312,20 @@ namespace Nova.Common
                     case "entry":
                         int type = int.Parse(subnode.Attributes["Type"].Value, CultureInfo.InvariantCulture);
                         int quantity = int.Parse(subnode.Attributes["Quantity"].Value, CultureInfo.InvariantCulture);
-                        if (Enum.IsDefined(typeof(TemplateItemType), type))
+
+                        // production-queue.md §9, load-time clamps: an entry whose type is above 6
+                        // resets to type 0, and a quantity above 1,020 resets to 1.
+                        if (type < 0 || type > 6)
                         {
-                            template.TryAdd(new ProductionTemplateEntry((TemplateItemType)type, quantity));
+                            type = 0;
                         }
 
+                        if (quantity > 1020)
+                        {
+                            quantity = 1;
+                        }
+
+                        template.TryAdd(new ProductionTemplateEntry((TemplateItemType)type, quantity));
                         break;
                 }
 
@@ -386,7 +410,15 @@ namespace Nova.Common
                 star.ManufacturingQueue = new ProductionQueue();
             }
 
-            star.ManufacturingQueue.Clear();
+            // Applying replaces only the auto-build part of the queue and keeps everything else
+            // (production-queue.md §9, "Applying"): every non-auto-build entry (manual items,
+            // ships, starbases) stays in order at the top, every auto-build entry is removed, and
+            // the template's entries are appended, with the leftover flag set from the template.
+            List<ProductionOrder> kept = star.ManufacturingQueue.Queue
+                .Where(order => !ProductionTemplateEntry.TypeOf(order).HasValue)
+                .ToList();
+            star.ManufacturingQueue.Queue.Clear();
+            star.ManufacturingQueue.Queue.AddRange(kept);
             star.ManufacturingQueue.Queue.AddRange(template.OrdersFor(race));
             star.OnlyLeftover = template.OnlyLeftover;
         }

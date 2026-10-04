@@ -215,6 +215,49 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
+        public void Apply_ReplacesOnlyTheAutoBuildEntries_AndKeepsManualOnes()
+        {
+            Race race = new Race();
+            Star star = new Star { Name = "Queue" };
+            star.ManufacturingQueue.Queue.Add(new ProductionOrder(1, new FactoryProductionUnit(race), false));       // manual
+            star.ManufacturingQueue.Queue.Add(new ProductionOrder(5, new MineProductionUnit(race), true));          // auto
+            star.ManufacturingQueue.Queue.Add(new ProductionOrder(2, new TerraformProductionUnit(race, false), false)); // manual
+
+            ProductionTemplate template = Template(false, (TemplateItemType.Defenses, 7));
+
+            ProductionTemplateSet.Apply(template, star, race);
+
+            // The two manual entries stay, in order; the auto Mine is replaced by the template.
+            CollectionAssert.AreEqual(
+                new TemplateItemType?[] { null, null, TemplateItemType.Defenses },
+                QueueTypes(star));
+        }
+
+        [Test]
+        public void TemplateName_IsTruncatedToTwelveCharacters()
+        {
+            Assert.AreEqual("abcdefghijkl", new ProductionTemplate { Name = "abcdefghijklmno" }.Name);
+        }
+
+        [Test]
+        public void FromXml_ResetsABadTypeAndQuantity()
+        {
+            XmlDocument doc = new XmlDocument();
+            XmlElement root = doc.CreateElement("Template");
+            doc.AppendChild(root);
+            XmlElement entry = doc.CreateElement("Entry");
+            entry.SetAttribute("Type", "9");        // above 6 -> Mines (0)
+            entry.SetAttribute("Quantity", "5000"); // above 1,020 -> 1
+            root.AppendChild(entry);
+
+            ProductionTemplate loaded = ProductionTemplate.FromXml(root);
+
+            Assert.AreEqual(1, loaded.Entries.Count);
+            Assert.AreEqual(TemplateItemType.Mines, loaded.Entries[0].Type);
+            Assert.AreEqual(1, loaded.Entries[0].Quantity);
+        }
+
+        [Test]
         public void Templates_SurviveTheEmpireFile()
         {
             EmpireData empire = MakeEmpire(1);
@@ -226,7 +269,7 @@ namespace Nova.Tests.UnitTests
             ProductionTemplateSet reloaded = ProductionTemplateSet.FromXml(element);
 
             Assert.AreEqual(1, reloaded.DefaultSlot);
-            Assert.AreEqual("Player's Guide example", reloaded[1].Name);
+            Assert.AreEqual("Player's Gui", reloaded[1].Name, "the 12-character name field truncates the example's name");
             CollectionAssert.AreEqual(
                 ProductionTemplate.ManualExample().Entries.Select(entry => (entry.Type, entry.Quantity)).ToArray(),
                 reloaded[1].Entries.Select(entry => (entry.Type, entry.Quantity)).ToArray());

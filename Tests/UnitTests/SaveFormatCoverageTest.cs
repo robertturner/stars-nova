@@ -550,7 +550,7 @@ namespace Nova.Tests.UnitTests
             ProductionTemplate first = new ProductionTemplate { Name = "Growth", OnlyLeftover = true };
             first.TryAdd(new ProductionTemplateEntry(TemplateItemType.Factories, 50));
             first.TryAdd(new ProductionTemplateEntry(TemplateItemType.MinTerraform, 4));
-            first.TryAdd(new ProductionTemplateEntry(TemplateItemType.MineralPackets, 1023));
+            first.TryAdd(new ProductionTemplateEntry(TemplateItemType.MineralPackets, 1020));
             ProductionTemplate third = new ProductionTemplate { Name = "Defence" };
             third.TryAdd(new ProductionTemplateEntry(TemplateItemType.Defenses, 10));
             third.TryAdd(new ProductionTemplateEntry(TemplateItemType.Alchemy, 1));
@@ -564,7 +564,7 @@ namespace Nova.Tests.UnitTests
             Assert.AreEqual("Growth", loaded[0].Name);
             Assert.IsTrue(loaded[0].OnlyLeftover);
             Assert.AreEqual(3, loaded[0].Entries.Count);
-            Assert.AreEqual(1023, loaded[0].Entries[2].Quantity);
+            Assert.AreEqual(1020, loaded[0].Entries[2].Quantity);
             Assert.IsTrue(loaded[1].IsEmpty);
             Assert.AreEqual(TemplateItemType.Alchemy, loaded[2].Entries[1].Type);
 
