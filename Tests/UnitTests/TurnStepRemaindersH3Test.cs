@@ -460,36 +460,36 @@ namespace Nova.Tests.UnitTests
     [TestFixture]
     public class BattleMovementOrderTest : H3Kit
     {
-        private class FixedRandom : Random
+        private class ScriptedRandom : Random
         {
-            private readonly double value;
+            private readonly Queue<int> terms;
 
-            public FixedRandom(double value)
+            public ScriptedRandom(params int[] terms)
             {
-                this.value = value;
+                this.terms = new Queue<int>(terms);
             }
 
             public int Draws { get; private set; }
 
-            public override double NextDouble()
+            public override int Next(int maxValue)
             {
                 Draws++;
-                return value;
+                return terms.Count > 0 ? terms.Dequeue() : 0;
             }
         }
 
         [Test]
-        public void LighterMovesFirstChance_IsEvenAtParity_FallingToZeroAtA20PercentDifference()
+        public void EffectiveMovementWeight_FollowsTheSpecFormula()
         {
-            Assert.AreEqual(0.5, BattleEngine.LighterMovesFirstChance(100, 100), 1e-9);
-            Assert.AreEqual(0.25, BattleEngine.LighterMovesFirstChance(100, 90), 1e-9);
-            Assert.AreEqual(0.125, BattleEngine.LighterMovesFirstChance(100, 85), 1e-9);
-            Assert.AreEqual(0, BattleEngine.LighterMovesFirstChance(100, 80), 1e-9);
-            Assert.AreEqual(0, BattleEngine.LighterMovesFirstChance(100, 10), 1e-9);
+            // E = W + 2 x (r - 7) x W / 100, truncated toward zero (combat-resolution.md section 5).
+            Assert.AreEqual(100, BattleEngine.EffectiveMovementWeight(100, 7));
+            Assert.AreEqual(86, BattleEngine.EffectiveMovementWeight(100, 0));
+            Assert.AreEqual(114, BattleEngine.EffectiveMovementWeight(100, 14));
+            Assert.AreEqual(102, BattleEngine.EffectiveMovementWeight(90, 14)); // 90 + 12.6 -> 102
         }
 
         [Test]
-        public void MovementOrder_IsHeaviestFirst_WithARollOnlyForNearParityPairs()
+        public void MovementOrder_IsHeaviestFirst_AndTheRandomTermCanFlipANearPair()
         {
             ShipDesign design = MakeDesign();
             Fleet fleet = AddFleet(mover, new NovaPoint(0, 0), design, 1);
@@ -499,12 +499,14 @@ namespace Nova.Tests.UnitTests
             Dictionary<Stack, double> weight = new Dictionary<Stack, double> { { light, 100 }, { heavy, 300 }, { nearlyHeavy, 290 } };
             List<Stack> stacks = new List<Stack> { light, heavy, nearlyHeavy };
 
-            FixedRandom never = new FixedRandom(0.99);
-            CollectionAssert.AreEqual(new[] { heavy, nearlyHeavy, light }, BattleEngine.MovementOrder(stacks, never, s => weight[s]));
-            Assert.AreEqual(1, never.Draws, "only the 300/290 pair is within 20%");
+            // r = 7 for every token: E is W, so the order is by weight.
+            ScriptedRandom neutral = new ScriptedRandom(7, 7, 7);
+            CollectionAssert.AreEqual(new[] { heavy, nearlyHeavy, light }, BattleEngine.MovementOrder(stacks, neutral, s => weight[s]));
+            Assert.AreEqual(3, neutral.Draws, "one random term per token");
 
-            FixedRandom always = new FixedRandom(0.0);
-            CollectionAssert.AreEqual(new[] { nearlyHeavy, heavy, light }, BattleEngine.MovementOrder(stacks, always, s => weight[s]));
+            // heavy draws r = 0 (E 258) and nearlyHeavy r = 14 (E 330), so the lighter one moves first.
+            ScriptedRandom flipped = new ScriptedRandom(7, 0, 14);
+            CollectionAssert.AreEqual(new[] { nearlyHeavy, heavy, light }, BattleEngine.MovementOrder(stacks, flipped, s => weight[s]));
         }
     }
 

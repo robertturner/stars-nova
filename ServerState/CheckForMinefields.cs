@@ -571,9 +571,10 @@ namespace Nova.Server
         }
 
         /// <summary>
-        /// Messages 201-204 to the fleet's owner and the matching 197-200 to the field's owner
+        /// Messages 197-200 to the fleet's owner and the matching 201-204 to the field's owner
         /// (always a different race here): stopped with no damage, damaged with none lost, some
-        /// ships lost, fleet destroyed.
+        /// ships lost, fleet destroyed (behavior-specs-11/fleet-movement-scanning-cargo.md §5,
+        /// "Messages").
         /// </summary>
         private void SendMessages(Fleet fleet, Minefield field, bool anyDamage, int shipsLost, int shipsBefore, bool destroyed)
         {
@@ -612,10 +613,11 @@ namespace Nova.Server
         }
 
         /// <summary>
-        /// The detonation messages, the 351-356 group: to the fleet's owner 354 (damaged, none
-        /// lost), 355 (some ships lost), 356 (fleet destroyed); the matching 351-353 to the field
-        /// owner when it is a different race. The original wording is not in the repository, so
-        /// this text is Nova's own.
+        /// The detonation messages, the 351-356 group (behavior-specs-11/fleet-movement-scanning-
+        /// cargo.md §5, "Detonation", "Messages"): to the fleet's owner 351 (fleet destroyed), 352
+        /// (damaged, none lost), 353 (some ships lost); the matching 354 (destroyed), 355 (damaged,
+        /// none lost) and 356 (some ships lost) to the field owner when it is a different race. The
+        /// original wording is not in the repository, so this text is Nova's own.
         /// </summary>
         private void SendDetonationMessages(Fleet fleet, Minefield field, int shipsLost, int shipsBefore, bool destroyed)
         {

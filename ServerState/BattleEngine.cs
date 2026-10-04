@@ -1092,10 +1092,12 @@ namespace Nova.Server
             // Phase 2: All stacks that can move 2 or more squares this round get to move 1 square.
             // Phase 3: All stacks that can move this round get to move 1 square.
             // TODO (priority 3) - verify that a ship should be able to move 1 square per phase if it has 3 move points, or is it limited to 1 per turn?
+            // The movement order is computed once per round (each token's r applies to all three
+            // of the round's steps).
+            List<Stack> movementOrder = MovementOrder(battlingStacks, Rng, MovementWeight);
             for (var phase = 1; phase <= movementPhasesPerRound; phase++)
             {
-                // Heavier tokens move first, with near-parity randomization (MovementOrder).
-                foreach (Stack stack in MovementOrder(battlingStacks, Rng, TokenWeight))
+                foreach (Stack stack in movementOrder)
                 {
                     // A stack that has already accumulated 7 squares under a Disengage-style
                     // tactic has successfully fled the battle - it moves no further (and, per
@@ -1179,73 +1181,46 @@ namespace Nova.Server
         }
 
         /// <summary>
-        /// Weight difference (as a fraction of the heavier token's mass) at and above which the
-        /// heavier token always moves first (behavior-specs-10/combat-resolution.md section 3,
-        /// "Movement speed and sequencing": "under roughly 20%").
+        /// The effective movement weight E of a token (combat-resolution.md section 5, "Movement
+        /// order within a step", FUN_10f0_5950): W + 2 x (r - 7) x W / 100, the division
+        /// truncating toward zero, where W is the per-ship weight and r the token's 0-14 random
+        /// term for the round.
         /// </summary>
-        public const double MovementParityBand = 0.20;
-
-        /// <summary>
-        /// The chance that the lighter of two tokens moves before the heavier one within a
-        /// movement step: 0 when the weight difference is 20% of the heavier token's mass or
-        /// more, rising in proportion as the difference shrinks, to an even 50% at equal weight
-        /// (combat-resolution.md section 3: "a proportionally increasing chance the lighter token
-        /// acts first"). The exact curve is not given by the spec; this linear reading is an
-        /// interpretation.
-        /// </summary>
-        public static double LighterMovesFirstChance(double heavierMass, double lighterMass)
+        public static int EffectiveMovementWeight(double weight, int randomTerm)
         {
-            if (heavierMass <= 0)
-            {
-                return 0.5;
-            }
-
-            double difference = (heavierMass - lighterMass) / heavierMass;
-            if (difference >= MovementParityBand)
-            {
-                return 0;
-            }
-
-            return 0.5 * (1 - (Math.Max(0, difference) / MovementParityBand));
+            int w = (int)Math.Max(0.0, weight);
+            return w + (2 * (randomTerm - 7) * w) / 100;
         }
 
         /// <summary>
-        /// The order in which tokens take a movement step: by weight, heaviest first (a stable
-        /// sort, so equal weights keep list order), then one pass over each adjacent pair in
-        /// which the lighter token is moved ahead of the heavier one with
-        /// <see cref="LighterMovesFirstChance"/>. A random number (NextDouble) is drawn only for
-        /// a pair inside the parity band. The default weight is the stack's own
-        /// <see cref="Fleet.Mass"/>; the engine passes <see cref="TokenWeight"/>.
+        /// The order in which tokens take a movement step (combat-resolution.md section 5,
+        /// "Movement order within a step", FUN_10f0_5950): each token draws its 0-14 random term
+        /// and sorts by its effective weight E, heaviest first, ties in token-array order (the
+        /// battle-start shuffle). Computed once per round and reused for that round's three steps,
+        /// so all three share the same r. The default weight is the stack's own mass; the engine
+        /// passes <see cref="MovementWeight"/>.
         /// </summary>
         public static List<Stack> MovementOrder(IEnumerable<Stack> stacks, Random random, Func<Stack, double> weight = null)
         {
             Func<Stack, double> weigh = weight ?? (s => s.Mass);
-            List<KeyValuePair<Stack, double>> order = stacks
-                .Select(s => new KeyValuePair<Stack, double>(s, weigh(s)))
-                .OrderByDescending(p => p.Value)
-                .ToList();
-
-            for (int i = 0; i + 1 < order.Count; i++)
+            List<(Stack Stack, int Effective)> order = new List<(Stack, int)>();
+            foreach (Stack stack in stacks)
             {
-                double chance = LighterMovesFirstChance(order[i].Value, order[i + 1].Value);
-                if (chance > 0 && random != null && random.NextDouble() < chance)
-                {
-                    KeyValuePair<Stack, double> heavier = order[i];
-                    order[i] = order[i + 1];
-                    order[i + 1] = heavier;
-                }
+                int randomTerm = random != null ? random.Next(15) : 7;
+                order.Add((stack, EffectiveMovementWeight(weigh(stack), randomTerm)));
             }
 
-            return order.Select(p => p.Key).ToList();
+            // OrderByDescending is stable, so equal E keeps the token-array order.
+            return order.OrderByDescending(entry => entry.Effective).Select(entry => entry.Stack).ToList();
         }
 
         /// <summary>
-        /// A token's battle weight for the movement order: its ships' mass plus each ship's share
-        /// of its fleet's cargo (<see cref="CargoShare"/>, the same share the battle-movement
-        /// value uses), times the ship count. (The Stack's own Mass would count the whole
-        /// fleet's cargo on every stack of the fleet.)
+        /// A token's per-ship battle weight W for the movement order: the mass of one ship of its
+        /// design plus that ship's share of its fleet's cargo (<see cref="CargoShare"/>, the same
+        /// share the battle-movement value uses). It is a per-ship figure, not the stack's total
+        /// mass (combat-resolution.md section 5).
         /// </summary>
-        private double TokenWeight(Stack stack)
+        private double MovementWeight(Stack stack)
         {
             ShipToken token = stack.Token;
             if (token?.Design == null)
@@ -1253,7 +1228,7 @@ namespace Nova.Server
                 return 0;
             }
 
-            return (double)(token.Design.Mass + CargoShare(stack)) * token.Quantity;
+            return token.Design.Mass + CargoShare(stack);
         }
 
         /// <summary>
