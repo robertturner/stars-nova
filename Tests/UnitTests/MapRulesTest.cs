@@ -380,21 +380,83 @@ namespace Nova.Tests.UnitTests
         // ---------------- search ----------------
 
         [Test]
-        public void Search_RanksExactThenPrefixThenContains()
+        public void Find_UsesTheFiveStepRule()
         {
             var objects = new List<MapObjectEntry>
             {
-                new MapObjectEntry(1, "Sol Minor", MapObjectKind.Planet, 0, 0),
-                new MapObjectEntry(2, "Absolute", MapObjectKind.Planet, 0, 0),
-                new MapObjectEntry(3, "sol", MapObjectKind.Planet, 0, 0),
-                new MapObjectEntry(4, "Sol Fleet", MapObjectKind.Fleet, 0, 0),
-                new MapObjectEntry(5, "Mars", MapObjectKind.Planet, 0, 0),
+                new MapObjectEntry(1, "Sol", MapObjectKind.Planet, 0, 0),
+                new MapObjectEntry(2, "Sol Minor", MapObjectKind.Planet, 0, 0),
+                new MapObjectEntry(3, "Space Dock", MapObjectKind.Fleet, 0, 0),
             };
 
-            CollectionAssert.AreEqual(new[] { "sol", "Sol Fleet", "Sol Minor", "Absolute" }, MapSearch.Find(objects, " SOL ", null).Select(e => e.Name).ToArray());
-            CollectionAssert.AreEqual(new[] { "sol", "Sol Minor", "Absolute" }, MapSearch.Find(objects, "sol", MapObjectKind.Planet).Select(e => e.Name).ToArray(), "kind filter");
-            Assert.IsNull(MapSearch.FindFirst(objects, "Zed", null), "no result");
-            Assert.AreEqual(4, MapSearch.Find(objects, string.Empty, MapObjectKind.Planet).Count, "empty query lists the kind");
+            // 1. A whole-name planet match beats a whole-name fleet match.
+            FindResult exact = MapSearch.Find(objects, "sol");
+            Assert.AreEqual(FindMatch.PlanetExact, exact.Match);
+            Assert.AreEqual("Sol", exact.Entry.Name);
+
+            // 4. Only after no exact planet and no fleet does the remembered prefix planet win.
+            FindResult prefix = MapSearch.Find(objects, "sol m");
+            Assert.AreEqual(FindMatch.PlanetPrefix, prefix.Match);
+            Assert.AreEqual("Sol Minor", prefix.Entry.Name);
+
+            // 3. A whole-name fleet match (never by prefix).
+            Assert.AreEqual(FindMatch.FleetByName, MapSearch.Find(objects, "space dock").Match);
+            Assert.IsFalse(MapSearch.Find(objects, "space").Found, "fleets are never matched by prefix");
+
+            // An empty query finds planet 1; no trimming is done.
+            Assert.AreEqual("Sol", MapSearch.Find(objects, string.Empty).Entry.Name);
+            Assert.IsFalse(MapSearch.Find(objects, " sol ").Found, "the query is not trimmed");
+
+            Assert.IsFalse(MapSearch.Find(objects, "Zed").Found, "no result");
+        }
+
+        [Test]
+        public void Find_FleetNumberBeatsFleetName_AndOnlyOwnFleets()
+        {
+            Fleet own = new Fleet(1);
+            var objects = new List<MapObjectEntry>
+            {
+                new MapObjectEntry(own, "Scout One", MapObjectKind.Fleet, 0, 0),
+                new MapObjectEntry("foreign", "Fleet 5 Patrol", MapObjectKind.Fleet, 0, 0),
+            };
+            System.Func<MapObjectEntry, int> number = entry =>
+                ReferenceEquals(entry.Item, own) ? 1 : 5;
+            System.Func<MapObjectEntry, bool> isOwn = entry => ReferenceEquals(entry.Item, own);
+
+            // "Fleet 1" is read as a fleet number and finds the viewer's own fleet, even though its
+            // displayed name does not contain "1".
+            FindResult byNumber = MapSearch.Find(objects, "Fleet 1", number, isOwn);
+            Assert.AreEqual(FindMatch.FleetByNumber, byNumber.Match);
+            Assert.AreSame(own, byNumber.Entry.Item);
+
+            // "Fleet 5" names number 5, which is a foreign fleet: it cannot be found by number, and
+            // "Fleet 5" is not its whole displayed name, so there is no result.
+            Assert.IsFalse(MapSearch.Find(objects, "Fleet 5", number, isOwn).Found);
+
+            // A fleet number beats a fleet name only for the viewer's own fleets.
+            var named = new List<MapObjectEntry> { new MapObjectEntry(own, "Fleet 1", MapObjectKind.Fleet, 0, 0) };
+            Assert.AreEqual(FindMatch.FleetByNumber, MapSearch.Find(named, "Fleet 1", number, isOwn).Match);
+        }
+
+        [Test]
+        public void Find_FleetNumberParser_MatchesTheSpec()
+        {
+            Assert.IsTrue(MapSearch.TryParseFleetNumber("Fleet 5", out int a) && a == 5);
+            Assert.IsTrue(MapSearch.TryParseFleetNumber("Fleet #7", out int b) && b == 7);
+            Assert.IsTrue(MapSearch.TryParseFleetNumber("Fleet#6", out int c) && c == 6);
+            Assert.IsTrue(MapSearch.TryParseFleetNumber("12", out int d) && d == 12);
+            Assert.IsTrue(MapSearch.TryParseFleetNumber("512", out int e) && e == 512, "numbers below 513 are searchable");
+            Assert.IsFalse(MapSearch.TryParseFleetNumber("513", out _), "513 is not");
+            Assert.IsFalse(MapSearch.TryParseFleetNumber("0", out _), "the number starts with 1-9");
+            Assert.IsFalse(MapSearch.TryParseFleetNumber("Fleet 5x", out _), "the number must end the query");
+        }
+
+        [Test]
+        public void Find_CaseFoldsOnlyTheLettersAZ()
+        {
+            Assert.IsTrue(MapSearch.EqualsAz("SMITH", "smith"));
+            Assert.IsFalse(MapSearch.EqualsAz("é", "É"), "only A-Z fold");
+            Assert.IsTrue(MapSearch.StartsAz("Sol Minor", "sol"));
         }
 
         // ---------------- planet overlays ----------------

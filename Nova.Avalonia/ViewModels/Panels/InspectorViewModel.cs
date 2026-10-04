@@ -495,12 +495,14 @@ public partial class InspectorViewModel : Tool
 
     private string newFleetName = "";
 
-    /// <summary>The ordinary rename surface: filtered on every keystroke, validated again on
-    /// accept (Nova.Client.RenameRules; client-ui-dialog-catalog.md "Rename surfaces").</summary>
+    /// <summary>The ordinary rename surface: limited while typing (31 characters, and 160 px where
+    /// a font measurement is available; no character is removed or rewritten), committed on accept
+    /// (Nova.Client.RenameRules; client-ui-dialog-catalog.md "Rename surfaces"). An empty name
+    /// removes the custom name.</summary>
     public string NewFleetName
     {
         get => newFleetName;
-        set => SetProperty(ref newFleetName, RenameRules.LiveFilter(value));
+        set => SetProperty(ref newFleetName, RenameRules.LimitFleetForEdit(value, null));
     }
 
     public IRelayCommand SubmitRenameCommand { get; }
@@ -1968,12 +1970,13 @@ public partial class InspectorViewModel : Tool
 
     private void SubmitRename()
     {
-        if (selectedFleet == null || RenameRules.ValidateOnAccept(NewFleetName) != null)
+        if (selectedFleet == null)
         {
             return;
         }
 
-        ApplyCommand(new RenameFleetCommand(selectedFleet, RenameRules.Normalise(NewFleetName)));
+        // The spec keeps every character and treats an empty name as "remove the custom name".
+        ApplyCommand(new RenameFleetCommand(selectedFleet, RenameRules.AcceptFleetName(NewFleetName)));
     }
 
     /// <summary>

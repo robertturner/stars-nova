@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using CommunityToolkit.Mvvm.Input;
 using Nova.Client.Map;
+using Nova.Common;
 
 namespace Nova.Avalonia.ViewModels.Panels;
 
@@ -21,19 +22,14 @@ public class StarMapSearchResultViewModel
 }
 
 /// <summary>
-/// The map's Find dialog (View > Find / Ctrl+F; behavior-specs-10/client-interface.md "Map
-/// canvas" and the command table, ids 4200/4201): a query over the objects this empire knows
-/// about, optionally filtered by kind, whose chosen result becomes the selection and is centred
-/// on the map. The matching itself is Nova.Client.Map.MapSearch (see its SPEC GAP note).
-/// Windowed UI only - the Android port has its own menu for this.
+/// The map's Find dialog (View > Find / Ctrl+F; behavior-specs-11/client-interface.md "Map
+/// canvas" and the command table, ids 4200/4201): one query field, OK / Cancel / Help, matching
+/// by the five-step rule (Nova.Client.Map.MapSearch) and centring the result on the map. An empty
+/// query finds planet 1; a query that matches nothing leaves the dialog open. Windowed UI only -
+/// the Android port has its own menu for this.
 /// </summary>
 public class StarMapSearchViewModel : ViewModelBase
 {
-    /// <summary>The kind filter's choices, index 0 = any kind.</summary>
-    public static IReadOnlyList<string> KindLabels { get; } = new[] { "Anything", "Planets", "Fleets", "Minefields", "Wormholes" };
-
-    private static readonly MapObjectKind?[] KindValues = { null, MapObjectKind.Planet, MapObjectKind.Fleet, MapObjectKind.Minefield, MapObjectKind.Wormhole };
-
     private readonly Func<IReadOnlyList<MapObjectEntry>> objects;
     private readonly Action<MapObjectEntry> focus;
 
@@ -58,21 +54,13 @@ public class StarMapSearchViewModel : ViewModelBase
         get => query;
         set
         {
-            if (SetProperty(ref query, value ?? string.Empty))
+            string limited = value ?? string.Empty;
+            if (limited.Length > MapSearch.QueryMaxLength)
             {
-                Refresh();
+                limited = limited.Substring(0, MapSearch.QueryMaxLength);
             }
-        }
-    }
 
-    private int kindIndex;
-
-    public int KindIndex
-    {
-        get => kindIndex;
-        set
-        {
-            if (SetProperty(ref kindIndex, Math.Clamp(value, 0, KindValues.Length - 1)))
+            if (SetProperty(ref query, limited))
             {
                 Refresh();
             }
@@ -114,8 +102,7 @@ public class StarMapSearchViewModel : ViewModelBase
 
     public IRelayCommand CloseCommand { get; }
 
-    /// <summary>Selects and centres the chosen result (or the best match when none is
-    /// highlighted), then closes.</summary>
+    /// <summary>Selects and centres the result, then closes.</summary>
     public IRelayCommand GoCommand { get; }
 
     public StarMapSearchViewModel(Func<IReadOnlyList<MapObjectEntry>> objects, Action<MapObjectEntry> focus)
@@ -124,27 +111,40 @@ public class StarMapSearchViewModel : ViewModelBase
         this.focus = focus;
         OpenCommand = new RelayCommand(() => IsOpen = true);
         CloseCommand = new RelayCommand(() => IsOpen = false);
-        GoCommand = new RelayCommand(Go, () => selectedResult != null || results.Count > 0);
+        GoCommand = new RelayCommand(Go, () => selectedResult != null);
     }
 
     private void Refresh()
     {
-        Results = MapSearch.Find(objects(), query, KindValues[kindIndex])
-            .Select(entry => new StarMapSearchResultViewModel(entry))
-            .ToList();
+        FindResult found = MapSearch.Find(objects(), query, FleetNumber, IsOwnFleet);
+        Results = found.Found
+            ? new[] { new StarMapSearchResultViewModel(found.Entry) }
+            : Array.Empty<StarMapSearchResultViewModel>();
         SelectedResult = results.FirstOrDefault();
         GoCommand.NotifyCanExecuteChanged();
     }
 
+    // SEAM (reported): Nova stores no per-owner fleet number, so the low 32 bits of the fleet's
+    // key plus one stands in for the original's displayed "Fleet #N".
+    private static int FleetNumber(MapObjectEntry entry)
+    {
+        return entry.Item is Item item ? (int)item.Key.Id() + 1 : 0;
+    }
+
+    // Only the viewer's own (live) fleets can be found by number.
+    private static bool IsOwnFleet(MapObjectEntry entry)
+    {
+        return entry.Item is Fleet;
+    }
+
     private void Go()
     {
-        StarMapSearchResultViewModel? chosen = selectedResult ?? results.FirstOrDefault();
-        if (chosen == null)
+        if (selectedResult == null)
         {
             return;
         }
 
-        focus(chosen.Entry);
+        focus(selectedResult.Entry);
         IsOpen = false;
     }
 }

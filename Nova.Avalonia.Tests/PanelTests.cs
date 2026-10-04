@@ -26,7 +26,7 @@ public class PanelTests
         Assert.That(browser.Categories, Is.Not.Empty);
         Assert.That(browser.HasEntry, Is.True);
         Assert.That(browser.EntryName, Is.Not.Empty);
-        Assert.That(browser.PreviousCommand.CanExecute(null), Is.False, "the first entry has no previous");
+        Assert.That(browser.PreviousCommand.CanExecute(null), Is.True, "paging wraps, so a previous exists");
 
         string first = browser.EntryName;
         if (browser.NextCommand.CanExecute(null))

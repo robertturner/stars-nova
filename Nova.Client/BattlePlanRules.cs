@@ -131,13 +131,18 @@ namespace Nova.Client
                 return "No such plan.";
             }
 
-            string error = RenameRules.ValidateOnAccept(newName, plans.Keys.Where(name => name != oldName));
+            // PORT SAFETY RULE, not original behavior (the spec copies a battle-plan name
+            // unchanged and states no duplicate rule): refuse blanks and duplicates so the plan
+            // dictionary keyed by name stays sound. See RenameRules.ValidatePortSafety.
+            string error = RenameRules.ValidatePortSafety(
+                RenameRules.AcceptBattlePlanName(newName),
+                plans.Keys.Where(name => name != oldName));
             if (error != null)
             {
                 return error;
             }
 
-            string accepted = RenameRules.Normalise(newName);
+            string accepted = RenameRules.AcceptBattlePlanName(newName);
             if (accepted == oldName)
             {
                 return null;

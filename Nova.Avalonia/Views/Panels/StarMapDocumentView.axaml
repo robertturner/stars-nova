@@ -387,8 +387,6 @@
                         <KeyBinding Gesture="Escape" Command="{Binding CloseCommand}" />
                     </TextBox.KeyBindings>
                 </TextBox>
-                <ComboBox ItemsSource="{x:Static panels:StarMapSearchViewModel.KindLabels}" SelectedIndex="{Binding KindIndex}"
-                          HorizontalAlignment="Stretch" />
                 <ListBox ItemsSource="{Binding Results}" SelectedItem="{Binding SelectedResult}" MaxHeight="220"
                          DoubleTapped="OnSearchResultDoubleTapped">
                     <ListBox.ItemTemplate>

@@ -196,7 +196,7 @@ public class ProductionTemplatesViewModel : Tool
         set => SetProperty(ref renameText, value ?? "");
     }
 
-    public string RenamePrompt => RenameRules.CompactPrompt(string.IsNullOrEmpty(Current.Name));
+    public string RenamePrompt => RenameRules.Caption(RenameSurface.ProductionTemplate);
 
     public string CopyFromPlanetLabel => SelectedOwnStar != null ? $"Copy from {SelectedOwnStar.Name}'s queue" : "Copy from a planet's queue (select one)";
 
@@ -262,14 +262,17 @@ public class ProductionTemplatesViewModel : Tool
 
     private void RenameSlot()
     {
-        string? error = RenameRules.ValidateOnAccept(RenameText);
-        if (error != null)
+        // The production-template manager's slot 0 cannot be renamed.
+        if (!RenameRules.CanRename(RenameSurface.ProductionTemplate, selectedSlot))
         {
-            StatusMessage = error;
             return;
         }
 
-        Store(Current.WithName(RenameRules.Normalise(RenameText)));
+        // The spec keeps every character; an empty name becomes the slot's default
+        // "custom number N" (0-based index).
+        string accepted = RenameRules.AcceptTemplateName(RenameText, selectedSlot);
+        Store(Current.WithName(accepted));
+        RenameText = accepted;
     }
 
     private void CopyFromPlanet()

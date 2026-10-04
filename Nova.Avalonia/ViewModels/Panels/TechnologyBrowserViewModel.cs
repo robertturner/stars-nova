@@ -40,8 +40,12 @@ public class TechnologyBrowserViewModel : Tool
         }
 
         RaceComponents? available = clientState.EmpireState.AvailableComponents;
-        browser = new TechBrowser(components, component => available != null && available.Contains(component.Name));
-        Categories = browser.Categories.Select(category => category.ToDescription()).ToList();
+        browser = new TechBrowser(
+            components,
+            component => available != null && available.Contains(component.Name),
+            component => clientState.EmpireState.GrantedSpecialComponents != null
+                && clientState.EmpireState.GrantedSpecialComponents.Contains(component.Name));
+        Categories = browser.Categories;
 
         PreviousCommand = new RelayCommand(() => { browser.Previous(); Refresh(); }, () => browser.CanPrevious);
         NextCommand = new RelayCommand(() => { browser.Next(); Refresh(); }, () => browser.CanNext);
@@ -52,12 +56,12 @@ public class TechnologyBrowserViewModel : Tool
 
     public int CategoryIndex
     {
-        get => browser.Categories.ToList().IndexOf(browser.Category);
+        get => browser.CategoryIndex;
         set
         {
-            if (value >= 0 && value < browser.Categories.Count && browser.Categories[value] != browser.Category)
+            if (value >= 0 && value < browser.Categories.Count && value != browser.CategoryIndex)
             {
-                browser.Category = browser.Categories[value];
+                browser.SetCategory(value);
                 Refresh();
             }
         }
@@ -90,7 +94,7 @@ public class TechnologyBrowserViewModel : Tool
 
     public string EntryName => browser.Current?.Name ?? "";
 
-    public string EntryCategory => browser.Current?.Type.ToDescription() ?? "";
+    public string EntryCategory => browser.Current == null ? "" : TechBrowser.CategoryNames[TechBrowser.CategoryOf(browser.Current)];
 
     public string EntryCost => browser.Current == null ? "" : ResourceFormat.Cost(browser.Current.Cost);
 

@@ -34,11 +34,12 @@ public class BattlePlanRowViewModel : ViewModelBase
 
     private string editName;
 
-    /// <summary>The name being typed (live-filtered); committed by Rename.</summary>
+    /// <summary>The name being typed (length-limited only; no character is removed or rewritten);
+    /// committed by Rename.</summary>
     public string EditName
     {
         get => editName;
-        set => SetProperty(ref editName, RenameRules.LiveFilter(value));
+        set => SetProperty(ref editName, RenameRules.LimitForEdit(value, RenameSurface.BattlePlan));
     }
 
     /// <summary>Re-reads the plan's name after a rename (or a refused one).</summary>

@@ -29,14 +29,36 @@ namespace Nova.Tests.UnitTests
         // ---------------- message routing ----------------
 
         [Test]
-        public void QueueEmptyAndOrdersCompleted_OpenTheNamedPlanetsQueue()
+        public void QueueNotices_SelectOnTheFirstPress_ThenOpenTheQueueOnTheSecond()
         {
             foreach (string type in new[] { ProductionNoticeTypes.QueueEmpty, ProductionNoticeTypes.OrdersCompleted })
             {
-                MessageDestination destination = MessageRouting.Destination(new Message(1, "text", type, "Tierra"));
-                Assert.AreEqual(MessageDestinationKind.ProductionQueue, destination.Kind, type);
-                Assert.AreEqual("Tierra", destination.PlanetName);
+                MessageGoto state = new MessageGoto();
+                state.Select(new Message(1, "text", type, "Tierra"));
+
+                Assert.AreEqual(MessageRouting.GotoCaption, state.Caption, type);
+                MessageDestination first = state.Press();
+                Assert.AreEqual(MessageDestinationKind.Planet, first.Kind, type);
+                Assert.AreEqual("Tierra", first.PlanetName);
+                Assert.AreEqual(MessageRouting.ViewCaption, state.Caption, "the caption becomes View");
+
+                MessageDestination second = state.Press();
+                Assert.AreEqual(MessageDestinationKind.ProductionQueue, second.Kind, type);
+                Assert.AreEqual(MessageRouting.GotoCaption, state.Caption, "the flag is cleared again");
             }
+        }
+
+        [Test]
+        public void MovingToAnotherMessage_ClearsTheSecondPressFlag()
+        {
+            MessageGoto state = new MessageGoto();
+            state.Select(new Message(1, "a", ProductionNoticeTypes.QueueEmpty, "Tierra"));
+            state.Press();
+            Assert.IsTrue(state.ViewArmed);
+
+            state.Select(new Message(1, "b", ProductionNoticeTypes.OrdersCompleted, "Mars"));
+            Assert.IsFalse(state.ViewArmed, "a new message resets the button to Goto");
+            Assert.AreEqual(MessageRouting.GotoCaption, state.Caption);
         }
 
         [Test]
@@ -45,6 +67,7 @@ namespace Nova.Tests.UnitTests
             MessageDestination destination = MessageRouting.Destination(new Message(1, "built", ProductionNoticeTypes.Production, "Tierra"));
             Assert.AreEqual(MessageDestinationKind.Planet, destination.Kind);
             Assert.AreEqual("Tierra", destination.PlanetName);
+            Assert.IsNull(destination.SecondPressKind, "only the queue-empty notices have a second press");
         }
 
         [Test]
@@ -209,14 +232,34 @@ namespace Nova.Tests.UnitTests
         // ---------------- rename surfaces ----------------
 
         [Test]
-        public void LiveFilter_RemovesControlCharacters_AcceptTimeTrims()
+        public void RenameSurfaces_KeepEveryCharacter_EnforceTheLimits_AndHandleEmpty()
         {
-            Assert.AreEqual("Scout 1", RenameRules.LiveFilter("Scout\t \n1"));
-            Assert.AreEqual("Scout 1", RenameRules.Normalise("  Scout 1  "));
-            Assert.IsNull(RenameRules.ValidateOnAccept("Scout"));
-            Assert.IsNotNull(RenameRules.ValidateOnAccept(" \t "));
-            Assert.IsNotNull(RenameRules.ValidateOnAccept("Scout", new[] { "Scout" }));
-            Assert.AreNotEqual(RenameRules.CompactPrompt(true), RenameRules.CompactPrompt(false));
+            // No character is removed or rewritten: spaces, punctuation and ampersands survive.
+            Assert.AreEqual("A & B\tC", RenameRules.LimitForEdit("A & B\tC", RenameSurface.Fleet));
+
+            // The spec's length limits: fleet 31, template / zip order 12, battle plan 31.
+            Assert.AreEqual(31, RenameRules.LimitForEdit(new string('x', 40), RenameSurface.Fleet).Length);
+            Assert.AreEqual(31, RenameRules.LimitForEdit(new string('x', 40), RenameSurface.BattlePlan).Length);
+            Assert.AreEqual(12, RenameRules.LimitForEdit(new string('x', 40), RenameSurface.ProductionTemplate).Length);
+            Assert.AreEqual(12, RenameRules.LimitForEdit(new string('x', 40), RenameSurface.ZipOrder).Length);
+
+            // The fleet surface also cuts from the end until the text is <= 160 px wide.
+            Assert.AreEqual("ABC", RenameRules.LimitFleetForEdit("ABCDE", text => text.Length * 50));
+
+            // Accept rules: fleet empty clears the custom name; template empty becomes "custom
+            // number N"; a battle-plan name is copied unchanged.
+            Assert.AreEqual(string.Empty, RenameRules.AcceptFleetName(string.Empty));
+            Assert.IsTrue(RenameRules.FleetNameClearsCustom(string.Empty));
+            Assert.AreEqual("custom number 2", RenameRules.AcceptTemplateName(string.Empty, 2));
+            Assert.AreEqual("Keep & Me", RenameRules.AcceptBattlePlanName("Keep & Me"));
+
+            // The production-template manager's slot 0 is locked; the zip-order manager is not.
+            Assert.IsFalse(RenameRules.CanRename(RenameSurface.ProductionTemplate, 0));
+            Assert.IsTrue(RenameRules.CanRename(RenameSurface.ProductionTemplate, 1));
+            Assert.IsTrue(RenameRules.CanRename(RenameSurface.ZipOrder, 0));
+
+            // A slot's button caption doubles the ampersand.
+            Assert.AreEqual("A && B", RenameRules.ButtonCaption("A & B"));
         }
 
         // ---------------- exports ----------------
@@ -265,34 +308,71 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void TechBrowser_PagesWithinACategory_AndFiltersToAvailable()
+        public void TechBrowser_HasAllPlusSixteenCategories_AndPagesWithWrap()
         {
             List<Component> components = new List<Component>
             {
                 MakeComponent("Armor A", ItemType.Armor),
+                MakeComponent("Armor B", ItemType.Armor),
                 MakeComponent("Engine A", ItemType.Engine),
-                MakeComponent("Engine B", ItemType.Engine),
-                MakeComponent("Engine C", ItemType.Engine),
+                MakeComponent("Torpedo A", ItemType.Torpedoes),
             };
-            TechBrowser browser = new TechBrowser(components, component => component.Name != "Engine B");
+            TechBrowser browser = new TechBrowser(components, _ => true);
 
-            CollectionAssert.AreEqual(new[] { ItemType.Engine, ItemType.Armor }, browser.Categories, "categories in ItemType order");
-            Assert.AreEqual("Engine A", browser.Current.Name);
-            Assert.IsFalse(browser.CanPrevious);
+            Assert.AreEqual(17, browser.Categories.Count);
+            Assert.AreEqual("All", browser.Categories[0]);
+            Assert.AreEqual("Armor", browser.Categories[1]);
+            Assert.AreEqual("Torpedoes", browser.Categories[16]);
+
+            // Opens on All with Armor item 0.
+            Assert.AreEqual("All", browser.Category);
+            Assert.AreEqual("Armor A", browser.Current.Name);
+
+            // Within a specific category paging wraps.
+            browser.SetCategory(1);
+            Assert.AreEqual("Armor A", browser.Current.Name);
+            browser.Previous();
+            Assert.AreEqual("Armor B", browser.Current.Name, "wraps to the last item");
             browser.Next();
-            Assert.AreEqual("Engine B", browser.Current.Name);
+            Assert.AreEqual("Armor A", browser.Current.Name);
 
+            // Under All, paging runs on into the next category and wraps from Torpedoes to Armor.
+            browser.SetCategory(0);
+            Assert.AreEqual("Armor A", browser.Current.Name);
+            browser.Previous();
+            Assert.AreEqual("Torpedo A", browser.Current.Name, "wraps from the first back to the last");
+            browser.Next();
+            Assert.AreEqual("Armor A", browser.Current.Name);
+        }
+
+        [Test]
+        public void TechBrowser_ShowsUnavailableParts_ButHidesUnreceivedGiftParts()
+        {
+            List<Component> components = new List<Component>
+            {
+                MakeComponent("Armor A", ItemType.Armor),
+                MakeComponent("Multi Cargo Pod", ItemType.Mechanical),
+            };
+            bool received = false;
+            TechBrowser browser = new TechBrowser(components, component => component.Name == "Armor A", _ => received);
+
+            // Checkbox clear: every existing part is shown except an unreceived gift part.
+            browser.SetCategory(6);
+            Assert.AreEqual(0, browser.Entries.Count, "the unreceived gift part is skipped");
+
+            // A received gift part is shown with the checkbox clear; toggling the checkbox forces
+            // the gift predicate to be re-read.
+            received = true;
             browser.ShowOnlyAvailable = true;
-            CollectionAssert.AreEqual(new[] { "Engine A", "Engine C" }, browser.Entries.Select(c => c.Name).ToArray());
-            Assert.AreEqual("Engine A", browser.Current.Name, "a hidden entry falls back to the first");
+            Assert.AreEqual(0, browser.Entries.Count, "the received gift part is still not buildable");
+            browser.ShowOnlyAvailable = false;
+            Assert.AreEqual(1, browser.Entries.Count, "a received gift part is shown");
 
-            browser.Next();
-            Assert.AreEqual("Engine C", browser.Current.Name);
-            Assert.IsFalse(browser.CanNext);
-
-            Assert.IsTrue(browser.Show("Engine B"));
-            Assert.IsFalse(browser.ShowOnlyAvailable, "showing a filtered-out entry clears the filter");
-            Assert.AreEqual("Engine B", browser.Current.Name);
+            // Showing a hidden entry clears the filter.
+            browser.ShowOnlyAvailable = true;
+            Assert.IsTrue(browser.Show("Multi Cargo Pod"));
+            Assert.IsFalse(browser.ShowOnlyAvailable);
+            Assert.AreEqual("Multi Cargo Pod", browser.Current.Name);
         }
 
         [Test]

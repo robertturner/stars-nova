@@ -17,6 +17,9 @@ namespace Nova.Avalonia.ViewModels.Panels;
 /// real, always-enabled command rather than null/CanExecute-gated - confirmed live that either
 /// of those makes Avalonia's Button render the row as dimmed/disabled, which every ordinary
 /// (non-battle) message would otherwise wrongly look like.
+/// The Goto action honours the two-press rule (Nova.Client.MessageGoto,
+/// client-ui-dialog-catalog.md "Goto targets"): a queue notice's first press selects the planet
+/// and arms View; the second opens the production queue.
 /// </summary>
 public class MessageItemViewModel : ViewModelBase
 {
@@ -32,6 +35,8 @@ public class MessageItemViewModel : ViewModelBase
     public bool CanReplay { get; }
 
     public IRelayCommand ReplayCommand { get; }
+
+    private readonly MessageGoto gotoState;
 
     private bool isSelected;
 
@@ -65,13 +70,47 @@ public class MessageItemViewModel : ViewModelBase
     {
     }
 
-    /// <summary>Where activating this message goes (Nova.Client.MessageRouting:
-    /// client-ui-dialog-catalog.md "Message-click routing" - 62/63 open the named planet's
-    /// production queue, other planet notices select the planet).</summary>
-    public MessageDestination Destination { get; }
+    /// <summary>The Goto button's destination and caption (the two-press state is in
+    /// Nova.Client.MessageGoto).</summary>
+    public MessageDestination Destination => gotoState.Destination;
+
+    /// <summary>The current Goto caption: Goto, or View after the first press of a two-press
+    /// destination.</summary>
+    public string GotoCaption => gotoState.Caption;
 
     /// <summary>The row's "tap to ..." hint, empty when the message goes nowhere.</summary>
-    public string GotoHint { get; }
+    public string GotoHint
+    {
+        get
+        {
+            if (CanReplay)
+            {
+                return "Tap to view battle";
+            }
+
+            MessageDestination destination = gotoState.Destination;
+            if (gotoState.ViewArmed)
+            {
+                return destination.SecondPressKind == MessageDestinationKind.ProductionQueue
+                    ? "Tap View to open the production queue"
+                    : "Tap View again";
+            }
+
+            switch (destination.Kind)
+            {
+                case MessageDestinationKind.Planet:
+                    return "Tap to select the planet";
+                case MessageDestinationKind.ProductionQueue:
+                    return "Tap to open the production queue";
+                case MessageDestinationKind.Research:
+                    return "Tap to open Research";
+                case MessageDestinationKind.TechnologyBrowser:
+                    return "Tap to open the Technology Browser";
+                default:
+                    return "";
+            }
+        }
+    }
 
     public bool HasGotoHint => GotoHint.Length > 0;
 
@@ -91,16 +130,9 @@ public class MessageItemViewModel : ViewModelBase
 
         BattleReport? battleReport = message.Event as BattleReport;
         CanReplay = battleReport != null;
-        Destination = MessageRouting.Destination(message, knownPlanets);
-        GotoHint = Destination.Kind switch
-        {
-            MessageDestinationKind.BattleReplay => "Tap to view battle",
-            MessageDestinationKind.ProductionQueue => "Tap to open the production queue",
-            MessageDestinationKind.Planet => "Tap to select the planet",
-            MessageDestinationKind.Research => "Tap to open Research",
-            MessageDestinationKind.TechnologyBrowser => "Tap to open the Technology Browser",
-            _ => "",
-        };
+
+        gotoState = new MessageGoto(knownPlanets);
+        gotoState.Select(message);
 
         ReplayCommand = new RelayCommand(() =>
         {
@@ -108,10 +140,17 @@ public class MessageItemViewModel : ViewModelBase
             if (battleReport != null)
             {
                 onReplay?.Invoke(battleReport);
+                return;
             }
-            else if (Destination.Kind != MessageDestinationKind.None)
+
+            MessageDestination destination = gotoState.Press();
+            OnPropertyChanged(nameof(Destination));
+            OnPropertyChanged(nameof(GotoCaption));
+            OnPropertyChanged(nameof(GotoHint));
+            OnPropertyChanged(nameof(HasGotoHint));
+            if (destination.Kind != MessageDestinationKind.None)
             {
-                onGoto?.Invoke(Destination);
+                onGoto?.Invoke(destination);
             }
         });
     }
