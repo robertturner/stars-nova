@@ -30,6 +30,7 @@ namespace Nova.Server
     
     using Nova.Common;
     using Nova.Common.Commands;
+    using Nova.Common.Combat;
     using Nova.Common.Components;
     using Nova.Common.DataStructures;
     
@@ -629,6 +630,22 @@ namespace Nova.Server
                     foreach (ShipToken token in fleet.Composition.Values)
                     {
                         token.Design = empire.Designs[token.Design.Key];
+
+                        // Spec-11 (combat-resolution.md §8): the damage word is the only damage
+                        // state. A save that predates the word ("a pooled-only save") is converted
+                        // here, once, per the documented formula and persisted, so nothing is
+                        // re-derived later.
+                        if (token.PackedDamage == 0 && token.Quantity > 0 && token.Design.Armor > 0)
+                        {
+                            long full = (long)token.Quantity * token.Design.Armor;
+                            long damage = full - (long)Math.Ceiling(token.Armor);
+                            if (damage > 0)
+                            {
+                                DamageWord.Store(
+                                    token,
+                                    DamageWord.FromPooledDamage(damage, token.Quantity, token.Design.Armor));
+                            }
+                        }
                     }
                 }
                  

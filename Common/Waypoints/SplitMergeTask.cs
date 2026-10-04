@@ -1,4 +1,4 @@
-﻿#region Copyright Notice
+#region Copyright Notice
 // ============================================================================
 // Copyright (C) 2008 Ken Reed
 // Copyright (C) 2009-2012 The Stars-Nova Project
@@ -29,6 +29,7 @@ namespace Nova.Common.Waypoints
     using System.Xml;
     
     using Nova.Common;
+    using Nova.Common.Combat;
     using Nova.Common.Components;
     
     /// <summary>
@@ -321,7 +322,11 @@ namespace Nova.Common.Waypoints
             }
 
             // Strand `strandedShips` proportionally across every design in `right`, moving the
-            // rest into `left` exactly as an unconditional merge would have.
+            // rest into `left` exactly as an unconditional merge would have. Each design that
+            // ends up in `left` has its damage word recombined per the spec (combat-resolution.md
+            // §8, "Merging fleets"): D = sum of max(1, percent x ships / 100) over the merged
+            // stacks, U = sum of those counts x each stack's figure, the merged percentage is
+            // ceil(D x 100 / N) and the figure is floor(U / D).
             int remainingToStrand = strandedShips;
             var tokens = right.Composition.Values.ToList();
             for (int i = 0; i < tokens.Count; i++)
@@ -339,14 +344,28 @@ namespace Nova.Common.Waypoints
                     continue;
                 }
 
+                DamageWord incoming = DamageWord.For(token);
                 if (!left.Composition.ContainsKey(token.Key))
                 {
-                    left.Composition.Add(token.Key, new ShipToken(token.Design, movingQuantity, token.Armor));
+                    ShipToken created = new ShipToken(token.Design, movingQuantity);
+                    DamageWord.Store(created, DamageWord.Merge(
+                        movingQuantity,
+                        new[] { new KeyValuePair<int, DamageWord>(movingQuantity, incoming) }));
+                    left.Composition.Add(token.Key, created);
                 }
                 else
                 {
-                    left.Composition[token.Key].Quantity += movingQuantity;
-                    left.Composition[token.Key].Armor += token.Armor;
+                    ShipToken existing = left.Composition[token.Key];
+                    int mergedQuantity = existing.Quantity + movingQuantity;
+                    DamageWord merged = DamageWord.Merge(
+                        mergedQuantity,
+                        new[]
+                        {
+                            new KeyValuePair<int, DamageWord>(existing.Quantity, DamageWord.For(existing)),
+                            new KeyValuePair<int, DamageWord>(movingQuantity, incoming),
+                        });
+                    existing.Quantity = mergedQuantity;
+                    DamageWord.Store(existing, merged);
                 }
 
                 if (strandFromThisToken > 0)
@@ -422,11 +441,30 @@ namespace Nova.Common.Waypoints
                 {
                     to.Composition.Add(key, new ShipToken(from.Composition[key].Design, 0));
                 }
-                
-                to.Composition[key].Quantity += moveCount;
-                from.Composition[key].Quantity -= moveCount;
-                
-                if (from.Composition[key].Quantity == 0)
+
+                ShipToken fromToken = from.Composition[key];
+                ShipToken toToken = to.Composition[key];
+
+                // The move-between-fleets damage rule (combat-resolution.md §8, "Moving ships
+                // between two fleets", FUN_1050_6e52): damaged ships move first and the four
+                // receiver cases recombine the two words against each stack's new ship count; a
+                // split is the same operation with a fresh, empty receiver.
+                DamageWord.MoveShips(
+                    DamageWord.For(fromToken), fromToken.Quantity,
+                    DamageWord.For(toToken), toToken.Quantity,
+                    moveCount,
+                    out DamageWord newFrom, out DamageWord newTo);
+
+                fromToken.Quantity -= moveCount;
+                toToken.Quantity += moveCount;
+                if (fromToken.Quantity > 0)
+                {
+                    DamageWord.Store(fromToken, newFrom);
+                }
+
+                DamageWord.Store(toToken, newTo);
+
+                if (fromToken.Quantity == 0)
                 {
                     from.Composition.Remove(key);
                 }

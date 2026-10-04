@@ -29,6 +29,7 @@ namespace Nova.Server
     
     using Nova.Common;
     using Nova.Common.Commands;
+    using Nova.Common.Combat;
     using Nova.Common.Components;
     using Nova.Common.DataStructures;
     using Nova.Common.Waypoints;
@@ -1353,7 +1354,7 @@ namespace Nova.Server
 
                 shipsLost += originalQuantity - survivors;
                 token.Quantity = survivors;
-                token.Armor = survivorsFullArmor - totalDamage;
+                DamageWord.Store(token, DamageWord.FromPooledDamage((long)Math.Ceiling(totalDamage), survivors, designArmor));
             }
 
             foreach (long key in destroyedTokenKeys)

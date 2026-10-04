@@ -22,7 +22,7 @@
 namespace Nova.Common.Combat
 {
     using System;
-    using System.Runtime.CompilerServices;
+    using System.Collections.Generic;
 
     /// <summary>
     /// A token's packed 16-bit damage word - behavior-specs-10/combat-resolution.md §8 ("The
@@ -32,15 +32,15 @@ namespace Nova.Common.Combat
     /// 1/500 of the design's per-ship armor (0-499). A stack never tracks two damage levels.
     /// </summary>
     /// <remarks>
-    /// Nova stores a token's state as a pooled armor total (<see cref="ShipToken.Armor"/>). This
-    /// type is the exact original state; the battle engine reads it with <see cref="For"/> and
-    /// writes it back with <see cref="Store"/>, which also sets the pooled armor to the word's own
-    /// value. The word is persisted on the token (<see cref="ShipToken.PackedDamage"/>, saved
-    /// with the game) and also remembered per token for the life of the process; when it is missing or
-    /// no longer matches the token's pooled armor (damage applied elsewhere - repair, minefields,
-    /// overgating - or a reloaded game) it is re-derived from the pooled armor as "every ship
-    /// damaged", the per-ship damage rounded up to the next 1/500 (the only information lost is a
-    /// percentage below 100).
+    /// Spec-11 makes the packed word the only damage state (combat-resolution.md §8, "The word is
+    /// the only damage state"): the persisted <see cref="ShipToken.PackedDamage"/> is authoritative,
+    /// and <see cref="ShipToken.Armor"/> is a pooled value derived from it. <see cref="For"/> reads
+    /// the word and <see cref="Store"/> writes it, keeping the pooled armor in sync. A save that
+    /// predates the field (or any token built with a pooled armor and no word) is converted on
+    /// demand with <see cref="FromPooledDamage"/> - the documented "every ship damaged, figure =
+    /// total x 500 / (ships x armor) rounded up, 1..499" conversion. The original spec word also
+    /// gives the merge, move-between-fleets and new-ship-join formulas, implemented here so all
+    /// three sites share one testable definition.
     /// </remarks>
     public struct DamageWord
     {
@@ -49,8 +49,6 @@ namespace Nova.Common.Combat
 
         /// <summary>The armor quantum: damage is stored in 1/500 of one ship's armor.</summary>
         public const int UnitsPerArmor = 500;
-
-        private static readonly ConditionalWeakTable<ShipToken, Remembered> Cache = new ConditionalWeakTable<ShipToken, Remembered>();
 
         public DamageWord(int percent, int units)
         {
@@ -126,9 +124,9 @@ namespace Nova.Common.Combat
         }
 
         /// <summary>
-        /// Builds a word from a pooled damage total: every ship damaged (100%), the per-ship damage
-        /// (total / ships, rounded up, at least 1) converted to 1/500 units rounding up (at least 1,
-        /// at most 499). Zero damage gives the zero word.
+        /// Builds a word from a pooled damage total: every ship damaged (100%), the per-ship figure
+        /// is <c>totalDamage x 500 / (ships x armor)</c> rounded up, at least 1, at most 499
+        /// (combat-resolution.md §8, the reimplementation note). Zero damage gives the zero word.
         /// </summary>
         public static DamageWord FromPooledDamage(long totalDamage, int ships, int armorPerShip)
         {
@@ -137,8 +135,9 @@ namespace Nova.Common.Combat
                 return new DamageWord(0, 0);
             }
 
-            long perShip = Math.Max(1L, (totalDamage + ships - 1) / ships);
-            return new DamageWord(100, ToUnits(perShip, armorPerShip));
+            long full = (long)ships * armorPerShip;
+            long units = ((totalDamage * UnitsPerArmor) + full - 1) / full;
+            return new DamageWord(100, (int)Math.Max(1L, Math.Min(MaxUnits, units)));
         }
 
         /// <summary>Per-ship damage points to 1/500 units, rounded up, at least 1, capped at 499.</summary>
@@ -154,9 +153,11 @@ namespace Nova.Common.Combat
         }
 
         /// <summary>
-        /// The token's current word: the remembered one if it still matches the token's ship
-        /// count and pooled armor, otherwise one derived from the pooled armor
-        /// (<see cref="FromPooledDamage"/>).
+        /// The token's current word. The persisted <see cref="ShipToken.PackedDamage"/> is
+        /// authoritative (spec-11: "the word is the only damage state"); nothing is re-derived while
+        /// a word is stored. With no stored word, a token still carrying a pooled armor below full
+        /// (an older save, or a token built by code that set <see cref="ShipToken.Armor"/> directly)
+        /// is converted with <see cref="FromPooledDamage"/>.
         /// </summary>
         public static DamageWord For(ShipToken token)
         {
@@ -165,32 +166,18 @@ namespace Nova.Common.Combat
                 return new DamageWord(0, 0);
             }
 
-            int armorPerShip = token.Design.Armor;
-
-            // The persisted word (ShipToken.PackedDamage) wins while it still reproduces the
-            // token's pooled armor - i.e. nothing has changed Armor or Quantity behind its back.
             if (token.PackedDamage != 0)
             {
-                DamageWord stored = FromPacked(token.PackedDamage);
-                if (Math.Abs(stored.PooledArmor(token.Quantity, armorPerShip) - token.Armor) < 1e-6)
-                {
-                    return stored;
-                }
+                return FromPacked(token.PackedDamage);
             }
 
-            if (Cache.TryGetValue(token, out Remembered remembered)
-                && remembered.Quantity == token.Quantity
-                && remembered.Armor == token.Armor)
-            {
-                return remembered.Word;
-            }
-
+            int armorPerShip = token.Design.Armor;
             long full = (long)token.Quantity * armorPerShip;
             long damage = full - (long)Math.Ceiling(token.Armor);
-            return FromPooledDamage(damage, token.Quantity, armorPerShip);
+            return damage > 0 ? FromPooledDamage(damage, token.Quantity, armorPerShip) : new DamageWord(0, 0);
         }
 
-        /// <summary>Remembers the token's word and sets its pooled armor to the word's value.</summary>
+        /// <summary>Stores the word as the token's damage state and sets the pooled armor from it.</summary>
         public static void Store(ShipToken token, DamageWord word)
         {
             if (token == null || token.Design == null)
@@ -200,7 +187,142 @@ namespace Nova.Common.Combat
 
             token.Armor = word.PooledArmor(token.Quantity, token.Design.Armor);
             token.PackedDamage = word.Packed;
-            Cache.AddOrUpdate(token, new Remembered { Word = word, Quantity = token.Quantity, Armor = token.Armor });
+        }
+
+        /// <summary>
+        /// The fleet-merge formula (combat-resolution.md §8, "Merging fleets", FUN_1038_2274): over
+        /// every source stack being merged (the target included), the damaged-ship count
+        /// <c>D = sum of max(1, percent x ships / 100)</c> and the damage units
+        /// <c>U = sum of those counts x each source's per-ship figure</c>. The merged word is
+        /// percent <c>ceil(D x 100 / N)</c> (N = the merged ship count) and figure
+        /// <c>floor(U / D)</c>, or zero when D is zero.
+        /// </summary>
+        public static DamageWord Merge(int mergedShips, IEnumerable<KeyValuePair<int, DamageWord>> sources)
+        {
+            long damaged = 0;
+            long units = 0;
+            foreach (KeyValuePair<int, DamageWord> source in sources)
+            {
+                DamageWord word = source.Value;
+                if (source.Key <= 0 || word.IsUndamaged)
+                {
+                    continue;
+                }
+
+                int count = Math.Max(1, word.Percent * source.Key / 100);
+                damaged += count;
+                units += (long)count * word.Units;
+            }
+
+            if (damaged == 0 || mergedShips <= 0)
+            {
+                return new DamageWord(0, 0);
+            }
+
+            int percent = (int)((damaged * 100 + mergedShips - 1) / mergedShips);
+            return new DamageWord(percent, (int)Math.Min(MaxUnits, units / damaged));
+        }
+
+        /// <summary>
+        /// Moving <paramref name="moving"/> ships from a giver to a receiver, per design
+        /// (combat-resolution.md §8, "Moving ships between two fleets", FUN_1050_6e52). Splitting a
+        /// new fleet off is the same operation with a fresh, empty receiver. With d_g and d_r the
+        /// two stacks' damaged-ship counts (percent x old count / 100, truncated, no minimum) and
+        /// <c>m = min(d_g, moving)</c>, damaged ships move first; every percentage is rounded up
+        /// against the stack's new ship count. The four receiver cases and the giver's clearing rule
+        /// are the spec's.
+        /// </summary>
+        public static void MoveShips(
+            DamageWord giver, int oldGiverShips,
+            DamageWord receiver, int oldReceiverShips,
+            int moving,
+            out DamageWord newGiver, out DamageWord newReceiver)
+        {
+            if (moving <= 0)
+            {
+                newGiver = giver;
+                newReceiver = receiver;
+                return;
+            }
+
+            int newGiverShips = oldGiverShips - moving;
+            int newReceiverShips = oldReceiverShips + moving;
+            int giverDamaged = giver.Percent * oldGiverShips / 100;
+            int receiverDamaged = receiver.Percent * oldReceiverShips / 100;
+            int movedDamaged = Math.Min(giverDamaged, moving);
+
+            if (giverDamaged == 0 && receiverDamaged > 0)
+            {
+                newReceiver = new DamageWord(CeilPercent(receiverDamaged, newReceiverShips), receiver.Units);
+            }
+            else if (giverDamaged == 0)
+            {
+                newReceiver = new DamageWord(0, 0);
+            }
+            else if (receiverDamaged == 0)
+            {
+                newReceiver = new DamageWord(CeilPercent(movedDamaged, newReceiverShips), giver.Units);
+            }
+            else
+            {
+                int units = (int)Math.Min(
+                    MaxUnits,
+                    ((long)receiver.Units * receiverDamaged + (long)giver.Units * movedDamaged + newReceiverShips - 1)
+                        / newReceiverShips);
+                newReceiver = new DamageWord(CeilPercent(receiverDamaged + movedDamaged, newReceiverShips), units);
+            }
+
+            if (giverDamaged == 0)
+            {
+                newGiver = giver;
+            }
+            else if (movedDamaged >= giverDamaged)
+            {
+                newGiver = new DamageWord(0, 0);
+            }
+            else
+            {
+                newGiver = new DamageWord(CeilPercent(giverDamaged - movedDamaged, newGiverShips), giver.Units);
+            }
+        }
+
+        /// <summary>
+        /// Newly built (undamaged) ships joining a stack of <paramref name="existingShips"/>
+        /// (combat-resolution.md §8, "Newly built ships joining a fleet", FUN_10b8_0e68):
+        /// <c>D = max(1, percent x n / 100)</c>, <c>T = (figure x armor / 10) x D / 50</c>, the new
+        /// percentage is <c>D x 100 / (n + k)</c> truncated (at least 1), <c>D' </c> comes from it,
+        /// and the new figure is <c>(T x 5 / D') x 100 / armor</c>, every division truncating. An
+        /// undamaged stack stays undamaged.
+        /// </summary>
+        public static DamageWord JoinNewShips(DamageWord existing, int existingShips, int newShips, int armorPerShip)
+        {
+            if (newShips <= 0 || existingShips <= 0 || armorPerShip <= 0)
+            {
+                return existing;
+            }
+
+            if (existing.IsUndamaged)
+            {
+                return new DamageWord(0, 0);
+            }
+
+            int totalShips = existingShips + newShips;
+            int damaged = Math.Max(1, existing.Percent * existingShips / 100);
+            long sharedDamage = ((long)existing.Units * armorPerShip / 10) * damaged / 50;
+            int newPercent = Math.Max(1, damaged * 100 / totalShips);
+            int newDamaged = Math.Max(1, newPercent * totalShips / 100);
+            int newUnits = (int)(((sharedDamage * 5 / newDamaged) * 100) / armorPerShip);
+            return new DamageWord(newPercent, newUnits);
+        }
+
+        private static int CeilPercent(int damagedShips, int newShips)
+        {
+            if (damagedShips <= 0 || newShips <= 0)
+            {
+                return 0;
+            }
+
+            return (damagedShips * 100 + newShips - 1) / newShips;
         }
 
         /// <summary>
@@ -311,13 +433,6 @@ namespace Nova.Common.Combat
 
             /// <summary>Damage thrown away because the kill limit was reached.</summary>
             public long Discarded;
-        }
-
-        private sealed class Remembered
-        {
-            public DamageWord Word;
-            public int Quantity;
-            public double Armor;
         }
     }
 }

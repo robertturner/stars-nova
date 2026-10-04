@@ -26,6 +26,7 @@ namespace Nova.Common.Waypoints
     using System.Linq;
     using System.Xml;
 
+    using Nova.Common.Combat;
     using Nova.Common.Components;
 
     /// <summary>
@@ -218,6 +219,7 @@ namespace Nova.Common.Waypoints
                 firstDesign = firstDesign ?? design;
 
                 ShipToken copy = new ShipToken(design, token.Quantity, token.Armor);
+                DamageWord.Store(copy, DamageWord.For(token));
                 gift.Composition.Add(copy.Key, copy);
             }
 

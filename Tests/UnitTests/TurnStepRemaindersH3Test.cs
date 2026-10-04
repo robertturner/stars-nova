@@ -552,13 +552,18 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void AStaleStoredWord_IsIgnored_WhenArmorWasChangedBehindItsBack()
+        public void AStoredWord_IsAuthoritative_NotReDerivedFromAPooledArmorChange()
         {
+            // Spec-11 (combat-resolution.md §8, "The word is the only damage state"): a stored word
+            // is authoritative and is not re-derived from the pooled armor. Direct writes to Armor
+            // are no longer a supported way to apply damage (the production sites use
+            // DamageWord.Store), so For keeps returning the word.
             ShipToken token = new ShipToken(MakeDesign(1000), 10);
             DamageWord.Store(token, new DamageWord(40, 100));
             token.Armor = 5000;
 
-            Assert.AreEqual(100, DamageWord.For(token).Percent);
+            Assert.AreEqual(40, DamageWord.For(token).Percent, "the stored word wins over the pooled armor");
+            Assert.AreEqual(100, DamageWord.For(token).Units);
         }
 
         [Test]

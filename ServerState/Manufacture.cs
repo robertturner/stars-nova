@@ -26,6 +26,7 @@ namespace Nova.Server
     using System.Collections.Generic;
     
     using Nova.Common;
+    using Nova.Common.Combat;
     using Nova.Common.Components;
 
     /// <summary>
@@ -296,8 +297,13 @@ namespace Nova.Server
                     continue;
                 }
 
-                token.Quantity += count;
-                token.Armor += design.Armor * count;
+                // Newly built ships join the stack's damage word undamaged (combat-resolution.md
+                // §8, "Newly built ships joining a fleet", FUN_10b8_0e68): the damaged ships stay
+                // damaged and the newcomers count as undamaged.
+                int existingQuantity = token.Quantity;
+                DamageWord joined = DamageWord.JoinNewShips(DamageWord.For(token), existingQuantity, count, design.Armor);
+                token.Quantity = existingQuantity + count;
+                DamageWord.Store(token, joined);
                 token.Shields += design.Shield * count;
                 PostToOwner(star, count + " new " + design.Name + " built at " + star.Name
                     + " have joined " + fleet.Name + " because your fleet limit has been reached.");

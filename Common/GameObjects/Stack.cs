@@ -1,4 +1,4 @@
-﻿#region Copyright Notice
+#region Copyright Notice
 // ============================================================================
 // Copyright (C) 2012 The Stars-Nova Project
 //
@@ -184,6 +184,7 @@ namespace Nova.Common
             Target = copy.Target;
             InOrbit = copy.InOrbit;
             Token = new ShipToken(copy.Token.Design, copy.Token.Quantity, copy.Token.Armor);
+            Token.PackedDamage = copy.Token.PackedDamage;
             Token.Shields = copy.Token.Shields;
         }
         
