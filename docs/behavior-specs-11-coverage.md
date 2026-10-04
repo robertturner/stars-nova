@@ -112,6 +112,7 @@ items. The headline numbers above predate this update; the per-file tables below
 | #34 AI shared packet advisor | the target range is now indexed by the doubled-driver flag (7,056 / 50,625 squared), tripled when a surface mineral exceeds 12,500 kT (surface stock, not projected); the gate uses the best driver warp (10+, no doubled +1); the destination speed is set to warp 13; and the advisor counts as acted once a target is drawn |
 | #33 AI research share | `AiResearchShare.PercentFor` gives p per personality/turn (0 once all six techs are 24+); `DefaultPlanetAI.ProjectedResources()` deducts p × R / 100 unless the planet's leftover-only flag is set, and `Surplus`, `BuildShips`, `RunBomberDefence`, `RunTopUp` and the packet advisor read it. **The goldens were regenerated** (intended AI behavior change). |
 | #35 AI personality 5 bulk packets (partial) | the entry tests now run before the 1-in-4 roll; a queued packet item abandons the step; the mineral is drawn uniformly and cycled Ironium → Boranium → Germanium; the target range is 91,204 squared (under 302 ly) with the source a candidate and 100,000 as the starting least; the speed field is set to warp 11. The nine-step planet pass itself is not ported. |
+| #37 AI P4 chooser gating (partial) | personality 4's warship chooser now runs only at starbase planets outside the packet-hub slots (1, 3, 6, 8); a hub starbase builds no ships from the planet pass (`Cybertron_NothingAtAPacketHubStarbase_AndTheChooserDoesNotRun`). The other P2/P3/P4 corrections remain. |
 | #31 design caps / name limit (partial) | the design-name box truncates to 31 characters (`DesignCommand.MaxDesignNameLength`); `DesignCommand.IsAtDesignCap` (16 ship / 10 starbase) is available. Server-side enforcement of the cap or the name length is **deferred**: the AI design builder still adds a design each turn (SIM-2) and names designs over 31 characters (e.g. "Medium Freighter [colonizer] T2105"), so enforcing either changes every AI game and the goldens. |
 | (TODO-FEATURES #1) Ship Design tab | a single tap on a design shows its details straight away, including cargo capacity and the full summary figures (`Nova.Client.DesignDetails`) |
 
@@ -119,7 +120,7 @@ items. The headline numbers above predate this update; the per-file tables below
 #3's remaining 197-200 / 201-204 message-recipient swap, #10 production templates, #11 catalog 10l, #13/#15 packet terraforming and
 remote mining, #17 Transfer Fleet, #18-#24 combat/damage, #26-#29 turn order / Trader / packets / victory, #30 score visibility, #31's
 server-side cap/name enforcement (blocked on the AI design planner's slot management and name lengths), #35's nine-step planet pass and the rest
-of the AI rows (#36-#38, #40-#41), #42 planet route, and the rest of #44-#51 client work.
+of #37's P2/P3/P4 corrections, and the AI rows #36/#38/#40-#41, #42 planet route, and the rest of #44-#51 client work.
 
 ## Where spec-11 overturns earlier work
 

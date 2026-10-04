@@ -484,18 +484,19 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void Cybertron_NothingAtAPacketHubStarbase_ButTheChooserStillRuns()
+        public void Cybertron_NothingAtAPacketHubStarbase_AndTheChooserDoesNotRun()
         {
             MakeDesign("Starbase", null, ItemType.Starbase);
             ShipDesign hubDesign = MakeDesign("Space Dock", null, ItemType.Starbase); // slot 1: a packet hub
             GiveStarbase(home, hubDesign);
             home.Colonists = 300000;
             MakeDesign("Colony Ship", "colonizer");
-            ShipDesign hunter = MakeDesign("Destroyer", "hunter-a");
+            MakeDesign("Destroyer", "hunter-a");
 
             RunPass(home, Context(AiCategory.Cybertrons, new ScriptedRandom(0, 0)));
 
-            CollectionAssert.AreEqual(new[] { hunter }, QueuedShips(home).Select(item => item.Item1).ToArray());
+            // A packet hub builds no colony ships, haulers, minelayers or warships from the pass.
+            CollectionAssert.IsEmpty(QueuedShips(home));
         }
 
         [Test]

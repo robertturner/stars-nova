@@ -824,9 +824,12 @@ namespace Nova.Ai
                 {
                     planetAI.QueueShips(minelayer, AiPlanetPassRules.MinelayerBatch);
                 }
-            }
 
-            CybertronChooser(planetAI, context);
+                // The warship chooser runs only at starbase planets outside the packet-hub slots
+                // (1, 3, 6 and 8); a hub starbase never builds warships from it
+                // (ai-opponent-behavior.md §12, personality 4).
+                CybertronChooser(planetAI, context);
+            }
         }
 
         /// <summary>Runs personality 4's build chooser for one planet and queues its order.</summary>
