@@ -80,6 +80,24 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
+        public void SlotsOneToThree_EqualMarks_GoToTheEarlierCreatedDesign_ThenTheLowerSlot()
+        {
+            bool[] live = Live(0, 1, 2, 3);
+            bool[] inUse = Live(0, 1, 2, 3);
+
+            // Both slot 1 (age 35) and slot 2 (age 40) carry mark 2; slot 2's design was created
+            // earlier (larger age), so it is the one that keeps the mark.
+            int[] marks = Marks(10, live, new[] { 0, 35, 40, 0, 0, 0, 0, 0, 0, 0 }, inUse);
+            Assert.AreEqual(0, marks[1], "the later-created equal-mark design drops to 0");
+            Assert.AreEqual(2, marks[2], "the earlier-created equal-mark design keeps the mark");
+
+            // Equal ages fall back to the lower slot.
+            marks = Marks(10, live, new[] { 0, 40, 40, 0, 0, 0, 0, 0, 0, 0 }, inUse);
+            Assert.AreEqual(2, marks[1], "equal ages: the lower slot wins");
+            Assert.AreEqual(0, marks[2]);
+        }
+
+        [Test]
         public void SlotsOneToThree_EmptyIsOne_UnusedIsZero()
         {
             int[] marks = Marks(10, Live(0, 2), new[] { 0, 0, 60, 0, 0, 0, 0, 0, 0, 0 }, Live(0));
@@ -201,6 +219,8 @@ namespace Nova.Tests.UnitTests
             Assert.AreEqual(15, StarbaseAdvisors.PopulationPercent(15499, 100000));
             Assert.AreEqual(999, StarbaseAdvisors.PopulationPercent(100000, 1000));
             Assert.AreEqual(0, StarbaseAdvisors.PopulationPercent(0, 1000));
+            Assert.AreEqual(0, StarbaseAdvisors.PopulationPercent(100000, 0),
+                "no capacity (an AR planet with no starbase) reads 0, so the population rule cannot fire");
         }
 
         // ================================================================ in the chain

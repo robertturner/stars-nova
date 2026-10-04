@@ -93,7 +93,7 @@ items. The headline numbers above predate this update; the per-file tables below
 - **Expert +10% starting population** (#52): `Race.GetStartingPopulation(expertComputerPlayer)` adds the
   tenth for `PlayerSettings.AiSkill >= Race.ExpertAiSkill` (3), with a generated-home-world test.
 
-**Landed (each with a unit test; main suite 3068/3068, `Nova.Avalonia.Tests` 105 passed / 1 skipped):**
+**Landed (each with a unit test; main suite 3069/3069, `Nova.Avalonia.Tests` 105 passed / 1 skipped):**
 
 | Report item | Fix |
 |---|---|
@@ -108,14 +108,15 @@ items. The headline numbers above predate this update; the per-file tables below
 | (not a spec row) golden test-isolation leak | `SimulationEnvironment` resets the process-wide `AllComponents` cache inside and after its private root, so a prior test's component load can no longer change the golden hashes |
 | #47 battle-plan deletion | fleets on the deleted plan move to the plan **just above** it (`BattlePlanRules.PlanAbove`), not the first plan |
 | #32 scanner data | Robber Baron Scanner penetrating is 120 (was 110); the three non-scanner parts scan per unit (Mega Poly Shell 80/40, Multi Contained Munition 150/75, Langston Shell 50/25) and feed the design's fourth-power scanner sum |
+| #39 AI category 5 starbase advisor | the most-urgent mark of slots 1-3 now breaks ties by the earlier creation year, then the lower slot (`StarbaseAdvisors.MacintiMarks`); `PopulationPercent` returns 0 at zero capacity, so category 5's population upgrade rule cannot fire on an AR planet with no starbase |
 | #31 design caps / name limit (partial) | the design-name box truncates to 31 characters (`DesignCommand.MaxDesignNameLength`); `DesignCommand.IsAtDesignCap` (16 ship / 10 starbase) is available. Server-side enforcement of the cap or the name length is **deferred**: the AI design builder still adds a design each turn (SIM-2) and names designs over 31 characters (e.g. "Medium Freighter [colonizer] T2105"), so enforcing either changes every AI game and the goldens. |
 | (TODO-FEATURES #1) Ship Design tab | a single tap on a design shows its details straight away, including cargo capacity and the full summary figures (`Nova.Client.DesignDetails`) |
 
 **Still open** from the overturns table / "What's next": #1 (minefield/wormhole detection masks and the r/4 rule), #2 (wormhole lifecycle),
 #3's remaining 197-200 / 201-204 message-recipient swap, #10 production templates, #11 catalog 10l, #13/#15 packet terraforming and
 remote mining, #17 Transfer Fleet, #18-#24 combat/damage, #26-#29 turn order / Trader / packets / victory, #30 score visibility, #31's
-server-side cap/name enforcement (blocked on the AI design planner's slot management and name lengths), #33-#41 AI, #42 planet route, and the
-rest of #44-#51 client work.
+server-side cap/name enforcement (blocked on the AI design planner's slot management and name lengths), the rest of the AI rows (#33-#38, #40-#41),
+#42 planet route, and the rest of #44-#51 client work.
 
 ## Where spec-11 overturns earlier work
 

@@ -344,10 +344,10 @@ namespace Nova.Ai
         /// Not ported: the designer itself (rebuilding slots 1-3 on Space Dock / Space Station /
         /// Ultra Station and an unused group of 4-6 / 7-9 on Death Star, Ultra Station, Space
         /// Station "in three armament variants"): §15 gives no starbase templates. Readings chosen
-        /// where §6 is silent (each listed in the report): ties among slots 1-3 for the most urgent
-        /// mark go to the lowest slot and the others drop to 0; the group marking needs both base
-        /// slots live and of different ages (equal ages, or an empty base, mark neither group, and
-        /// then the slot-2/3 override is skipped too).
+        /// where §6 is silent (each listed in the report): the group marking needs both base slots
+        /// live and of different ages (equal ages, or an empty base, mark neither group, and then
+        /// the slot-2/3 override is skipped too). Ties among slots 1-3 for the most urgent mark
+        /// follow the spec: the earlier-created design wins, then the lower slot.
         /// </remarks>
         /// <param name="yearCounter">The year counter, 0 in the first year.</param>
         /// <param name="live">Per slot: holds a design (the original: not marked deleted).</param>
@@ -380,10 +380,17 @@ namespace Nova.Ai
                 }
             }
 
+            // Only the most urgent of slots 1-3 keeps a mark above 1 (ai-opponent-behavior.md
+            // section 6, category 5): the highest mark wins; between equal marks the design created
+            // earlier (smaller creation year, i.e. larger age here) wins; between equal ages the
+            // lower slot wins (the loop runs low to high, so a later equal mark does not replace).
             int urgent = 0;
             for (int slot = 1; slot <= 3; slot++)
             {
-                if (marks[slot] > 1 && (urgent == 0 || marks[slot] > marks[urgent]))
+                if (marks[slot] > 1
+                    && (urgent == 0
+                        || marks[slot] > marks[urgent]
+                        || (marks[slot] == marks[urgent] && ageYears[slot] > ageYears[urgent])))
                 {
                     urgent = slot;
                 }
@@ -489,17 +496,14 @@ namespace Nova.Ai
         }
 
         /// <summary>`FUN_1048_476c`: population × 100 ÷ capacity, rounded to the nearest whole
-        /// number and capped at 999 (999 for a populated planet with no capacity).</summary>
+        /// number and capped at 999. A planet with no capacity (an Alternate Reality planet with no
+        /// starbase) reads 0, not 999 - which is why category 5's population upgrade rule can never
+        /// fire there (ai-opponent-behavior.md section 6, category 5).</summary>
         public static int PopulationPercent(double colonists, double capacityColonists)
         {
-            if (colonists <= 0)
+            if (colonists <= 0 || capacityColonists <= 0)
             {
                 return 0;
-            }
-
-            if (capacityColonists <= 0)
-            {
-                return 999;
             }
 
             return (int)Math.Min(999, Math.Floor((colonists * 100.0 / capacityColonists) + 0.5));
