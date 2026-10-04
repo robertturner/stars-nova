@@ -186,6 +186,15 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
+        public void SharedRange_IsIndexedByTheDoubledDriverFlag_TripledOnRichSurfaceStock()
+        {
+            Assert.AreEqual(7056.0, AiPacketRules.SharedRangeSquared(false, false), "one driver slot: 84 ly");
+            Assert.AreEqual(50625.0, AiPacketRules.SharedRangeSquared(true, false), "doubled driver: 225 ly");
+            Assert.AreEqual(7056.0 * 3, AiPacketRules.SharedRangeSquared(false, true), "a surface mineral over 12,500 kT triples it");
+            Assert.AreEqual(50625.0 * 3, AiPacketRules.SharedRangeSquared(true, true));
+        }
+
+        [Test]
         public void MassNeeded_AndTheSixteenBitWrap()
         {
             // min(4 x 125, 1,000) / (169 x 95 x 6.25e-5) = 500 / 1.0034375 = 498.3.
@@ -296,7 +305,8 @@ namespace Nova.Tests.UnitTests
         {
             Star source = SharedSource(10);
             source.ManufacturingQueue.Queue.Add(new ProductionOrder(1, new DefenseProductionUnit(race), false));
-            AddForeignPlanet("Enemy", 300, 100, 40000);
+            // Within the single-driver range (7,056 = 84 ly squared): 60 ly away.
+            AddForeignPlanet("Enemy", 160, 100, 40000);
 
             ScriptedRandom random = new ScriptedRandom(0, 0);
             bool queued = new AiPacketAdvisor().RunSharedAdvisor(PlanetAi(source, AiCategory.Automitrons, random), AiCategory.Automitrons, 2, random);

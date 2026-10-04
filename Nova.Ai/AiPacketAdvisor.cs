@@ -180,11 +180,12 @@ namespace Nova.Ai
 
         /// <summary>
         /// `FUN_1090_4d10` (§6): skill 2+, no packet item queued, projected I + B + G above
-        /// 3,000 kT, launch rating 10+, then a 1-in-4 roll; a random target (reservoir sampling)
-        /// among other players' planets with a report at most two years old that are weak
-        /// enough, within the rating's range; the destination is set to it and the packets go to
-        /// the bottom of the queue. The chosen speed is left as it was (the spec sets only the
-        /// destination). Never for personality 4.
+        /// 3,000 kT, best mass-driver warp 10+, then a 1-in-4 roll; a random target (reservoir
+        /// sampling) among other players' planets with a report at most two years old that are
+        /// weak enough, within the range set by the doubled-driver flag (84 ly, 225 ly doubled,
+        /// tripled when a surface mineral exceeds 12,500 kT); the destination and its speed field
+        /// are set (warp 13) and the packets go to the bottom of the queue. The advisor counts as
+        /// acted once a target is drawn. Never for personality 4.
         /// </summary>
         public bool RunSharedAdvisor(DefaultPlanetAI planet, int category, int skill, Random random)
         {
@@ -195,8 +196,8 @@ namespace Nova.Ai
 
             Star star = planet.Planet;
             Resources projected = planet.ProjectedMineralStock();
-            int rating = MineralPacketRules.LaunchRating(star.Starbase);
-            if (!AiPacketRules.SharedAdvisorGates(skill, planet.HasPacketItemQueued(), projected, rating))
+            int bestDriverWarp = MineralPacketRules.BestDriverWarp(star.Starbase);
+            if (!AiPacketRules.SharedAdvisorGates(skill, planet.HasPacketItemQueued(), projected, bestDriverWarp))
             {
                 return false;
             }
@@ -206,10 +207,15 @@ namespace Nova.Ai
                 return false;
             }
 
-            bool rich = projected.Ironium > AiPacketRules.SharedRichMineralAbove
-                || projected.Boranium > AiPacketRules.SharedRichMineralAbove
-                || projected.Germanium > AiPacketRules.SharedRichMineralAbove;
-            double range = AiPacketRules.SharedRangeSquared(rating, rich);
+            // The range is indexed by the doubled-driver flag (best warp in two starbase slots),
+            // and the 12,500 kT rich test reads the planet's surface stock, not the projected one.
+            bool doubled = MineralPacketRules.LaunchRating(star.Starbase) > bestDriverWarp;
+            Resources surface = star.ResourcesOnHand;
+            bool rich = surface != null
+                && (surface.Ironium > AiPacketRules.SharedRichMineralAbove
+                    || surface.Boranium > AiPacketRules.SharedRichMineralAbove
+                    || surface.Germanium > AiPacketRules.SharedRichMineralAbove);
+            double range = AiPacketRules.SharedRangeSquared(doubled, rich);
 
             EmpireData empire = planet.Empire;
             StarIntel target = null;
@@ -235,18 +241,21 @@ namespace Nova.Ai
                 }
             }
 
-            if (target == null || !planet.SetPacketDestination(target.Name, star.PacketWarp))
+            // The destination's speed field is set to warp 13 whatever the driver (the gate has
+            // already required a best driver of warp 10 or more, so 13 is legal).
+            if (target == null || !planet.SetPacketDestination(target.Name, AiPacketRules.SharedPacketWarp))
             {
                 return false;
             }
 
-            bool queued = false;
             foreach (AiPacketOrder order in AiPacketRules.SharedOrders(projected, random))
             {
-                queued |= planet.QueuePackets(order.Mineral, order.Count, atTop: false);
+                planet.QueuePackets(order.Mineral, order.Count, atTop: false);
             }
 
-            return queued;
+            // The advisor has acted once a target is drawn, whether or not the mineral rules
+            // queued anything: the destination is set even then, and the chain stops.
+            return true;
         }
 
         // ================================================================ §12 personality 5

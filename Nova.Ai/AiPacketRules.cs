@@ -60,35 +60,38 @@ namespace Nova.Ai
         public const int SharedRichMineralAbove = 12500;
         public const double SharedRichRangeFactor = 3;
 
-        /// <summary>
-        /// SPEC GAP seam: the advisor's target range is "a squared distance taken from a table by
-        /// driver rating" (ai-opponent-behavior.md §6, `FUN_1090_4d10`), but the table's values are
-        /// not in the spec. Indexed by launch rating (0-14); every entry defaults to no limit
-        /// (positive infinity) so the advisor works without an invented number. Replace the
-        /// entries when the spec supplies them.
-        /// </summary>
-        public static readonly double[] SharedRangeSquaredByRating = NoLimitTable();
+        /// <summary>The speed the shared advisor writes into the planet's packet settings,
+        /// whatever the driver: field 9 = warp 13 (ai-opponent-behavior.md §6).</summary>
+        public const int SharedPacketWarp = 13;
 
-        /// <summary>The squared-distance limit for a launch rating, three times larger when any
-        /// mineral exceeds 12,500 kT.</summary>
-        public static double SharedRangeSquared(int launchRating, bool anyMineralAbove12500)
+        /// <summary>The advisor's squared range indexed by the doubled-driver flag, NOT by the warp
+        /// or launch rating (ai-opponent-behavior.md §6): 7,056 (84 ly) when the best driver warp
+        /// sits in one starbase slot, 50,625 (225 ly) when it appears in two.</summary>
+        public const int SharedRangeSquaredSingleDriver = 7056;
+
+        public const int SharedRangeSquaredDoubledDriver = 50625;
+
+        /// <summary>The squared-distance limit: by the doubled-driver flag, three times larger when
+        /// any of the planet's three surface minerals exceeds 12,500 kT (ai-opponent-behavior.md
+        /// §6; the 12,500 test reads the surface stock alone).</summary>
+        public static double SharedRangeSquared(bool doubledDriver, bool anySurfaceMineralAbove12500)
         {
-            int index = Math.Max(0, Math.Min(SharedRangeSquaredByRating.Length - 1, launchRating));
-            double range = SharedRangeSquaredByRating[index];
-            return anyMineralAbove12500 ? range * SharedRichRangeFactor : range;
+            double range = doubledDriver ? SharedRangeSquaredDoubledDriver : SharedRangeSquaredSingleDriver;
+            return anySurfaceMineralAbove12500 ? range * SharedRichRangeFactor : range;
         }
 
         /// <summary>
         /// The advisor's gates before its 1-in-4 roll: skill 2 or more, no packet item (types
         /// 14-17) queued yet, projected Ironium + Boranium + Germanium above 3,000 kT, and a
-        /// starbase launch rating of at least 10.
+        /// starbase best mass-driver warp of at least 10 (the plain best warp, without the +1 for
+        /// a doubled driver).
         /// </summary>
-        public static bool SharedAdvisorGates(int skill, bool packetItemQueued, Resources projected, int launchRating)
+        public static bool SharedAdvisorGates(int skill, bool packetItemQueued, Resources projected, int bestDriverWarp)
         {
             return skill >= SharedMinimumSkill
                 && !packetItemQueued
                 && (long)projected.Ironium + projected.Boranium + projected.Germanium > SharedMineralTotalAbove
-                && launchRating >= SharedMinimumLaunchRating;
+                && bestDriverWarp >= SharedMinimumLaunchRating;
         }
 
         /// <summary>The target test's report fields: coarse defence below 14 or reported figure
@@ -449,17 +452,6 @@ namespace Nova.Ai
         {
             long quotient = value / divisor;
             return (value % divisor != 0 && (value < 0) != (divisor < 0)) ? quotient - 1 : quotient;
-        }
-
-        private static double[] NoLimitTable()
-        {
-            double[] table = new double[15];
-            for (int index = 0; index < table.Length; index++)
-            {
-                table[index] = double.PositiveInfinity;
-            }
-
-            return table;
         }
     }
 
