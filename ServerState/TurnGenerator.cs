@@ -808,10 +808,17 @@ namespace Nova.Server
                     // -------------------------
 
                     // Repeat Orders: a reached waypoint is re-appended, with its task and its leg
-                    // warp, to the end of the route (fleet byte 5 bit 0x02; behavior-specs-10 §5).
-                    // Not the current-position waypoint, not a fleet-targeted (intercept) leg, and
-                    // not when it was the last waypoint left (nothing to cycle through).
-                    if (fleet.RepeatOrders && !isCurrentPositionWaypoint && !waypointZero.IsFleetTarget && fleet.Waypoints.Count > 1)
+                    // warp, to the end of the route (fleet byte 5 bit 0x02; behavior-specs-11/
+                    // fleet-movement-scanning-cargo.md §5, "Arrival and Repeat Orders"). Not the
+                    // current-position waypoint; not a pending Patrol intercept leg (a fleet-targeted
+                    // waypoint carrying Patrol); only with two or more destinations left (three
+                    // waypoints counting the current position); and not when the last waypoint stands
+                    // on the same point as the reached one (dropped rather than duplicated). A
+                    // fleet-targeted waypoint without Patrol is recycled with its target.
+                    bool patrolIntercept = waypointZero.IsFleetTarget && waypointZero.Task is PatrolTask;
+                    if (fleet.RepeatOrders && !isCurrentPositionWaypoint && !patrolIntercept
+                        && fleet.Waypoints.Count > 1
+                        && fleet.Waypoints[fleet.Waypoints.Count - 1].Position != waypointZero.Position)
                     {
                         recycledWaypoint = waypointZero.CloneWithTask();
                         recycledWaypoint.WarpFactor = legWarp;

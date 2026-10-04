@@ -281,33 +281,37 @@ namespace Nova.Server.NewGame
         }
 
         /// <summary>
-        /// Places a handful of Wormhole pairs around the galaxy, each end far enough from any
-        /// star (a real gravity well) and from every other special object - docs/behavior-specs-4/
-        /// fleet-movement-scanning-cargo.md's "Wormholes" section. Must run after GenerateStars()
-        /// so there are real star positions to keep clear of.
-        ///
-        /// Two simplifications from that section, both disclosed there and in Wormhole.cs's own
-        /// comment: this uses a plain minimum-distance check rather than the spec's own
-        /// unquantified "four squared-distance tiers" placement scoring, and the pair COUNT itself
-        /// (one pair per ~20 stars, minimum 1) is an invented, reasonable density - the spec
-        /// doesn't state how many wormholes a galaxy should generate with.
+        /// Creates the galaxy's wormhole pairs - docs/behavior-specs-11/
+        /// fleet-movement-scanning-cargo.md "Wormhole lifecycle, complete rule" item 1. None at all
+        /// when "No Random Events" is set; otherwise the number of pairs is a uniform draw by
+        /// galaxy size (Tiny 0-2, Small 1-3, Medium 1-5, Large 3-6, Huge 4-8). Each end draws its
+        /// own base stability 0-2, starts at age 0 with empty masks, and takes a position from the
+        /// 100-draw placement rule (<see cref="WormholePlacement"/>). Must run after
+        /// GenerateStars() so there are real star positions to keep clear of.
         /// </summary>
         public void GenerateWormholes()
         {
-            const double minimumDistanceFromAnyObject = 30.0;
-            const int maxPlacementAttempts = 200;
+            if (GameSettings.Data.NoRandomEvents)
+            {
+                return;
+            }
 
-            int pairCount = Math.Max(1, serverState.AllStars.Count / 20);
+            // The galaxy-size index s (0 Tiny .. 4 Huge), the same reading RandomEventsStep uses:
+            // clamp(MapWidth / 400 - 1, 0, 4).
+            int sizeIndex = Math.Max(0, Math.Min(4, (GameSettings.Data.MapWidth / 400) - 1));
+            int minimumPairs = new[] { 0, 1, 1, 3, 4 }[sizeIndex];
+            int pairSpan = new[] { 3, 3, 5, 4, 5 }[sizeIndex];
+            int pairCount = minimumPairs + random.Next(pairSpan);
 
             for (int i = 0; i < pairCount; i++)
             {
-                Wormhole first = PlaceOneWormhole(minimumDistanceFromAnyObject, maxPlacementAttempts);
+                Wormhole first = PlaceOneWormhole(Global.Nobody);
                 if (first == null)
                 {
                     continue; // galaxy too crowded to fit another pair - stop trying for more
                 }
 
-                Wormhole second = PlaceOneWormhole(minimumDistanceFromAnyObject, maxPlacementAttempts);
+                Wormhole second = PlaceOneWormhole(first.Key);
                 if (second == null)
                 {
                     serverState.AllWormholes.Remove(first.Key);
@@ -319,48 +323,30 @@ namespace Nova.Server.NewGame
             }
         }
 
-        private Wormhole PlaceOneWormhole(double minimumDistanceFromAnyObject, int maxAttempts)
+        private Wormhole PlaceOneWormhole(long partnerKey)
         {
-            for (int attempt = 0; attempt < maxAttempts; attempt++)
+            int baseStability = random.Next(3); // uniform 0-2
+            NovaPoint position = WormholePlacement.DrawAnywhere(
+                random,
+                GameSettings.Data.MapWidth,
+                GameSettings.Data.MapHeight,
+                serverState.AllStars.Values,
+                serverState.AllWormholes.Values,
+                serverState.IterateAllFleets(),
+                partnerKey,
+                Global.Nobody);
+            if (position == null)
             {
-                NovaPoint candidate = new NovaPoint(random.Next(0, GameSettings.Data.MapWidth), random.Next(0, GameSettings.Data.MapHeight));
-
-                bool tooClose = false;
-                foreach (Star star in serverState.AllStars.Values)
-                {
-                    if (PointUtilities.Distance(candidate, star.Position) < minimumDistanceFromAnyObject)
-                    {
-                        tooClose = true;
-                        break;
-                    }
-                }
-
-                if (!tooClose)
-                {
-                    foreach (Wormhole existing in serverState.AllWormholes.Values)
-                    {
-                        if (PointUtilities.Distance(candidate, existing.Position) < minimumDistanceFromAnyObject)
-                        {
-                            tooClose = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (tooClose)
-                {
-                    continue;
-                }
-
-                Wormhole wormhole = new Wormhole();
-                wormhole.Key = nextWormholeKey++;
-                wormhole.Position = candidate;
-                wormhole.StabilityTier = random.Next(7); // 0 (Rock Solid) - 6 (Very Unstable)
-                serverState.AllWormholes.Add(wormhole.Key, wormhole);
-                return wormhole;
+                return null;
             }
 
-            return null;
+            Wormhole wormhole = new Wormhole();
+            wormhole.Key = nextWormholeKey++;
+            wormhole.Position = position;
+            wormhole.BaseStability = baseStability;
+            wormhole.Age = 0;
+            serverState.AllWormholes.Add(wormhole.Key, wormhole);
+            return wormhole;
         }
 
         private long nextWormholeKey = 1;

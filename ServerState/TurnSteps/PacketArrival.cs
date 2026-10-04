@@ -47,8 +47,10 @@ namespace Nova.Server.TurnSteps
     ///   are 0, never more than built. Messages 214/215 (driver), 216/217 (none).</item>
     /// </list>
     /// When the starbase carries a mass driver and the packet's owner is Packet Physics, the owner
-    /// learns that starbase's design. The Packet Physics terraform-on-arrival chance (messages
-    /// 305-308) is NOT implemented: the spec gives no rule (spec gap).
+    /// learns that starbase's design. The Packet Physics terraform-on-arrival chance (production-
+    /// queue.md §10m, messages 305-308) runs after the deposit and before the damage, for any
+    /// planet owned or not, whenever the sender is Packet Physics and the packet is not fully
+    /// caught.
     /// </summary>
     public static class PacketArrival
     {
@@ -103,6 +105,11 @@ namespace Nova.Server.TurnSteps
                     + deposited + "kT of minerals.");
                 return;
             }
+
+            // Packet Physics terraforming on arrival (production-queue.md 10m): after the deposit,
+            // before the damage, when the sender is Packet Physics and the packet was not fully
+            // caught. It applies to any planet, owned or not.
+            ApplyPacketTerraforming(serverState, packet, star, caught, random);
 
             int damage = MineralPacketRules.RawDamage(speed, strength, totalKilotons);
 
@@ -184,6 +191,191 @@ namespace Nova.Server.TurnSteps
             }
 
             PacketLaunch.Post(serverState, star.Owner, text);
+        }
+
+        /// <summary>
+        /// Packet Physics terraforming on arrival (behavior-specs-11/production-queue.md 10m,
+        /// FUN_10b0_0f9a): when the sender is Packet Physics and the packet was not fully caught,
+        /// each uncaught mineral amount drives one environment axis (Ironium gravity, Boranium
+        /// temperature, Germanium radiation), each handled completely before the next. Per 100 kT
+        /// chunk a 0-199 roll below the chunk size scores an ordinary hit and a further 0-9 roll of
+        /// 0 makes it permanent. Permanent hits move the planet's ORIGINAL value towards the
+        /// sender's ideal (or, when the sender is immune, towards the nearer end); ordinary hits
+        /// then move the CURRENT value towards the sender's own terraform target (or, when immune,
+        /// by half the hits towards the nearer end). Messages 305/307 go to the sender; per the
+        /// spec's reimplementation note their owner-addressed twins 306/308 go to the planet owner.
+        /// </summary>
+        private static void ApplyPacketTerraforming(ServerData serverState, MineralPacket packet, Star star, int caught, Random random)
+        {
+            if (!serverState.AllEmpires.TryGetValue(packet.Owner, out EmpireData sender)
+                || sender.Race == null || !sender.Race.HasTrait("PP"))
+            {
+                return;
+            }
+
+            TerraformReach reach = TerraformReach.For(sender);
+            int[] minerals = { packet.Minerals.Ironium, packet.Minerals.Boranium, packet.Minerals.Germanium };
+
+            for (int axis = 0; axis < TerraformReach.AxisCount; axis++)
+            {
+                int uncaught = minerals[axis] * (1000 - caught) / 1000;
+                if (uncaught <= 0)
+                {
+                    continue;
+                }
+
+                int hits = 0;
+                int permanent = 0;
+                int remaining = uncaught;
+                while (remaining > 0)
+                {
+                    int chunk = Math.Min(remaining, 100);
+                    if (random.Next(200) < chunk)
+                    {
+                        hits++;
+                        if (random.Next(10) == 0)
+                        {
+                            permanent++;
+                        }
+                    }
+
+                    remaining -= chunk;
+                }
+
+                EnvironmentTolerance tolerance = Tolerance(sender.Race, axis);
+                if (tolerance == null)
+                {
+                    continue;
+                }
+
+                int ideal = tolerance.OptimumLevel;
+
+                if (permanent > 0)
+                {
+                    int original = OriginalValue(star, axis);
+                    int moved;
+                    if (tolerance.Immune)
+                    {
+                        int direction = original < 50 ? -1 : 1;
+                        moved = Math.Max(1, Math.Min(99, original + (direction * permanent)));
+                    }
+                    else
+                    {
+                        moved = ideal > original ? Math.Min(ideal, original + permanent)
+                            : ideal < original ? Math.Max(ideal, original - permanent)
+                            : original;
+                    }
+
+                    if (moved != original)
+                    {
+                        SetOriginalValue(star, axis, moved);
+                        PostTerraform(serverState, packet, star, axis, permanentChange: true);
+                    }
+                }
+
+                if (hits > 0)
+                {
+                    int original = OriginalValue(star, axis);
+                    int current = CurrentValue(star, axis);
+                    int moved = current;
+
+                    if (tolerance.Immune)
+                    {
+                        int direction = original < 50 ? -1 : 1;
+                        moved = Math.Max(1, Math.Min(99, current + (direction * (hits / 2))));
+                    }
+                    else
+                    {
+                        int target = TerraformProductionUnit.AxisTarget(sender.Race, axis, original, reach[axis]);
+                        if (target >= 0)
+                        {
+                            if (target > current)
+                            {
+                                moved = Math.Min(target, current + hits);
+                            }
+                            else if (target < current)
+                            {
+                                moved = Math.Max(target, current - hits);
+                            }
+                        }
+                    }
+
+                    if (moved != current)
+                    {
+                        SetCurrentValue(star, axis, moved);
+                        PostTerraform(serverState, packet, star, axis, permanentChange: false);
+                    }
+                }
+            }
+        }
+
+        private static void PostTerraform(ServerData serverState, MineralPacket packet, Star star, int axis, bool permanentChange)
+        {
+            string axisName = axis == TerraformReach.GravityAxis ? "gravity"
+                : axis == TerraformReach.TemperatureAxis ? "temperature"
+                : "radiation";
+            string text = "A Packet Physics mineral packet " + (permanentChange ? "permanently " : string.Empty)
+                + "changed " + star.Name + "'s " + axisName + ".";
+            PacketLaunch.Post(serverState, packet.Owner, text);
+            if (star.Owner != Global.Nobody && star.Owner != packet.Owner)
+            {
+                PacketLaunch.Post(serverState, star.Owner, text);
+            }
+        }
+
+        private static EnvironmentTolerance Tolerance(Race race, int axis)
+        {
+            if (race == null)
+            {
+                return null;
+            }
+
+            switch (axis)
+            {
+                case TerraformReach.GravityAxis: return race.GravityTolerance;
+                case TerraformReach.TemperatureAxis: return race.TemperatureTolerance;
+                default: return race.RadiationTolerance;
+            }
+        }
+
+        private static int CurrentValue(Star star, int axis)
+        {
+            switch (axis)
+            {
+                case TerraformReach.GravityAxis: return star.Gravity;
+                case TerraformReach.TemperatureAxis: return star.Temperature;
+                default: return star.Radiation;
+            }
+        }
+
+        private static int OriginalValue(Star star, int axis)
+        {
+            switch (axis)
+            {
+                case TerraformReach.GravityAxis: return star.OriginalGravity;
+                case TerraformReach.TemperatureAxis: return star.OriginalTemperature;
+                default: return star.OriginalRadiation;
+            }
+        }
+
+        private static void SetCurrentValue(Star star, int axis, int value)
+        {
+            switch (axis)
+            {
+                case TerraformReach.GravityAxis: star.Gravity = value; break;
+                case TerraformReach.TemperatureAxis: star.Temperature = value; break;
+                default: star.Radiation = value; break;
+            }
+        }
+
+        private static void SetOriginalValue(Star star, int axis, int value)
+        {
+            switch (axis)
+            {
+                case TerraformReach.GravityAxis: star.OriginalGravity = value; break;
+                case TerraformReach.TemperatureAxis: star.OriginalTemperature = value; break;
+                default: star.OriginalRadiation = value; break;
+            }
         }
 
         /// <summary>

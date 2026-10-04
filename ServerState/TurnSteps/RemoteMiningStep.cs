@@ -71,6 +71,28 @@ namespace Nova.Server.TurnSteps
                         continue;
                     }
 
+                    serverState.AllEmpires.TryGetValue(fleet.Owner, out EmpireData miningEmpire);
+                    Race miningRace = miningEmpire?.Race;
+
+                    // Remote-mining eligibility (behavior-specs-11/population-growth.md section 5,
+                    // "Which planets carry the home-world bit, and who gets the floor"): the task
+                    // pass refuses remote mining of any inhabited planet by a non-AR fleet (message
+                    // 118, order cancelled) and does nothing for an AR fleet at a planet it does
+                    // not own. This port has no Remote-Mining order object to cancel, so an
+                    // ineligible fleet simply does not mine.
+                    bool miningIsAlternateReality = miningRace != null && miningRace.HasTrait("AR");
+                    if (miningIsAlternateReality)
+                    {
+                        if (star.Owner != fleet.Owner)
+                        {
+                            continue; // AR mines only planets it owns
+                        }
+                    }
+                    else if (star.Owner != Global.Nobody)
+                    {
+                        continue; // non-AR remote mining is refused at any inhabited planet
+                    }
+
                     // The depletion-threshold side of mining scales with the MINING race's own
                     // efficiency (Star.KtToDropOnePoint), not the star owner's (this fleet may be
                     // mining an unowned or foreign star) - see Star.MineForFleet's own comment.
@@ -78,8 +100,6 @@ namespace Nova.Server.TurnSteps
                     // real race file) falls back to the baseline 10, same as Star.Mine - a genuine
                     // 0 would make KtToDropOnePoint return 0, collapsing concentration to 1 in a
                     // single application.
-                    serverState.AllEmpires.TryGetValue(fleet.Owner, out EmpireData miningEmpire);
-                    Race miningRace = miningEmpire?.Race;
                     int mineProductionRate = miningRace != null && miningRace.MineProductionRate > 0 ? miningRace.MineProductionRate : 10;
                     int yieldFloor = star.RemoteMiningYieldConcentrationFloor();
 

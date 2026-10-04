@@ -138,7 +138,10 @@ namespace Nova.Server
         /// whose target is gone becomes a deep-space point. Only then is arrival tested: a fleet
         /// standing on its fleet-targeted waypoint 1 has arrived, the waypoint becomes waypoint 0,
         /// its task runs, and it becomes a planet or deep-space point unless its task is Transport
-        /// or Merge with Fleet. A reached intercept leg is never recycled by Repeat Orders.
+        /// or Merge with Fleet. Repeat Orders re-appends a reached non-Patrol leg (a pending Patrol
+        /// intercept is not recycled), under the same count and last-point tests as an ordinary
+        /// arrival (behavior-specs-11/fleet-movement-scanning-cargo.md §5, "Arrival and Repeat
+        /// Orders").
         /// </summary>
         public void RefreshAndResolveArrivals()
         {
@@ -184,6 +187,19 @@ namespace Nova.Server
 
         private void Arrive(Fleet fleet, Waypoint reached)
         {
+            // Repeat Orders: the reached leg is re-appended (with its task, settings, warp and
+            // target as they stood) unless it is a pending Patrol intercept, unless fewer than
+            // three waypoints remain, or unless the last waypoint stands on the same point. The
+            // copy is taken before the arrival conversion below.
+            bool patrolIntercept = reached.IsFleetTarget && reached.Task is PatrolTask;
+            Waypoint recycled = null;
+            if (fleet.RepeatOrders && !patrolIntercept && fleet.Waypoints.Count >= 3
+                && fleet.Waypoints[fleet.Waypoints.Count - 1].Position != reached.Position)
+            {
+                recycled = reached.CloneWithTask();
+                recycled.WarpFactor = reached.WarpFactor;
+            }
+
             // The reached leg becomes waypoint 0 (the current-position placeholder goes).
             fleet.Waypoints.RemoveAt(0);
 
@@ -234,6 +250,11 @@ namespace Nova.Server
             }
 
             reached.WarpFactor = 0;
+
+            if (recycled != null)
+            {
+                fleet.Waypoints.Add(recycled);
+            }
         }
 
         /// <summary>

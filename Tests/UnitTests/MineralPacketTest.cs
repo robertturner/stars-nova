@@ -858,5 +858,131 @@ namespace Nova.Tests.UnitTests
             Assert.IsNotNull(origin.Starbase);
             Assert.AreEqual(7, origin.PacketWarp);
         }
+
+        // ------------------------------------------------------------------ PP terraforming on arrival (§10m)
+
+        private static void GiveTotalTerraform(EmpireData empire, int amount)
+        {
+            Component part = new Component { Name = "Total ±" + amount, Type = ItemType.Terraforming };
+            empire.AvailableComponents.Add(part);
+        }
+
+        private static Star TerraformTarget(string name, ushort owner, Race race)
+        {
+            Star star = MakeStar(name, 100, 0, owner, race);
+            star.Gravity = star.OriginalGravity = 20;
+            star.Temperature = star.OriginalTemperature = 30;
+            star.Radiation = star.OriginalRadiation = 40;
+            return star;
+        }
+
+        // The spec's worked example: a PP race with Total Terraform ±10 sends 250 kT of Germanium
+        // at warp 9 to a driverless planet; radiation original/current 40, ideal 60. Chunks 100,
+        // 100, 50; suppose two hits, one permanent: the original moves 40 -> 41 (305), the target
+        // is then 31-51 -> 51, and the current moves 40 -> 42 (307).
+        [Test]
+        public void Arrival_PacketPhysics_TerraformsOnArrival_WorkedExample()
+        {
+            EmpireData sender = NewEmpire(1, NewRace("PP"));
+            GiveTotalTerraform(sender, 10);
+            sender.Race.RadiationTolerance.MinimumValue = 40;
+            sender.Race.RadiationTolerance.MaximumValue = 80; // optimum 60
+            ServerData server = NewServer(sender);
+            Star target = TerraformTarget("Tierra", (ushort)Global.Nobody, null);
+            server.AllStars.Add(target.Name, target);
+
+            MineralPacket packet = new MineralPacket
+            {
+                Key = PacketLaunch.NextPacketKey(server, 1),
+                Minerals = new Resources(0, 0, 250, 0),
+                Warp = 9,
+                TargetName = target.Name,
+                Destination = new NovaPoint(target.Position),
+            };
+
+            // Radiation rolls, after the (empty) gravity and temperature axes: hit+permanent,
+            // hit+ordinary, miss.
+            PacketArrival.Arrive(server, packet, new ScriptedRandom(0, 0, 0, 1, 199));
+
+            Assert.AreEqual(41, target.OriginalRadiation, "the permanent hit moved the natural value");
+            Assert.AreEqual(42, target.Radiation, "the two ordinary hits moved the current value");
+            Assert.That(Texts(server), Has.Some.Contains("permanently changed Tierra's radiation"));
+            Assert.That(Texts(server), Has.Some.Contains("changed Tierra's radiation"));
+        }
+
+        [Test]
+        public void Arrival_NonPacketPhysicsSender_DoesNotTerraform()
+        {
+            EmpireData sender = NewEmpire(1, NewRace("JOAT"));
+            GiveTotalTerraform(sender, 10);
+            ServerData server = NewServer(sender);
+            Star target = TerraformTarget("Tierra", (ushort)Global.Nobody, null);
+            server.AllStars.Add(target.Name, target);
+
+            MineralPacket packet = new MineralPacket
+            {
+                Key = PacketLaunch.NextPacketKey(server, 1),
+                Minerals = new Resources(0, 0, 250, 0),
+                Warp = 9,
+                TargetName = target.Name,
+                Destination = new NovaPoint(target.Position),
+            };
+
+            PacketArrival.Arrive(server, packet, new ScriptedRandom(0, 0, 0, 1, 199));
+
+            Assert.AreEqual(40, target.OriginalRadiation);
+            Assert.AreEqual(40, target.Radiation);
+        }
+
+        [Test]
+        public void Arrival_FullCatch_DoesNotTerraform()
+        {
+            EmpireData sender = NewEmpire(1, NewRace("PP"));
+            GiveTotalTerraform(sender, 10);
+            ServerData server = NewServer(sender);
+            Star target = TerraformTarget("Tierra", (ushort)Global.Nobody, null);
+            target.Starbase = MakeStarbase(1, 1, 9);
+            server.AllStars.Add(target.Name, target);
+
+            MineralPacket packet = new MineralPacket
+            {
+                Key = PacketLaunch.NextPacketKey(server, 1),
+                Minerals = new Resources(0, 0, 250, 0),
+                Warp = 9,
+                TargetName = target.Name,
+                Destination = new NovaPoint(target.Position),
+            };
+
+            PacketArrival.Arrive(server, packet, new ScriptedRandom(0, 0));
+
+            Assert.AreEqual(40, target.OriginalRadiation);
+            Assert.AreEqual(40, target.Radiation, "a fully caught packet does not terraform");
+        }
+
+        [Test]
+        public void Arrival_PacketPhysics_ImmuneAxis_MovesCurrentByHalfTheHits()
+        {
+            EmpireData sender = NewEmpire(1, NewRace("PP"));
+            sender.Race.RadiationTolerance.Immune = true;
+            ServerData server = NewServer(sender);
+            Star target = TerraformTarget("Tierra", (ushort)Global.Nobody, null);
+            server.AllStars.Add(target.Name, target);
+
+            MineralPacket packet = new MineralPacket
+            {
+                Key = PacketLaunch.NextPacketKey(server, 1),
+                Minerals = new Resources(0, 0, 200, 0),
+                Warp = 9,
+                TargetName = target.Name,
+                Destination = new NovaPoint(target.Position),
+            };
+
+            // Two 100-kT chunks, two ordinary hits, no permanent: floor(2 / 2) = 1 point, and the
+            // original value 40 is below 50, so the current moves down (40 -> 39).
+            PacketArrival.Arrive(server, packet, new ScriptedRandom(0, 1, 0, 1));
+
+            Assert.AreEqual(40, target.OriginalRadiation);
+            Assert.AreEqual(39, target.Radiation);
+        }
     }
 }

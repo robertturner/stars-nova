@@ -26,6 +26,7 @@ namespace Nova.Server.TurnSteps
 
     using Nova.Common;
     using Nova.Common.Waypoints;
+    using Nova.Server.NewGame;
 
     /// <summary>
     /// The waypoint-task pass's final mode (behavior-specs-10/turn-generation-engine.md §1 step 23h;
@@ -54,13 +55,21 @@ namespace Nova.Server.TurnSteps
                 task.Messages.Clear();
 
                 serverState.AllEmpires.TryGetValue(task.RecipientId, out EmpireData recipient);
+                bool recipientIsComputer = recipient != null && IsComputer(serverState, recipient.Id);
 
                 // The task is settled either way (on success the source fleet is gone).
                 current.Task = new NoTask();
-                task.Transfer(fleet, sender, recipient);
+                task.Transfer(fleet, sender, recipient, recipientIsComputer);
 
                 serverState.AllMessages.AddRange(task.Messages);
             }
+        }
+
+        /// <summary>True when the player slot is a computer player (fleet-movement §5: a computer recipient refuses the gift, message 332).</summary>
+        private static bool IsComputer(ServerData serverState, ushort playerId)
+        {
+            PlayerSettings settings = serverState.AllPlayers.FirstOrDefault(player => player.PlayerNumber == playerId);
+            return settings != null && !Gameinitializer.IsHumanPlayer(settings);
         }
     }
 }

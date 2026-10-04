@@ -164,5 +164,93 @@ namespace Nova.Tests.UnitTests
             Assert.AreEqual(0, scout.Cargo.Mass);
             Assert.AreEqual(0, star.MineralMiningProgress.Ironium);
         }
+
+        [Test]
+        public void Process_NonArFleetAtAnInhabitedPlanet_DoesNotMine()
+        {
+            // behavior-specs-11/population-growth.md section 5: the task pass refuses remote
+            // mining of any inhabited planet by a non-AR fleet (message 118, order cancelled).
+            ServerData serverData = new ServerData();
+
+            Star star = new Star();
+            star.Name = "Colony";
+            star.Owner = 2;        // inhabited by another empire
+            star.Colonists = 1000;
+            star.MineralConcentration = new Resources(50, 50, 50, 0);
+            star.MineralMiningProgress = new Resources();
+            serverData.AllStars.Add(star.Key, star);
+
+            EmpireData empire = new EmpireData();
+            empire.Id = 1;
+            serverData.AllEmpires.Add(empire.Id, empire);
+
+            Fleet fleet = MakeMiningFleet(1, 1, mineEquivalents: 100, cargoCapacity: 1000);
+            fleet.InOrbit = star;
+            empire.AddOrUpdateFleet(fleet);
+
+            new RemoteMiningStep().Process(serverData);
+
+            Assert.AreEqual(0, fleet.Cargo.Mass, "a non-AR fleet is refused at an inhabited planet");
+            Assert.AreEqual(0, star.MineralMiningProgress.Ironium, "the concentration is untouched");
+        }
+
+        [Test]
+        public void Process_ArFleetAtItsOwnPlanet_Mines()
+        {
+            ServerData serverData = new ServerData();
+
+            Star star = new Star();
+            star.Name = "AR Home";
+            star.Owner = 1;
+            star.Colonists = 1000;
+            star.MineralConcentration = new Resources(50, 50, 50, 0);
+            star.MineralMiningProgress = new Resources();
+            serverData.AllStars.Add(star.Key, star);
+
+            EmpireData empire = new EmpireData();
+            empire.Id = 1;
+            empire.Race = new Race();
+            empire.Race.Traits.SetPrimary("AR");
+            serverData.AllEmpires.Add(empire.Id, empire);
+
+            Fleet fleet = MakeMiningFleet(1, 1, mineEquivalents: 100, cargoCapacity: 1000);
+            fleet.InOrbit = star;
+            empire.AddOrUpdateFleet(fleet);
+
+            new RemoteMiningStep().Process(serverData);
+
+            Assert.AreEqual(50, fleet.Cargo.Ironium, "an AR fleet may remote-mine its own worlds");
+            Assert.AreEqual(50, fleet.Cargo.Boranium);
+            Assert.AreEqual(50, fleet.Cargo.Germanium);
+        }
+
+        [Test]
+        public void Process_ArFleetAtAPlanetItDoesNotOwn_DoesNotMine()
+        {
+            ServerData serverData = new ServerData();
+
+            Star star = new Star();
+            star.Name = "Somebody Else's";
+            star.Owner = 2;
+            star.Colonists = 1000;
+            star.MineralConcentration = new Resources(50, 50, 50, 0);
+            star.MineralMiningProgress = new Resources();
+            serverData.AllStars.Add(star.Key, star);
+
+            EmpireData empire = new EmpireData();
+            empire.Id = 1;
+            empire.Race = new Race();
+            empire.Race.Traits.SetPrimary("AR");
+            serverData.AllEmpires.Add(empire.Id, empire);
+
+            Fleet fleet = MakeMiningFleet(1, 1, mineEquivalents: 100, cargoCapacity: 1000);
+            fleet.InOrbit = star;
+            empire.AddOrUpdateFleet(fleet);
+
+            new RemoteMiningStep().Process(serverData);
+
+            Assert.AreEqual(0, fleet.Cargo.Mass, "an AR fleet mines only planets it owns");
+            Assert.AreEqual(0, star.MineralMiningProgress.Ironium);
+        }
     }
 }

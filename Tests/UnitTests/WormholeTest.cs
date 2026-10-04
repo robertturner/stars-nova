@@ -38,22 +38,46 @@ namespace Nova.Tests.UnitTests
     [TestFixture]
     public class WormholeTest
     {
+        /// <summary>
+        /// A deterministic Random: Next(max) is always 0 and Next(min, max) is always min, so the
+        /// tier roll is 0 and every drawn offset is the minimum. This forces a jump for any
+        /// positive tier and, for tier 0, an ordinary drift of -12 on each axis.
+        /// </summary>
+        private class ZeroRandom : Random
+        {
+            public override int Next(int maxValue)
+            {
+                return 0;
+            }
+
+            public override int Next(int minValue, int maxValue)
+            {
+                return minValue;
+            }
+        }
+
         [SetUp]
         public void SetUp()
         {
             GameSettings.Data.MapWidth = 400;
             GameSettings.Data.MapHeight = 400;
+            GameSettings.Data.NoRandomEvents = false;
+            GameSettings.Data.UseGalaxyPresets = false;
         }
 
         [Test]
         public void GenerateWormholes_PlacesLinkedPairs_AwayFromEveryStar()
         {
+            // Medium (index 2) so at least one pair is always created.
+            GameSettings.Data.MapWidth = 1200;
+            GameSettings.Data.MapHeight = 1200;
+
             ServerData serverData = new ServerData();
             for (int i = 0; i < 40; i++)
             {
                 Star star = new Star();
                 star.Name = "Star" + i;
-                star.Position = new NovaPoint((i * 37) % 400, (i * 53) % 400);
+                star.Position = new NovaPoint((i * 37) % 1200, (i * 53) % 1200);
                 serverData.AllStars.Add(star.Key, star);
             }
 
@@ -70,10 +94,157 @@ namespace Nova.Tests.UnitTests
 
                 foreach (Star star in serverData.AllStars.Values)
                 {
-                    Assert.GreaterOrEqual(PointUtilities.Distance(wormhole.Position, star.Position), 30.0,
-                        "A wormhole must not be placed on top of a star's gravity well");
+                    // A score-0 placement is at least 28 ly from every planet.
+                    Assert.GreaterOrEqual(PointUtilities.Distance(wormhole.Position, star.Position), 28.0,
+                        "A wormhole must not be placed inside a star's gravity well");
                 }
             }
+        }
+
+        [Test]
+        public void GenerateWormholes_NoRandomEvents_CreatesNone()
+        {
+            GameSettings.Data.NoRandomEvents = true;
+            ServerData serverData = new ServerData();
+
+            new StarMapinitializer(serverData, new Random(1)).GenerateWormholes();
+
+            Assert.IsEmpty(serverData.AllWormholes, "No wormholes exist under No Random Events");
+        }
+
+        [Test]
+        public void GenerateWormholes_PairCountFollowsTheGalaxySizeTable()
+        {
+            // Pair counts: Tiny 0-2, Small 1-3, Medium 1-5, Large 3-6, Huge 4-8.
+            int[] minimumPairs = { 0, 1, 1, 3, 4 };
+            int[] pairSpan = { 3, 3, 5, 4, 5 };
+
+            for (int sizeIndex = 0; sizeIndex < 5; sizeIndex++)
+            {
+                GameSettings.Data.MapWidth = 400 * (sizeIndex + 1);
+                GameSettings.Data.MapHeight = GameSettings.Data.MapWidth;
+
+                for (int seed = 0; seed < 40; seed++)
+                {
+                    ServerData serverData = new ServerData();
+                    new StarMapinitializer(serverData, new Random(seed)).GenerateWormholes();
+
+                    int pairs = serverData.AllWormholes.Count / 2;
+                    Assert.GreaterOrEqual(pairs, minimumPairs[sizeIndex]);
+                    Assert.LessOrEqual(pairs, minimumPairs[sizeIndex] + pairSpan[sizeIndex] - 1);
+                }
+            }
+        }
+
+        [Test]
+        public void StabilityTier_IsBasePlusAgeOverFiveMinusTwo()
+        {
+            Wormhole wormhole = new Wormhole { BaseStability = 0, Age = 0 };
+            Assert.AreEqual(0, wormhole.StabilityTier, "base 0 age 0 is clamped up to 0");
+
+            wormhole = new Wormhole { BaseStability = 2, Age = 0 };
+            Assert.AreEqual(0, wormhole.StabilityTier, "base 2 age 0 is tier 0");
+
+            wormhole = new Wormhole { BaseStability = 2, Age = 5 };
+            Assert.AreEqual(1, wormhole.StabilityTier);
+
+            wormhole = new Wormhole { BaseStability = 0, Age = 15 };
+            Assert.AreEqual(1, wormhole.StabilityTier, "base 0 reaches tier 1 at age 15");
+
+            wormhole = new Wormhole { BaseStability = 2, Age = 30 };
+            Assert.AreEqual(6, wormhole.StabilityTier, "base 2 reaches tier 6 at age 30");
+
+            wormhole = new Wormhole { BaseStability = 0, Age = 40 };
+            Assert.AreEqual(6, wormhole.StabilityTier, "base 0 reaches tier 6 at age 40");
+
+            wormhole = new Wormhole { BaseStability = 2, Age = 1000 };
+            Assert.AreEqual(6, wormhole.StabilityTier, "the tier clamps at 6");
+        }
+
+        [Test]
+        public void PlacementScore_UsesTheSpecifiedSquaredDistanceTiers()
+        {
+            List<Star> planets = new List<Star> { new Star { Position = new NovaPoint(100, 100) } };
+
+            // Exactly on a planet is unusable.
+            Assert.AreEqual(WormholePlacement.OutsideGalaxyScore,
+                WormholePlacement.Score(new NovaPoint(100, 100), 400, 400, planets, null, null, 0, 0));
+
+            // Planet tiers: 8 < 25, 4 < 100, 2 < 400, 1 < 784.
+            Assert.AreEqual(8, WormholePlacement.Score(new NovaPoint(104, 100), 400, 400, planets, null, null, 0, 0));
+            Assert.AreEqual(4, WormholePlacement.Score(new NovaPoint(109, 100), 400, 400, planets, null, null, 0, 0));
+            Assert.AreEqual(2, WormholePlacement.Score(new NovaPoint(119, 100), 400, 400, planets, null, null, 0, 0));
+            Assert.AreEqual(1, WormholePlacement.Score(new NovaPoint(127, 100), 400, 400, planets, null, null, 0, 0));
+            Assert.AreEqual(0, WormholePlacement.Score(new NovaPoint(128, 100), 400, 400, planets, null, null, 0, 0));
+
+            // The partner end has wider tiers: 8 < 25, 4 < 100, 2 < 900, 1 < 4,900.
+            List<Wormhole> ends = new List<Wormhole>
+            {
+                new Wormhole { Key = 2, Position = new NovaPoint(200, 100) }
+            };
+            Assert.AreEqual(8, WormholePlacement.Score(new NovaPoint(204, 100), 400, 400, null, ends, null, 2, 1));
+            Assert.AreEqual(4, WormholePlacement.Score(new NovaPoint(209, 100), 400, 400, null, ends, null, 2, 1));
+            Assert.AreEqual(2, WormholePlacement.Score(new NovaPoint(229, 100), 400, 400, null, ends, null, 2, 1));
+            Assert.AreEqual(1, WormholePlacement.Score(new NovaPoint(260, 100), 400, 400, null, ends, null, 2, 1));
+
+            // Every other end has tighter tiers: 8 < 16, 4 < 64, 2 < 225, 1 < 900.
+            Assert.AreEqual(8, WormholePlacement.Score(new NovaPoint(203, 100), 400, 400, null, ends, null, 99, 1));
+            Assert.AreEqual(4, WormholePlacement.Score(new NovaPoint(207, 100), 400, 400, null, ends, null, 99, 1));
+            Assert.AreEqual(2, WormholePlacement.Score(new NovaPoint(214, 100), 400, 400, null, ends, null, 99, 1));
+            Assert.AreEqual(1, WormholePlacement.Score(new NovaPoint(229, 100), 400, 400, null, ends, null, 99, 1));
+
+            // Within 10 ly of an edge adds 4; outside the galaxy is unusable.
+            Assert.AreEqual(4, WormholePlacement.Score(new NovaPoint(5, 200), 400, 400, null, null, null, 0, 0));
+            Assert.AreEqual(WormholePlacement.OutsideGalaxyScore,
+                WormholePlacement.Score(new NovaPoint(-1, 200), 400, 400, null, null, null, 0, 0));
+        }
+
+        [Test]
+        public void WormholeJump_ClearsLocatedAndResetsTheAge()
+        {
+            ServerData serverData = new ServerData();
+            Wormhole wormhole = new Wormhole
+            {
+                Key = 1,
+                PairedKey = 2,
+                Position = new NovaPoint(200, 200),
+                BaseStability = 2,
+                Age = 5
+            };
+            wormhole.Located.Add(5);
+            serverData.AllWormholes.Add(wormhole.Key, wormhole);
+
+            new WormholeDriftStep(new ZeroRandom()).Process(serverData);
+
+            // Tier 1 and a 0 roll: it jumped.
+            Assert.AreEqual(new NovaPoint(0, 0), wormhole.Position, "a jump relocates the end anywhere");
+            Assert.AreEqual(0, wormhole.Age, "a jump resets the age");
+            Assert.AreEqual(2, wormhole.BaseStability, "a jump keeps the base");
+            Assert.IsFalse(wormhole.IsLocatedBy(5), "a jump clears every located bit");
+        }
+
+        [Test]
+        public void WormholeDrift_AgesAndMovesAtMostTwelveLightYearsPerAxis()
+        {
+            ServerData serverData = new ServerData();
+            Wormhole wormhole = new Wormhole
+            {
+                Key = 1,
+                PairedKey = 2,
+                Position = new NovaPoint(200, 200),
+                BaseStability = 0,
+                Age = 0
+            };
+            wormhole.Located.Add(5);
+            serverData.AllWormholes.Add(wormhole.Key, wormhole);
+
+            new WormholeDriftStep(new ZeroRandom()).Process(serverData);
+
+            // Tier 0 and a 0 roll (not below 0): it ages and drifts, -12 on each axis here.
+            Assert.AreEqual(1, wormhole.Age);
+            Assert.LessOrEqual(Math.Abs(wormhole.Position.X - 200), 12);
+            Assert.LessOrEqual(Math.Abs(wormhole.Position.Y - 200), 12);
+            Assert.IsTrue(wormhole.IsLocatedBy(5), "a drift is silent and keeps the located bit");
         }
 
         [Test]
@@ -84,7 +255,8 @@ namespace Nova.Tests.UnitTests
             wormhole.Key = 1;
             wormhole.PairedKey = 1; // self-paired is fine for this test - only position matters
             wormhole.Position = new NovaPoint(5, 395); // near two edges at once
-            wormhole.StabilityTier = 6; // "Very Unstable" - drifts most often and furthest
+            wormhole.BaseStability = 2;
+            wormhole.Age = 30; // tier 6 - "Very Unstable", jumps at 6%
             serverData.AllWormholes.Add(wormhole.Key, wormhole);
 
             WormholeDriftStep driftStep = new WormholeDriftStep();

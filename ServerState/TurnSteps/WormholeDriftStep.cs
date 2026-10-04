@@ -22,20 +22,20 @@
 namespace Nova.Server.TurnSteps
 {
     using System;
+    using System.Collections.Generic;
+    using System.Linq;
 
     using Nova.Common;
+    using Nova.Common.DataStructures;
 
     /// <summary>
-    /// Each Wormhole end "independently drifts a little every year" - docs/behavior-specs-4/
-    /// fleet-movement-scanning-cargo.md's "Wormholes" section, whose own stability scale (0
-    /// "Rock Solid" - 6 "Very Unstable") is confirmed but whose exact per-tier drift chance/
-    /// magnitude and full placement-rescoring-on-relocation are not ("compared against a 0-99
-    /// random roll to decide whether the object moves this year... a new candidate position is
-    /// picked... re-validated before committing"). This is a disclosed simplification of that:
-    /// a linear, tier-scaled chance-to-drift and a small random nudge clamped to the map bounds,
-    /// without re-running the full minimum-distance placement check StarMapinitializer.
-    /// GenerateWormholes uses when a wormhole is first created - acceptable for a cosmetic yearly
-    /// wobble, unlike initial placement where landing on top of a star would matter a lot more.
+    /// The yearly wormhole step (behavior-specs-11/fleet-movement-scanning-cargo.md "Wormhole
+    /// lifecycle, complete rule" item 4, turn-generation step 21 mode 1): every end separately, in
+    /// table order. A 0-99 roll below the end's stability tier makes it jump - the located mask is
+    /// cleared for every race, the age resets to 0 (the base is kept) and the end is placed
+    /// anywhere in the galaxy by the 100-draw rule. Otherwise the age goes up by 1 and the end
+    /// drifts up to 12 ly per axis by the same rule. The traversed mask and the pairing are never
+    /// cleared, and no wormhole ever disappears.
     /// </summary>
     public class WormholeDriftStep : ITurnStep
     {
@@ -57,23 +57,38 @@ namespace Nova.Server.TurnSteps
         {
             Random random = injectedRandom ?? serverState.CreateRandom("WormholeDrift");
 
+            int mapWidth = GameSettings.Data.MapWidth;
+            int mapHeight = GameSettings.Data.MapHeight;
+            List<Star> planets = serverState.AllStars.Values.ToList();
+            List<Wormhole> ends = serverState.AllWormholes.Values.ToList();
+            List<Fleet> fleets = serverState.IterateAllFleets().ToList();
+
             foreach (Wormhole wormhole in serverState.AllWormholes.Values)
             {
-                int driftChancePercent = Math.Min(70, (wormhole.StabilityTier + 1) * 10);
-                if (random.Next(100) >= driftChancePercent)
+                if (random.Next(100) < wormhole.StabilityTier)
                 {
+                    // Jump: clears every race's located bit, resets the age (base kept) and
+                    // relocates the end anywhere in the galaxy.
+                    wormhole.Located.Clear();
+                    wormhole.Age = 0;
+                    NovaPoint jump = WormholePlacement.DrawAnywhere(
+                        random, mapWidth, mapHeight, planets, ends, fleets, wormhole.PairedKey, wormhole.Key);
+                    if (jump != null)
+                    {
+                        wormhole.Position = jump;
+                    }
+
                     continue;
                 }
 
-                int driftMagnitude = 5 + (wormhole.StabilityTier * 3);
-                wormhole.Position.X = Clamp(wormhole.Position.X + random.Next(-driftMagnitude, driftMagnitude + 1), 0, GameSettings.Data.MapWidth);
-                wormhole.Position.Y = Clamp(wormhole.Position.Y + random.Next(-driftMagnitude, driftMagnitude + 1), 0, GameSettings.Data.MapHeight);
+                wormhole.Age = (wormhole.Age + 1) % 1024;
+                NovaPoint drift = WormholePlacement.DrawDrift(
+                    wormhole.Position, random, mapWidth, mapHeight, planets, ends, fleets, wormhole.PairedKey, wormhole.Key);
+                if (drift != null)
+                {
+                    wormhole.Position = drift;
+                }
             }
-        }
-
-        private static int Clamp(int value, int min, int max)
-        {
-            return Math.Max(min, Math.Min(max, value));
         }
     }
 }

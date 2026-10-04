@@ -202,11 +202,14 @@ namespace Nova.Server.TurnSteps
         }
 
         /// <summary>
-        /// The efficient warp `FUN_1050_69c2` (behavior-specs-10/ai-opponent-behavior.md §12 step
-        /// 1): the highest warp, at most 10, at which every engine uses at most 120% fuel, with the
-        /// warp-10 cap (10 becomes 9 unless the engine is one of the five warp-10 engines). The
-        /// free-speed preference is not applied (the spec does not say which variant Patrol uses).
-        /// Nova.Ai.EfficientWarp holds the same rule for the AI; the server cannot reference it.
+        /// The Patrol variant of the efficient warp `FUN_1050_69c2` (behavior-specs-11/
+        /// fleet-movement-scanning-cargo.md §5, Patrol "Complete rule", item 6, "Efficient warp"):
+        /// the highest warp, at most 10, at which every engine uses at most 120% fuel, then - with
+        /// the free-speed preference Patrol uses at all three call sites - a drop of 1, 2 or 3 warps
+        /// when the engine burns nothing that far down (skipped for the two scoop engines and when
+        /// the chosen warp is already free), and finally 10 becomes 9 unless the engine is one of
+        /// the five warp-10 engines. Nova.Ai.EfficientWarp holds the AI's no-preference variant;
+        /// the server cannot reference it.
         /// </summary>
         public static int EfficientWarp(Fleet fleet)
         {
@@ -242,7 +245,25 @@ namespace Nova.Server.TurnSteps
                     candidate--;
                 }
 
-                if (candidate == 10 && !WarpTenEngines.Contains(EngineName(token.Design) ?? string.Empty))
+                string engineName = EngineName(token.Design) ?? string.Empty;
+                if (candidate > 0 && Fuel(table, candidate) != 0
+                    && engineName != "Trans-Galactic Mizer Scoop" && engineName != "Galaxy Scoop")
+                {
+                    if (candidate >= 5 && Fuel(table, candidate - 1) == 0)
+                    {
+                        candidate -= 1;
+                    }
+                    else if (candidate >= 6 && Fuel(table, candidate - 2) == 0)
+                    {
+                        candidate -= 2;
+                    }
+                    else if (candidate >= 7 && Fuel(table, candidate - 3) == 0)
+                    {
+                        candidate -= 3;
+                    }
+                }
+
+                if (candidate == 10 && !WarpTenEngines.Contains(engineName))
                 {
                     candidate = 9;
                 }

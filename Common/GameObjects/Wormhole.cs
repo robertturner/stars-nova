@@ -60,10 +60,35 @@ namespace Nova.Common
         /// hasn't been resolved yet (should never persist that way past generation).</summary>
         public long PairedKey;
 
-        /// <summary>0 ("Rock Solid," lasting 30+ years) to 6 ("Very Unstable," relocating within
-        /// about 5 years) - docs/behavior-specs-4/fleet-movement-scanning-cargo.md's confirmed
-        /// 7-tier (0-6) stability scale.</summary>
-        public int StabilityTier;
+        /// <summary>
+        /// The end's base stability, uniform 0-2, drawn once at creation (bits 0-1 of the status
+        /// word). It is kept across jumps (behavior-specs-11/fleet-movement-scanning-cargo.md
+        /// "Wormhole lifecycle, complete rule", item 4).
+        /// </summary>
+        public int BaseStability;
+
+        /// <summary>
+        /// The end's age in years (bits 2-11 of the status word, wrapping at 1,024); 0 at
+        /// creation, reset to 0 by a jump and otherwise +1 every generation.
+        /// </summary>
+        public int Age;
+
+        /// <summary>
+        /// 0 ("Rock Solid," lasting 30+ years) to 6 ("Very Unstable," relocating within about 5
+        /// years) - docs/behavior-specs-11/fleet-movement-scanning-cargo.md's "Wormhole
+        /// lifecycle, complete rule": base + (age / 5, truncated) - 2, clamped to 0-6. The
+        /// original stores only the base and the age; the tier is derived from them, so setting
+        /// this directly (legacy saves, tests) decomposes to base 0 + an age that yields the tier.
+        /// </summary>
+        public int StabilityTier
+        {
+            get { return Math.Max(0, Math.Min(6, BaseStability + (Age / 5) - 2)); }
+            set
+            {
+                BaseStability = 0;
+                Age = 5 * (Math.Max(0, Math.Min(6, value)) + 2);
+            }
+        }
 
         /// <summary>
         /// The races (empire ids) that have used this wormhole end: the wormhole's per-race
@@ -111,7 +136,8 @@ namespace Nova.Common
             xmlelWormhole.AppendChild(base.ToXml(xmldoc));
 
             Global.SaveData(xmldoc, xmlelWormhole, "PairedKey", PairedKey.ToString("X"));
-            Global.SaveData(xmldoc, xmlelWormhole, "StabilityTier", StabilityTier.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Global.SaveData(xmldoc, xmlelWormhole, "BaseStability", BaseStability.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Global.SaveData(xmldoc, xmlelWormhole, "Age", Age.ToString(System.Globalization.CultureInfo.InvariantCulture));
             if (UsedBy.Count > 0)
             {
                 Global.SaveData(xmldoc, xmlelWormhole, "UsedBy", string.Join(",", UsedBy.OrderBy(id => id).Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture))));
@@ -142,6 +168,15 @@ namespace Nova.Common
                             PairedKey = long.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture);
                             break;
 
+                        case "basestability":
+                            BaseStability = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
+                            break;
+
+                        case "age":
+                            Age = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
+                            break;
+
+                        // Legacy saves stored the derived tier alone; treat it as the tier at age 0.
                         case "stabilitytier":
                             StabilityTier = int.Parse(((XmlText)subnode.FirstChild).Value, System.Globalization.CultureInfo.InvariantCulture);
                             break;

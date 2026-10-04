@@ -67,7 +67,7 @@ namespace Nova.Tests.UnitTests
             return empire;
         }
 
-        private static ShipDesign Design(long key, int scanRange = 0, int cargo = 0, Engine engine = null)
+        private static ShipDesign Design(long key, int scanRange = 0, int cargo = 0, Engine engine = null, string engineName = "Test Engine")
         {
             Component blueprint = new Component { Mass = 100 };
             // FuelCapacity > 0: a hull without fuel is a starbase here (Hull.IsStarbase).
@@ -83,7 +83,7 @@ namespace Nova.Tests.UnitTests
 
             if (engine != null)
             {
-                Component engineComponent = new Component { Name = "Test Engine" };
+                Component engineComponent = new Component { Name = engineName };
                 engineComponent.Properties.Add("Engine", engine);
                 hull.Modules.Add(new HullModule { AllocatedComponent = engineComponent, ComponentCount = 1 });
             }
@@ -472,17 +472,42 @@ namespace Nova.Tests.UnitTests
             Fleet enemy = AddFleet(empire2, 20, 30, 0, Design(2));
             MarkSeen(empire1, enemy);
 
-            Assert.AreEqual(7, PatrolStep.EfficientWarp(patroller), "Highest warp at most 120% fuel");
+            // Highest warp at most 120% fuel is 7 (110); with the free-speed preference Patrol
+            // uses, warp 5 burns nothing, so the result drops by 2 to 5
+            // (fleet-movement-scanning-cargo.md section 5, Patrol "Efficient warp").
+            Assert.AreEqual(5, PatrolStep.EfficientWarp(patroller));
 
             new PatrolStep().Process(serverData);
 
             Assert.AreEqual(3, patroller.Waypoints.Count);
-            Assert.AreEqual(7, patroller.Waypoints[1].WarpFactor, "Speed setting 0 means the efficient warp");
+            Assert.AreEqual(5, patroller.Waypoints[1].WarpFactor, "Speed setting 0 means the efficient warp");
             Waypoint post = patroller.Waypoints[2];
             Assert.AreEqual(new NovaPoint(0, 0), post.Position);
             Assert.IsInstanceOf<PatrolTask>(post.Task);
-            Assert.AreEqual(7, post.WarpFactor);
+            Assert.AreEqual(5, post.WarpFactor);
             Assert.IsFalse(post.IsFleetTarget);
+        }
+
+        [Test]
+        public void EfficientWarp_WithTheFreeSpeedPreference_DropsToOneWarpBelowAFreeOne()
+        {
+            // Table where warp 6 burns nothing: the chosen 7 drops by 1 to 6.
+            Engine engine = new Engine();
+            engine.FuelConsumption = new[] { 0, 0, 0, 0, 0, 0, 110, 150, 200, 300 };
+            Fleet fleet = AddFleet(empire1, 1, 0, 0, Design(101, engine: engine));
+
+            Assert.AreEqual(6, PatrolStep.EfficientWarp(fleet));
+        }
+
+        [Test]
+        public void EfficientWarp_ScoopEnginesSkipTheFreeSpeedDrop()
+        {
+            // The same table on a scoop engine stays at the highest warp within 120% (7).
+            Engine engine = new Engine();
+            engine.FuelConsumption = new[] { 0, 0, 0, 0, 0, 0, 110, 150, 200, 300 };
+            Fleet fleet = AddFleet(empire1, 1, 0, 0, Design(101, engine: engine, engineName: "Trans-Galactic Mizer Scoop"));
+
+            Assert.AreEqual(7, PatrolStep.EfficientWarp(fleet));
         }
 
         [Test]
@@ -572,8 +597,10 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void RepeatOrders_AReachedInterceptLegIsNeverRecycled()
+        public void RepeatOrders_AReachedNonPatrolInterceptLeg_IsRecycledWithItsTarget()
         {
+            // A fleet-targeted waypoint without Patrol is recycled with its fleet target, so its
+            // copy at the end keeps chasing that fleet (fleet-movement-scanning-cargo.md §5).
             Fleet target = AddFleet(empire2, 20, 50, 0, Design(2));
             Fleet pursuer = AddFleet(empire1, 10, 0, 0, Design(1, scanRange: 1000));
             pursuer.RepeatOrders = true;
@@ -585,8 +612,27 @@ namespace Nova.Tests.UnitTests
             Generate();
 
             Assert.AreEqual(new NovaPoint(50, 0), pursuer.Position);
-            Assert.AreEqual(2, pursuer.Waypoints.Count, "The reached leg became waypoint 0 and was not appended");
-            Assert.IsFalse(pursuer.Waypoints.Any(w => w.IsFleetTarget));
+            Assert.AreEqual(3, pursuer.Waypoints.Count, "A non-Patrol intercept leg is re-appended");
+            Waypoint tail = pursuer.Waypoints[2];
+            Assert.IsTrue(tail.IsFleetTarget, "The recycled copy keeps chasing the fleet");
+            Assert.AreEqual(target.Key, tail.TargetFleetKey);
+        }
+
+        [Test]
+        public void RepeatOrders_AReachedPatrolInterceptLeg_IsNotRecycled()
+        {
+            Fleet target = AddFleet(empire2, 20, 50, 0, Design(2));
+            Fleet pursuer = AddFleet(empire1, 10, 0, 0, Design(1, scanRange: 1000));
+            pursuer.RepeatOrders = true;
+            Waypoint leg = new Waypoint { WarpFactor = 9, Task = new PatrolTask() };
+            leg.AimAtFleet(target);
+            pursuer.Waypoints.Add(leg);
+            pursuer.Waypoints.Add(PointAt(0, 0, 9));
+
+            Generate();
+
+            Assert.AreEqual(new NovaPoint(50, 0), pursuer.Position);
+            Assert.AreEqual(2, pursuer.Waypoints.Count, "A pending Patrol intercept leg is never recycled");
         }
 
         [Test]

@@ -202,14 +202,80 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void Transfer_IsRefused_WhileTheFleetCarriesCargo()
+        public void Transfer_IsRefused_WhileTheFleetCarriesColonists()
         {
+            // Only colonists block (fleet-movement-scanning-cargo.md §5, "Transfer Fleet (9)").
             Fleet fleet = GiftFleet();
-            fleet.Cargo.Ironium = 1;
+            fleet.Cargo.ColonistsInKilotons = 1;
 
             Assert.IsNull(new TransferFleetTask(CargoTestKit.Them).Transfer(fleet, giver, taker));
             Assert.IsTrue(giver.OwnedFleets.ContainsKey(fleet.Key));
             Assert.AreEqual(0, taker.OwnedFleets.Count);
+        }
+
+        [Test]
+        public void Transfer_CarriesMineralsAndFuel()
+        {
+            // Minerals and fuel do not block; they go with the ships.
+            Fleet fleet = GiftFleet();
+            fleet.Cargo.Ironium = 10;
+            fleet.Cargo.Boranium = 20;
+            fleet.Cargo.Germanium = 30;
+
+            Fleet gift = new TransferFleetTask(CargoTestKit.Them).Transfer(fleet, giver, taker);
+
+            Assert.IsNotNull(gift);
+            Assert.AreEqual(10, gift.Cargo.Ironium);
+            Assert.AreEqual(20, gift.Cargo.Boranium);
+            Assert.AreEqual(30, gift.Cargo.Germanium);
+        }
+
+        [Test]
+        public void Transfer_IsRefused_ToAComputerPlayer()
+        {
+            Fleet fleet = GiftFleet();
+
+            Assert.IsNull(new TransferFleetTask(CargoTestKit.Them).Transfer(fleet, giver, taker, recipientIsComputer: true));
+            Assert.IsTrue(giver.OwnedFleets.ContainsKey(fleet.Key));
+        }
+
+        [Test]
+        public void Transfer_IsRefused_WhenTheRecipientRatesTheGiverEnemy()
+        {
+            Fleet fleet = GiftFleet();
+            taker.EmpireReports.Add(giver.Id, new EmpireIntel(giver) { Relation = PlayerRelation.Enemy });
+
+            Assert.IsNull(new TransferFleetTask(CargoTestKit.Them).Transfer(fleet, giver, taker));
+            Assert.IsTrue(giver.OwnedFleets.ContainsKey(fleet.Key));
+        }
+
+        [Test]
+        public void Transfer_IsRefused_WhenTheRecipientHasNoFreeDesignSlot()
+        {
+            Fleet fleet = GiftFleet();
+            for (int i = 0; i < Global.MaxDesignsAmount; i++)
+            {
+                ShipDesign filler = CargoTestKit.Design(100 + i, 10, 10, CargoTestKit.Named("Filler" + i));
+                taker.Designs[filler.Key] = filler;
+            }
+
+            TransferFleetTask task = new TransferFleetTask(CargoTestKit.Them);
+            Assert.IsNull(task.Transfer(fleet, giver, taker));
+            Assert.AreEqual(Global.MaxDesignsAmount, taker.Designs.Count);
+            Assert.IsTrue(task.Messages.Any(m => m.Audience == CargoTestKit.Us && m.Text.Contains("design slot")));
+            Assert.IsTrue(task.Messages.Any(m => m.Audience == CargoTestKit.Them && m.Text.Contains("design slot")));
+        }
+
+        [Test]
+        public void Transfer_FlagsACopiedDesignAsFailedLegality()
+        {
+            Fleet fleet = GiftFleet();
+
+            Fleet gift = new TransferFleetTask(CargoTestKit.Them).Transfer(fleet, giver, taker);
+
+            Assert.IsNotNull(gift);
+            Assert.IsTrue(gift.Composition.Values.Single().Design.FailedLegality,
+                "a design copied across gets the +0x7c bit 0x80 failed-legality flag");
         }
 
         [Test]

@@ -117,39 +117,91 @@ namespace Nova.Common.Waypoints
         }
 
         /// <summary>
-        /// The Transfer Fleet handler (`stars.exe.export.c:76035-76176`): validates the recipient
-        /// (an existing, live race other than the owner), refuses while the fleet still carries
-        /// cargo, refuses when the recipient already has the 512-fleet maximum (message 330), and
-        /// otherwise creates a new fleet owned by the recipient at the same position with the same
-        /// ships, cargo and fuel - reusing the recipient's identical design where it has one and
-        /// copying the design across otherwise - and removes the source fleet (messages 333 to the
-        /// giver, 334 to the recipient). Every outcome settles the task.
+        /// The Transfer Fleet handler (behavior-specs-11/fleet-movement-scanning-cargo.md §5,
+        /// "Transfer Fleet (9), complete rule"; `stars.exe.export.c:76035-76176`). The checks run
+        /// in order: the recipient must be a live race other than the giver (328), must not be a
+        /// computer player and must not rate the giver as Enemy (332), the fleet must carry no
+        /// colonists (329; minerals and fuel do not block), and every design the recipient lacks
+        /// must fit a free slot (330 to the giver, 331 to the recipient), as must the recipient's
+        /// 512-fleet cap. On success a new fleet owned by the recipient appears at the same
+        /// position with the same ships (damage state carried), minerals and fuel; a design the
+        /// recipient lacked is copied across with its failed-legality flag set; the source fleet is
+        /// removed; 333 goes to the giver and 334 to the recipient. Every outcome settles the task.
         /// </summary>
         /// <param name="fleet">The fleet being given away.</param>
         /// <param name="sender">The fleet's owner.</param>
         /// <param name="recipient">The receiving empire, or null if the stored id does not resolve.</param>
+        /// <param name="recipientIsComputer">True when the recipient slot is a computer player.</param>
         /// <returns>The recipient's new fleet (already added to its OwnedFleets), or null when the
         /// transfer was refused.</returns>
-        public Fleet Transfer(Fleet fleet, EmpireData sender, EmpireData recipient)
+        public Fleet Transfer(Fleet fleet, EmpireData sender, EmpireData recipient, bool recipientIsComputer = false)
         {
             if (recipient == null || recipient.Id == sender.Id || recipient.Eliminated || fleet.IsStarbase)
             {
+                // Message 328.
                 Tell(sender.Id, "Fleet " + fleet.Name + " could not be transferred: the chosen recipient cannot receive it.");
                 return null;
             }
 
-            if (fleet.Cargo.Mass > 0)
+            // Message 332: a computer recipient, or one whose own opinion rates the giver as Enemy.
+            if (recipientIsComputer || RatesEnemy(recipient, sender.Id))
             {
-                Tell(sender.Id, "Fleet " + fleet.Name + " could not be transferred because it still has cargo aboard.");
+                Tell(sender.Id, "Fleet " + fleet.Name + " could not be transferred to " + recipient.Race.PluralName
+                    + ": that player cannot receive gifts from you.");
+                return null;
+            }
+
+            // Message 329: only colonists block; minerals and fuel go with the ships.
+            if (fleet.Cargo.ColonistsInKilotons > 0)
+            {
+                Tell(sender.Id, "Fleet " + fleet.Name + " could not be transferred because it still carries colonists.");
+                return null;
+            }
+
+            // Messages 330/331: every design the recipient lacks needs a free slot of its kind.
+            int newShipDesigns = 0;
+            int newStarbaseDesigns = 0;
+            HashSet<string> counted = new HashSet<string>();
+            foreach (ShipToken token in fleet.Composition.Values)
+            {
+                if (FindEquivalent(recipient, token.Design) != null)
+                {
+                    continue;
+                }
+
+                string signature = Signature(token.Design);
+                if (signature != null && !counted.Add(signature))
+                {
+                    continue;
+                }
+
+                if (token.Design.Type == ItemType.Starbase)
+                {
+                    newStarbaseDesigns++;
+                }
+                else
+                {
+                    newShipDesigns++;
+                }
+            }
+
+            if (CountDesigns(recipient, ItemType.Ship) + newShipDesigns > Global.MaxDesignsAmount
+                || CountDesigns(recipient, ItemType.Starbase) + newStarbaseDesigns > Global.MaxStarbaseDesignsAmount)
+            {
+                Tell(sender.Id, "Fleet " + fleet.Name + " could not be transferred to " + recipient.Race.PluralName
+                    + " because they have no free design slot for one of its ships.");
+                Tell(recipient.Id, "The " + sender.Race.PluralName + " tried to give you a fleet, but you have no free design slot for it.");
                 return null;
             }
 
             int recipientFleets = recipient.OwnedFleets.Values.Count(owned => !owned.IsStarbase);
             if (recipientFleets >= Global.MaxFleetAmount)
             {
-                // Message 330.
-                Tell(sender.Id, "Fleet " + fleet.Name + " could not be transferred to the " + recipient.Race.PluralName
+                // Messages 330 and 331.
+                Tell(sender.Id, "Fleet " + fleet.Name + " could not be transferred to " + recipient.Race.PluralName
                     + " because they already have the maximum of " + Global.MaxFleetAmount + " fleets.");
+                Tell(recipient.Id, "The " + sender.Race.PluralName + " tried to give you a fleet, but you already have the maximum of "
+                    + Global.MaxFleetAmount + " fleets.");
                 return null;
             }
 
@@ -182,27 +234,38 @@ namespace Nova.Common.Waypoints
             sender.RemoveFleet(fleet);
 
             // Messages 333 and 334.
-            Tell(sender.Id, "Fleet " + fleet.Name + " has been transferred to the " + recipient.Race.PluralName + ".");
+            Tell(sender.Id, "Fleet " + fleet.Name + " has been transferred to " + recipient.Race.PluralName + ".");
             Tell(recipient.Id, "The " + sender.Race.PluralName + " have given your race the fleet " + gift.Name + ".");
 
             return gift;
         }
 
+        /// <summary>True when the recipient's own relation toward the giver is Enemy.</summary>
+        private static bool RatesEnemy(EmpireData recipient, ushort giverId)
+        {
+            return recipient.EmpireReports != null
+                && recipient.EmpireReports.TryGetValue(giverId, out EmpireIntel intel)
+                && intel.Relation == PlayerRelation.Enemy;
+        }
+
+        /// <summary>How many of the empire's designs are of the given kind.</summary>
+        private static int CountDesigns(EmpireData empire, ItemType kind)
+        {
+            return empire.Designs.Values.Count(design => (design.Type == ItemType.Starbase) == (kind == ItemType.Starbase));
+        }
+
         /// <summary>
         /// The recipient's design for a gifted ship: an identical design it already has (same hull
         /// and the same parts in the same slots), otherwise a copy of the giver's design under a new
-        /// key of the recipient's.
+        /// key of the recipient's, with the failed-legality flag set (the +0x7c bit 0x80 the
+        /// transfer handler sets on a copied design).
         /// </summary>
         private static ShipDesign DesignFor(EmpireData recipient, ShipDesign design)
         {
-            string signature = Signature(design);
-            if (signature != null)
+            ShipDesign match = FindEquivalent(recipient, design);
+            if (match != null)
             {
-                ShipDesign match = recipient.Designs.Values.FirstOrDefault(own => Signature(own) == signature);
-                if (match != null)
-                {
-                    return match;
-                }
+                return match;
             }
 
             ShipDesign copy = new ShipDesign(recipient.GetNextDesignKey());
@@ -210,6 +273,7 @@ namespace Nova.Common.Waypoints
             copy.Type = design.Type;
             copy.Icon = design.Icon != null ? (ShipIcon)design.Icon.Clone() : null;
             copy.Blueprint = design.Blueprint != null ? new Component(design.Blueprint) : null;
+            copy.FailedLegality = true;
             if (copy.Blueprint != null && copy.Blueprint.Properties.ContainsKey("Hull"))
             {
                 copy.Update(recipient.Race, recipient.ResearchLevels);
@@ -217,6 +281,18 @@ namespace Nova.Common.Waypoints
 
             recipient.Designs[copy.Key] = copy;
             return copy;
+        }
+
+        /// <summary>The recipient's identical design, or null when it has none.</summary>
+        private static ShipDesign FindEquivalent(EmpireData recipient, ShipDesign design)
+        {
+            string signature = Signature(design);
+            if (signature == null)
+            {
+                return null;
+            }
+
+            return recipient.Designs.Values.FirstOrDefault(own => Signature(own) == signature);
         }
 
         private static string Signature(ShipDesign design)
