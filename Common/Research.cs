@@ -101,47 +101,18 @@ namespace Nova.Common
         };
 
         /// <summary>
-        /// The PRT-conditional exclusion from the Research dialog's field-selection candidates
-        /// (research-tech-tree.md section 7, FUN_10d0_010c): Alternate Reality's list skips the
-        /// first three fields of the original's order (Energy, Weapons, Propulsion) and Claim
-        /// Adjuster's skips the last two (Electronics, Biotechnology). The spec leaves open
-        /// whether "excluded" hides a field entirely; here it only keeps the field out of the
-        /// automatic "lowest field" choice - a field can always still be picked by hand.
-        /// </summary>
-        public static bool IsExcludedFromFieldList(Race race, TechLevel.ResearchField field)
-        {
-            if (race == null)
-            {
-                return false;
-            }
-
-            if (race.HasTrait("AR"))
-            {
-                return field == TechLevel.ResearchField.Energy
-                    || field == TechLevel.ResearchField.Weapons
-                    || field == TechLevel.ResearchField.Propulsion;
-            }
-
-            if (race.HasTrait("CA"))
-            {
-                return field == TechLevel.ResearchField.Electronics
-                    || field == TechLevel.ResearchField.Biotechnology;
-            }
-
-            return false;
-        }
-
-        /// <summary>
         /// The "lowest field" auto-target (research-tech-tree.md section 4): the field with the
-        /// lowest level, among fields not excluded for the race's PRT and not yet at the top
-        /// level; ties go to the earlier field in the original's order. Null if none qualifies.
+        /// lowest level among all six, ties going to the earlier field in the original's order;
+        /// a field already at the top level is skipped. There is no PRT-conditional exclusion:
+        /// the Research dialog's AR/CA field-list exclusion was a misreading and is withdrawn
+        /// (section 7 - the 7-entry loop is the production catalog's auto-build list).
         /// </summary>
-        public static TechLevel.ResearchField? LowestField(TechLevel levels, Race race)
+        public static TechLevel.ResearchField? LowestField(TechLevel levels)
         {
             TechLevel.ResearchField? lowest = null;
             foreach (TechLevel.ResearchField field in OriginalFieldOrder)
             {
-                if (levels[field] >= TechLevel.MaxLevel || IsExcludedFromFieldList(race, field))
+                if (levels[field] >= TechLevel.MaxLevel)
                 {
                     continue;
                 }
@@ -158,13 +129,14 @@ namespace Nova.Common
         /// <summary>
         /// The field research switches to once the current target has gained a level, from the
         /// empire's "next field" setting (<see cref="NextFieldSame"/>, a field index, or
-        /// <see cref="NextFieldLowest"/>). Null means "stay on the current field".
+        /// <see cref="NextFieldLowest"/>). Null means "stay on the current field". The caller
+        /// handles "same field" and its level-cap switch, since it knows the current field.
         /// </summary>
-        public static TechLevel.ResearchField? NextTarget(int nextFieldSetting, TechLevel levels, Race race)
+        public static TechLevel.ResearchField? NextTarget(int nextFieldSetting, TechLevel levels)
         {
             if (nextFieldSetting == NextFieldLowest)
             {
-                return LowestField(levels, race);
+                return LowestField(levels);
             }
 
             if (nextFieldSetting >= 0 && nextFieldSetting < OriginalFieldOrder.Length

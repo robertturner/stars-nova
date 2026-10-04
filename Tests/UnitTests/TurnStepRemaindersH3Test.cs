@@ -85,9 +85,10 @@ namespace Nova.Tests.UnitTests
     }
 
     /// <summary>
-    /// Mine sweeping, turn step 24 - behavior-specs-10/turn-generation-engine.md section 11
-    /// "Mine sweeping" (coverage fleet row 59, turn row 20). The sweep RATE (damage x range
-    /// squared per beam, +1 range on a starbase) is the community rule, not a spec number.
+    /// Mine sweeping, turn step 24 - behavior-specs-11/turn-generation-engine.md section 11
+    /// "Mine sweeping". The sweep RATE is given exactly: per installed beam-weapon slot, the
+    /// slot's damage x R squared, where R is the battle range for an ordinary beam, a fixed 4
+    /// for a gatling-type beam, skipped for a shield sapper, and +1 on a starbase.
     /// </summary>
     [TestFixture]
     public class MineSweepStepTest : H3Kit
@@ -119,6 +120,52 @@ namespace Nova.Tests.UnitTests
             Assert.AreEqual(10 * 3 * 3, MineSweepStep.SweepRate(Sweeper(10, 2), true));
             Assert.AreEqual(0, MineSweepStep.SweepRate(Sweeper(10, 2, WeaponType.shieldSapper), false));
             Assert.AreEqual(0, MineSweepStep.SweepRate(Sweeper(10, 4, WeaponType.missile), false));
+        }
+
+        /// <summary>
+        /// A gatling-type beam sweeps with a fixed R of 4 whatever its listed range (2 for all
+        /// four), and the starbase +1 makes it 5. A range-0 beam sweeps nothing on a ship but
+        /// damage x 1 on a starbase. turn-generation-engine.md section 11, sweep rate of one
+        /// design.
+        /// </summary>
+        [Test]
+        public void SweepRate_GatlingsUseAFixedRangeOfFour_StarbasesFive_RangeZeroBeamsSweepNothingOnShips()
+        {
+            Assert.AreEqual(13 * 4 * 4, MineSweepStep.SweepRate(Sweeper(13, 2, WeaponType.gatlingGun), false), "Mini Gun");
+            Assert.AreEqual(31 * 4 * 4, MineSweepStep.SweepRate(Sweeper(31, 2, WeaponType.gatlingGun), false), "Gatling Gun");
+            Assert.AreEqual(80 * 4 * 4, MineSweepStep.SweepRate(Sweeper(80, 2, WeaponType.gatlingGun), false), "Gatling Neutrino Cannon");
+            Assert.AreEqual(204 * 4 * 4, MineSweepStep.SweepRate(Sweeper(204, 2, WeaponType.gatlingGun), false), "Big Mutha Cannon");
+            Assert.AreEqual(31 * 5 * 5, MineSweepStep.SweepRate(Sweeper(31, 2, WeaponType.gatlingGun, starbase: true), true), "a starbase gatling uses 5");
+            Assert.AreEqual(0, MineSweepStep.SweepRate(Sweeper(90, 0), false), "a range-0 beam sweeps nothing on a ship");
+            Assert.AreEqual(90 * 1 * 1, MineSweepStep.SweepRate(Sweeper(90, 0, starbase: true), true), "damage x 1 on a starbase");
+        }
+
+        /// <summary>
+        /// The spec's per-weapon ship figures for a single component in a slot
+        /// (turn-generation-engine.md section 11), each damage and listed range taken from
+        /// component-stats.tsv.
+        /// </summary>
+        [Test]
+        public void SweepRate_MatchesTheSpecifiedPerWeaponShipFigures()
+        {
+            Assert.AreEqual(10, MineSweepStep.SweepRate(Sweeper(10, 1), false), "Laser");
+            Assert.AreEqual(16, MineSweepStep.SweepRate(Sweeper(16, 1), false), "X-Ray Laser");
+            Assert.AreEqual(26, MineSweepStep.SweepRate(Sweeper(26, 1), false), "Yakimora Light Phaser");
+            Assert.AreEqual(66, MineSweepStep.SweepRate(Sweeper(66, 1), false), "Mini Blaster");
+            Assert.AreEqual(104, MineSweepStep.SweepRate(Sweeper(26, 2), false), "Phaser Bazooka");
+            Assert.AreEqual(234, MineSweepStep.SweepRate(Sweeper(26, 3), false), "Colloidal Phaser");
+            Assert.AreEqual(264, MineSweepStep.SweepRate(Sweeper(66, 2), false), "Mark IV Blaster");
+            Assert.AreEqual(208, MineSweepStep.SweepRate(Sweeper(13, 2, WeaponType.gatlingGun), false), "Mini Gun");
+            Assert.AreEqual(496, MineSweepStep.SweepRate(Sweeper(31, 2, WeaponType.gatlingGun), false), "Gatling Gun");
+            Assert.AreEqual(594, MineSweepStep.SweepRate(Sweeper(66, 3), false), "Heavy Blaster");
+            Assert.AreEqual(676, MineSweepStep.SweepRate(Sweeper(169, 2), false), "Disruptor");
+            Assert.AreEqual(169, MineSweepStep.SweepRate(Sweeper(169, 1), false), "Myopic Disruptor");
+            Assert.AreEqual(1260, MineSweepStep.SweepRate(Sweeper(140, 3), false), "Multi Contained Munition");
+            Assert.AreEqual(1280, MineSweepStep.SweepRate(Sweeper(80, 2, WeaponType.gatlingGun), false), "Gatling Neutrino Cannon");
+            Assert.AreEqual(1521, MineSweepStep.SweepRate(Sweeper(169, 3), false), "Mega Disruptor");
+            Assert.AreEqual(433, MineSweepStep.SweepRate(Sweeper(433, 1), false), "Streaming Pulverizer");
+            Assert.AreEqual(1732, MineSweepStep.SweepRate(Sweeper(433, 2), false), "Anti-Matter Pulverizer");
+            Assert.AreEqual(3264, MineSweepStep.SweepRate(Sweeper(204, 2, WeaponType.gatlingGun), false), "Big Mutha Cannon");
         }
 
         [Test]

@@ -31,8 +31,8 @@ namespace Nova.Client
     /// a second, independent setting whose values are the six named fields plus a "lowest field"
     /// option; EmpireData.ResearchNextField / ResearchCommand.NextField). The engine's own default,
     /// "stay on the same field" (Research.NextFieldSame), is offered first. Fields are listed in
-    /// the original's order (Research.OriginalFieldOrder); every field can be picked by hand
-    /// (Research.IsExcludedFromFieldList only limits the automatic lowest-field choice).
+    /// the original's order (Research.OriginalFieldOrder); every field can be picked by hand,
+    /// and the automatic lowest-field choice considers all six fields for every race.
     /// </summary>
     public static class ResearchNextField
     {

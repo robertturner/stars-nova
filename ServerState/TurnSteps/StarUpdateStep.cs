@@ -266,7 +266,9 @@ namespace Nova.Server.TurnSteps
                 ApplyLevelUps(targetArea, empire);
             }
 
-            if (empire.ResearchLevels[targetArea] > targetLevelBefore)
+            if (empire.ResearchLevels[targetArea] > targetLevelBefore
+                || (empire.ResearchNextField == Research.NextFieldSame
+                    && empire.ResearchLevels[targetArea] >= TechLevel.MaxLevel))
             {
                 SwitchToNextField(empire, targetArea);
             }
@@ -275,11 +277,27 @@ namespace Nova.Server.TurnSteps
         /// <summary>
         /// The "next field to research" setting (research-tech-tree.md section 4): once the
         /// current target gains a level, research moves to the chosen next field, or to the
-        /// lowest field (the PRT exclusions of section 7 applied); "same field" stays put.
+        /// lowest field; "same field" stays put - except that a current field already at the
+        /// level cap moves research to the lowest field. There is no PRT-conditional exclusion.
         /// </summary>
         private static void SwitchToNextField(EmpireData empire, TechLevel.ResearchField current)
         {
-            TechLevel.ResearchField? next = Research.NextTarget(empire.ResearchNextField, empire.ResearchLevels, empire.Race);
+            TechLevel.ResearchField? next;
+            if (empire.ResearchNextField == Research.NextFieldSame)
+            {
+                // "Same field" only redirects once the current field can no longer advance.
+                if (empire.ResearchLevels[current] < TechLevel.MaxLevel)
+                {
+                    return;
+                }
+
+                next = Research.LowestField(empire.ResearchLevels);
+            }
+            else
+            {
+                next = Research.NextTarget(empire.ResearchNextField, empire.ResearchLevels);
+            }
+
             if (next == null || next.Value == current)
             {
                 return;

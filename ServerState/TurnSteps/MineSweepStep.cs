@@ -46,12 +46,11 @@ namespace Nova.Server.TurnSteps
     /// owner message 190 (an unidentified party swept mines from the field). A field reduced to
     /// nothing is deleted. Sweepers are processed in fleet-table order, each against every field
     /// in turn, so a later sweeper sees the earlier sweepers' reductions.
-    /// NOT given by behavior-specs-10 (FUN_1080_1ca2 / FUN_1080_1d1c are named but not read
-    /// out): the sweep rate itself. This step uses the community-documented Stars! rule - each
-    /// beam weapon sweeps (its damage) x (its range) squared mines a year, shield sappers none,
-    /// missiles and torpedoes none - with the starbase's +1 range (combat-resolution.md section 3:
-    /// starbases get "+1 ... to minesweeping rate"). The "at least 2" floor is applied after the
-    /// one-third reduction (the spec's order is not explicit).
+    /// behavior-specs-11/turn-generation-engine.md section 11 gives the sweep rate exactly: each
+    /// installed beam-weapon slot sweeps (weapons in the slot) x damage x R squared, where R is
+    /// the battle range for an ordinary beam, a fixed 4 for a gatling-type beam, is skipped for a
+    /// shield sapper, and is +1 on a starbase. The "at least 2" floor is applied after the
+    /// one-third reduction, as the spec's ordered amount rule states.
     /// </remarks>
     public class MineSweepStep : ITurnStep
     {
@@ -148,8 +147,11 @@ namespace Nova.Server.TurnSteps
 
         /// <summary>
         /// One ship's sweep rate: for each beam weapon slot (shield sappers excluded), the slot's
-        /// damage (Weapon.Power, already multiplied by the components in the slot) times its
-        /// range squared, the range raised by 1 on a starbase.
+        /// damage (Weapon.Power, already multiplied by the components in the slot) times R
+        /// squared, where R is the weapon's battle range for an ordinary beam but a fixed 4 for a
+        /// gatling-type beam whatever its listed range (Mini Gun, Gatling Gun, Gatling Neutrino
+        /// Cannon, Big Mutha Cannon), and is raised by 1 in every case on a starbase.
+        /// turn-generation-engine.md section 11 "Mine sweeping", sweep rate of one design.
         /// </summary>
         public static int SweepRate(ShipDesign design, bool starbase)
         {
@@ -166,7 +168,9 @@ namespace Nova.Server.TurnSteps
                     continue;
                 }
 
-                long range = weapon.Range + (starbase ? 1 : 0);
+                // R = 4 for a gatling-type beam, the weapon's battle range otherwise (range-0
+                // beams sweep nothing on a ship and damage x 1 on a starbase); +1 on a starbase.
+                long range = (weapon.Group == WeaponType.gatlingGun ? 4 : weapon.Range) + (starbase ? 1 : 0);
                 rate += weapon.Power * range * range;
             }
 

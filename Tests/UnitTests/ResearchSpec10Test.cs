@@ -11,9 +11,10 @@ namespace Nova.Tests.UnitTests
     using Nova.Server.TurnSteps;
 
     /// <summary>
-    /// behavior-specs-10/research-tech-tree.md rows 8, 14, 16 and 26: Slow Tech Advance doubles
-    /// the finished cost; the "next field" setting and the "lowest field" auto-target with the
-    /// PRT-conditional field exclusions; Super Stealth's passive research bonus.
+    /// behavior-specs-11/research-tech-tree.md rows 8, 14, 16 and 26: Slow Tech Advance doubles
+    /// the finished cost; the "next field" setting with the "lowest field" auto-target and the
+    /// level-cap switch (the PRT-conditional field exclusions are withdrawn); Super Stealth's
+    /// passive research bonus.
     /// </summary>
     [TestFixture]
     public class ResearchSpec10Test
@@ -52,7 +53,7 @@ namespace Nova.Tests.UnitTests
             }
         }
 
-        // ---- Lowest field and the PRT exclusions (rows 14, 26) ----
+        // ---- Lowest field (rows 14, 26) ----
 
         private static TechLevel Levels(int energy, int weapons, int propulsion, int construction, int electronics, int biotech)
         {
@@ -77,7 +78,7 @@ namespace Nova.Tests.UnitTests
         public void LowestField_IsTheLowestLevel()
         {
             Assert.AreEqual(TechLevel.ResearchField.Construction,
-                Research.LowestField(Levels(5, 4, 3, 1, 2, 6), RaceWith("JOAT")));
+                Research.LowestField(Levels(5, 4, 3, 1, 2, 6)));
         }
 
         [Test]
@@ -85,49 +86,28 @@ namespace Nova.Tests.UnitTests
         {
             // Energy, Weapons, Propulsion, Construction, Electronics, Biotechnology.
             Assert.AreEqual(TechLevel.ResearchField.Propulsion,
-                Research.LowestField(Levels(3, 3, 2, 2, 2, 2), RaceWith("JOAT")));
+                Research.LowestField(Levels(3, 3, 2, 2, 2, 2)));
         }
 
         [Test]
         public void LowestField_SkipsAFieldAtTheTopLevel()
         {
             Assert.AreEqual(TechLevel.ResearchField.Weapons,
-                Research.LowestField(Levels(26, 25, 26, 26, 26, 26), RaceWith("JOAT")));
-            Assert.IsNull(Research.LowestField(Levels(26, 26, 26, 26, 26, 26), RaceWith("JOAT")));
+                Research.LowestField(Levels(26, 25, 26, 26, 26, 26)));
+            Assert.IsNull(Research.LowestField(Levels(26, 26, 26, 26, 26, 26)));
         }
 
+        /// <summary>
+        /// research-tech-tree.md section 7: the AR/CA field-list exclusion is withdrawn - the
+        /// lowest-field choice is the lowest of all six fields for every race.
+        /// </summary>
         [Test]
-        public void AlternateReality_ExcludesEnergyWeaponsAndPropulsion()
+        public void EveryRace_UsesTheLowestOfAllSixFields_WithNoPrtExclusion()
         {
-            Race race = RaceWith("AR");
-            Assert.IsTrue(Research.IsExcludedFromFieldList(race, TechLevel.ResearchField.Energy));
-            Assert.IsTrue(Research.IsExcludedFromFieldList(race, TechLevel.ResearchField.Weapons));
-            Assert.IsTrue(Research.IsExcludedFromFieldList(race, TechLevel.ResearchField.Propulsion));
-            Assert.IsFalse(Research.IsExcludedFromFieldList(race, TechLevel.ResearchField.Construction));
-
+            Assert.AreEqual(TechLevel.ResearchField.Energy,
+                Research.LowestField(Levels(0, 0, 0, 3, 1, 2)), "AR no longer skips Energy/Weapons/Propulsion");
             Assert.AreEqual(TechLevel.ResearchField.Electronics,
-                Research.LowestField(Levels(0, 0, 0, 3, 1, 2), race));
-        }
-
-        [Test]
-        public void ClaimAdjuster_ExcludesElectronicsAndBiotechnology()
-        {
-            Race race = RaceWith("CA");
-            Assert.IsTrue(Research.IsExcludedFromFieldList(race, TechLevel.ResearchField.Electronics));
-            Assert.IsTrue(Research.IsExcludedFromFieldList(race, TechLevel.ResearchField.Biotechnology));
-            Assert.IsFalse(Research.IsExcludedFromFieldList(race, TechLevel.ResearchField.Energy));
-
-            Assert.AreEqual(TechLevel.ResearchField.Construction,
-                Research.LowestField(Levels(5, 5, 5, 4, 0, 0), race));
-        }
-
-        [Test]
-        public void OtherRaces_ExcludeNothing()
-        {
-            foreach (TechLevel.ResearchField field in Research.OriginalFieldOrder)
-            {
-                Assert.IsFalse(Research.IsExcludedFromFieldList(RaceWith("JOAT"), field));
-            }
+                Research.LowestField(Levels(5, 5, 5, 4, 0, 0)), "CA no longer skips Electronics/Biotechnology");
         }
 
         // ---- The switch after a level is gained ----
@@ -196,6 +176,25 @@ namespace Nova.Tests.UnitTests
 
             Assert.AreEqual(1, empire.ResearchLevels[TechLevel.ResearchField.Energy]);
             Assert.AreEqual((int)TechLevel.ResearchField.Energy, TopicOf(empire));
+        }
+
+        /// <summary>
+        /// research-tech-tree.md section 4: a current field at level 26 with "same field" moves
+        /// research to the lowest field, even though no level was gained this turn.
+        /// </summary>
+        [Test]
+        public void NextFieldSame_AtTheLevelCap_MovesToTheLowestField()
+        {
+            ServerData server = new ServerData();
+            EmpireData empire = NewEmpire(server, 1, "JOAT");
+            empire.ResearchNextField = Research.NextFieldSame;
+            empire.ResearchLevels = Levels(26, 5, 5, 5, 5, 5);
+            Star star = new Star { Name = "Home", Owner = 1 };
+
+            Contribute(new StarUpdateStep(), server, star, 10);
+
+            Assert.AreEqual((int)TechLevel.ResearchField.Weapons, TopicOf(empire),
+                "Energy is capped, so research moves to the lowest field");
         }
 
         [Test]
