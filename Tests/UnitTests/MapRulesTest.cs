@@ -6,6 +6,7 @@ namespace Nova.Tests.UnitTests
     using NUnit.Framework;
 
     using Nova.Client.Map;
+    using Nova.Common;
     using Nova.Common.DataStructures;
 
     /// <summary>
@@ -233,25 +234,147 @@ namespace Nova.Tests.UnitTests
         // ---------------- tooltip text ----------------
 
         [Test]
-        public void Identify_OwnedByOtherRaceAndDeepSpace()
+        public void Identify_PerKindNameBuilders()
         {
-            Assert.AreEqual("Deep Space", MapObjectText.Identify(null, null, MapOwnership.Unowned, null));
-            Assert.AreEqual("Scout #3 owned by Hobbits", MapObjectText.Identify(MapObjectKind.Fleet, "Scout #3", MapOwnership.Other, "Hobbits"));
-            Assert.AreEqual("Scout #3", MapObjectText.Identify(MapObjectKind.Fleet, "Scout #3", MapOwnership.Own, "Humanoids"));
-            Assert.AreEqual("Minefield", MapObjectText.Identify(MapObjectKind.Minefield, string.Empty, MapOwnership.Own, null), "plain category-name fallback");
-            Assert.AreEqual("Alpha (with Stargate) owned by Hobbits", MapObjectText.Identify(MapObjectKind.Planet, "Alpha", MapOwnership.Other, "Hobbits", true, true));
-            Assert.AreEqual("Alpha (with starbase)", MapObjectText.Identify(MapObjectKind.Planet, "Alpha", MapOwnership.Own, null, true, false));
+            Assert.AreEqual("Deep Space", MapObjectText.Identify(null, null, MapOwnership.Unowned, null), "no object");
+            Assert.AreEqual("Alpha", MapObjectText.Identify(MapObjectKind.Planet, "Alpha", MapOwnership.Other, "Hobbits"), "a planet is just its name");
+            Assert.AreEqual("Scout #3", MapObjectText.Identify(MapObjectKind.Fleet, "Scout #3", MapOwnership.Own, "Humanoids"), "own fleet: no owner prefix");
+            Assert.AreEqual("Hobbits Scout #3", MapObjectText.Identify(MapObjectKind.Fleet, "Scout #3", MapOwnership.Other, "Hobbits"), "other fleet: race-name prefix, never 'owned by'");
+            Assert.AreEqual("Wormhole", MapObjectText.Identify(MapObjectKind.Wormhole, "w1", MapOwnership.Unowned, null));
+            Assert.AreEqual("space (10, 20)", MapObjectText.DeepSpaceName(10, 20));
+            Assert.AreEqual("Deep Space", MapObjectText.DeepSpaceName(null, null));
         }
 
         [Test]
-        public void PlanetTooltip_OwnershipLinesAndHabitability()
+        public void FleetName_DesignNumberAndGivenName()
         {
-            CollectionAssert.AreEqual(new[] { "Alpha", "Owned by you", "Habitability: 87%" },
-                MapObjectText.PlanetTooltip("Alpha", MapOwnership.Own, null, null, 87));
-            CollectionAssert.AreEqual(new[] { "Beta", "Unowned" },
-                MapObjectText.PlanetTooltip("Beta", MapOwnership.Unowned, null, null, null));
-            CollectionAssert.AreEqual(new[] { "Gamma", "Owned by Hobbits", "Population: 12,300", "Habitability: -12%" },
-                MapObjectText.PlanetTooltip("Gamma", MapOwnership.Other, "Hobbits", 12300, -12));
+            Assert.AreEqual("Scout #3", MapObjectText.FleetName(MapOwnership.Own, null, null, "Scout", 3, false));
+            Assert.AreEqual("Hobbits Scout #3", MapObjectText.FleetName(MapOwnership.Other, "Hobbits", null, "Scout", 3, false), "owner prefix, design, #N");
+            Assert.AreEqual("Hobbits Scout+ #3", MapObjectText.FleetName(MapOwnership.Other, "Hobbits", null, "Scout", 3, true), "plus sign when more than one design");
+            Assert.AreEqual("Hobbits Alpha Strike", MapObjectText.FleetName(MapOwnership.Other, "Hobbits", "Alpha Strike", "Scout", 3, true), "a named fleet has no number");
+            Assert.AreEqual("Fleet #5", MapObjectText.FleetName(MapOwnership.Own, null, null, string.Empty, 5, false), "missing design falls back to the fleet noun");
+
+            string longDesign = new string('x', 40);
+            Assert.AreEqual(new string('x', 28) + " #1", MapObjectText.FleetName(MapOwnership.Own, null, null, longDesign, 1, false), "design cut to 28 characters");
+        }
+
+        [Test]
+        public void SpecialObjectNames_TypeAndNoun()
+        {
+            Assert.AreEqual("Hobbits heavy Minefield", MapObjectText.MinefieldName(MapOwnership.Other, "Hobbits", MinefieldType.Heavy));
+            Assert.AreEqual("standard Minefield", MapObjectText.MinefieldName(MapOwnership.Own, null, MinefieldType.Standard));
+            Assert.AreEqual("speed bump Minefield", MapObjectText.MinefieldName(MapOwnership.Own, null, MinefieldType.SpeedBump));
+            Assert.AreEqual("Hobbits Salvage", MapObjectText.PacketName(MapOwnership.Other, "Hobbits", true));
+            Assert.AreEqual("Mineral Packet", MapObjectText.PacketName(MapOwnership.Own, null, false));
+            Assert.AreEqual("Mystery Trader", MapObjectText.MysteryTraderName());
+        }
+
+        [Test]
+        public void PopulationPopup_OwnPlanetThreeSentences()
+        {
+            var facts = new PlanetPopupFacts
+            {
+                Name = "Alpha",
+                Ownership = MapOwnership.Own,
+                ReportLevel = 3,
+                Population = 1234,
+                Habitability = 55,
+                MaxPopulation = 5000,
+                Growth = 100,
+            };
+
+            List<string> lines = MapObjectText.PopulationPopup(facts);
+            Assert.AreEqual(3, lines.Count, "own planet at level 3 with room to grow: three sentences");
+            StringAssert.Contains("Alpha", lines[0]);
+            StringAssert.Contains("123400", lines[0], "population printed as the stored figure plus two zeros");
+            StringAssert.Contains("500000", lines[1], "maximum population likewise formatted");
+            StringAssert.Contains("10000", lines[2], "growth formatted");
+            StringAssert.Contains("133400", lines[2], "new total is population plus growth");
+        }
+
+        [Test]
+        public void PopulationPopup_UnownedHasNoThirdSentence()
+        {
+            var facts = new PlanetPopupFacts
+            {
+                Name = "Beta",
+                Ownership = MapOwnership.Unowned,
+                ReportLevel = 3,
+                Habitability = 40,
+                MaxPopulation = 3000,
+            };
+
+            List<string> lines = MapObjectText.PopulationPopup(facts);
+            Assert.AreEqual(2, lines.Count, "unowned planet: population and habitability sentences only");
+            StringAssert.Contains("Beta", lines[0]);
+            StringAssert.Contains("Beta", lines[1]);
+        }
+
+        [Test]
+        public void PopulationPopup_EstimateIsReportLevelGated()
+        {
+            var low = new PlanetPopupFacts { Name = "Gamma", Ownership = MapOwnership.Other, ReportLevel = 2, PopulationEstimate = 1000 };
+            List<string> lowLines = MapObjectText.PopulationPopup(low);
+            Assert.AreEqual(1, lowLines.Count);
+            StringAssert.Contains(MapObjectText.PopUnknown583, lowLines[0]);
+            Assert.IsFalse(lowLines[0].Contains("100000"), "no estimate below report level 3");
+
+            var high = new PlanetPopupFacts { Name = "Gamma", Ownership = MapOwnership.Other, ReportLevel = 3, PopulationEstimate = 1000 };
+            List<string> highLines = MapObjectText.PopulationPopup(high);
+            StringAssert.Contains("100000", highLines[0], "the report estimate is printed with the two zeros");
+        }
+
+        [Test]
+        public void PopulationPopup_HabitabilityLossOneDecimal()
+        {
+            var facts = new PlanetPopupFacts { Name = "Delta", Ownership = MapOwnership.Other, ReportLevel = 3, Habitability = -35 };
+            List<string> lines = MapObjectText.PopulationPopup(facts);
+            Assert.AreEqual(2, lines.Count);
+            StringAssert.Contains("3.5%", lines[1], "|v|/10 with one decimal and a percent sign");
+        }
+
+        [Test]
+        public void PopulationPopup_HabitabilitySentenceIsReportLevelGated()
+        {
+            var facts = new PlanetPopupFacts { Name = "Eta", Ownership = MapOwnership.Other, ReportLevel = 2, Habitability = -35, MaxPopulation = 3000 };
+            List<string> lines = MapObjectText.PopulationPopup(facts);
+            Assert.AreEqual(1, lines.Count, "no habitability sentence below report level 3");
+        }
+
+        [Test]
+        public void PopulationPopup_OwnZeroGrowthUsesNoGrowthSentence()
+        {
+            var facts = new PlanetPopupFacts { Name = "Theta", Ownership = MapOwnership.Own, ReportLevel = 3, Population = 500, Habitability = 0, MaxPopulation = 4000, Growth = 0 };
+            List<string> lines = MapObjectText.PopulationPopup(facts);
+            Assert.AreEqual(3, lines.Count);
+            StringAssert.Contains(MapObjectText.PopGrowNone532, lines[2], "v = 0 means no growth next year");
+        }
+
+        [Test]
+        public void PopulationPopup_OtherPlanetDefenceCoverage()
+        {
+            var none = new PlanetPopupFacts { Name = "Eps", Ownership = MapOwnership.Other, ReportLevel = 3, DefenceNibble = 0 };
+            List<string> noneLines = MapObjectText.PopulationPopup(none);
+            StringAssert.Contains(MapObjectText.PopDefenceNone483, noneLines[noneLines.Count - 1]);
+
+            var some = new PlanetPopupFacts { Name = "Eps", Ownership = MapOwnership.Other, ReportLevel = 3, DefenceNibble = 3 };
+            List<string> someLines = MapObjectText.PopulationPopup(some);
+            StringAssert.Contains("21%", someLines[someLines.Count - 1], "nibble times 6 plus 3 percent");
+        }
+
+        [Test]
+        public void PopulationPopup_UnknownDefenceOmitsThirdSentence()
+        {
+            var facts = new PlanetPopupFacts { Name = "Zeta", Ownership = MapOwnership.Other, ReportLevel = 3, DefenceNibble = -1 };
+            List<string> lines = MapObjectText.PopulationPopup(facts);
+            Assert.AreEqual(1, lines.Count, "no defence reading means no third sentence");
+        }
+
+        [Test]
+        public void FormatPopulation_ZeroIsASingleZero()
+        {
+            Assert.AreEqual("0", MapObjectText.FormatPopulation(0));
+            Assert.AreEqual("123400", MapObjectText.FormatPopulation(1234));
         }
 
         // ---------------- search ----------------

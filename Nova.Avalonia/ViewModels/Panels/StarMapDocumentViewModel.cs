@@ -435,7 +435,6 @@ public class StarMapDocumentViewModel : Document
                 selectable, selection, report.Starbase != null, isFullStarbase, hasStargate, hasMassDriver, hasOwnFleetInOrbit, hasForeignFleetInOrbit);
 
             MapOwnership ownership = OwnershipOf(report.Owner);
-            string? ownerName = OwnerName(report.Owner);
 
             // Habitability for the viewing race (Race.HabPercent, the original's integer
             // -45..100 evaluator). "Exact" uses the live Star where this empire owns it; the
@@ -479,7 +478,20 @@ public class StarMapDocumentViewModel : Document
             star.SetMineralBars(amounts, concentrations);
 
             int? scannedPopulation = ownership == MapOwnership.Other && report.Colonists > 0 ? report.Colonists : null;
-            star.ToolTipText = string.Join(Environment.NewLine, MapObjectText.PlanetTooltip(report.Name, ownership, ownerName, scannedPopulation, habitability));
+            // Mode 7's ownership/habitability sentences replace the old "owned by" tooltip (there is
+            // no such wording in the client). The map hover only has the report level's coarse
+            // equivalent (explored), no defence reading (nibble -1), and no max-population/growth
+            // figures, so those sentences are simply left out here.
+            star.ToolTipText = string.Join(Environment.NewLine, MapObjectText.PopulationPopup(new PlanetPopupFacts
+            {
+                Name = report.Name,
+                Ownership = ownership,
+                ReportLevel = explored ? 3 : 0,
+                Population = ownStar == null ? 0 : ownStar.Colonists / 100,
+                PopulationEstimate = scannedPopulation == null ? 0 : scannedPopulation.Value / 100,
+                Habitability = habitability ?? 0,
+                DefenceNibble = -1,
+            }));
 
             stars.Add(star);
             mapObjects.Add(new MapObjectEntry(selectable, report.Name, MapObjectKind.Planet, star.X, star.Y));
