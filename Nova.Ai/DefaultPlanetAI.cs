@@ -122,7 +122,7 @@ namespace Nova.Ai
         /// </summary>
         public void BuildShips(int yearCounter)
         {
-            if (this.planet.GetResourceRate() <= DefaultAIPlanner.LowProduction)
+            if (this.ProjectedResources() <= DefaultAIPlanner.LowProduction)
             {
                 return;
             }
@@ -468,7 +468,7 @@ namespace Nova.Ai
             int cap = planet.GetMaxDefenses() - planet.Defenses - QueuedQuantity<DefenseProductionUnit>(manualOnly: true);
 
             (int defenses, int alchemy) = PlanetAdvisors.BomberDefence(
-                planet.GetResourceRate(),
+                ProjectedResources(),
                 projected.Ironium,
                 projected.Boranium,
                 projected.Germanium,
@@ -510,7 +510,7 @@ namespace Nova.Ai
                 (long)projected.Ironium - committed.Ironium,
                 (long)projected.Boranium - committed.Boranium,
                 (long)projected.Germanium - committed.Germanium,
-                (long)planet.GetResourceRate() - committed.Energy,
+                (long)ProjectedResources() - committed.Energy,
                 factoryRoom,
                 mineRoom,
                 factoryCost.Energy,
@@ -701,8 +701,24 @@ namespace Nova.Ai
             return Insert(order, atTop);
         }
 
+        /// <summary>The planet's annual resource output after the AI's research share (§6,
+        /// `FUN_1090_355c`): R − (p × R ÷ 100), unless the planet's leftover-only research flag is
+        /// set, in which case production gets the whole output and only the true leftover funds
+        /// research. This is the "projected resources" every AI test reads.</summary>
+        public int ProjectedResources()
+        {
+            int output = planet.GetResourceRate();
+            if (planet.OnlyLeftover)
+            {
+                return output;
+            }
+
+            return AiResearchShare.AfterShare(output, AiResearchShare.PercentFor(category, YearCounter, Empire.ResearchLevels));
+        }
+
         /// <summary>The planet's surplus (§6 top-up "Surplus"): surface stock plus this year's
-        /// mining per mineral, and this year's resources, minus the full cost of the queue.</summary>
+        /// mining per mineral, and this year's resources after the research share, minus the full
+        /// cost of the queue.</summary>
         public Resources Surplus()
         {
             Resources projected = ProjectedMinerals();
@@ -711,7 +727,7 @@ namespace Nova.Ai
                 projected.Ironium - committed.Ironium,
                 projected.Boranium - committed.Boranium,
                 projected.Germanium - committed.Germanium,
-                planet.GetResourceRate() - committed.Energy);
+                ProjectedResources() - committed.Energy);
         }
 
         /// <summary>The queue does not over-commit any mineral or (when asked) resources

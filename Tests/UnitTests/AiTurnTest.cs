@@ -385,7 +385,9 @@ namespace Nova.Tests.UnitTests
             List<ProductionOrder> queue = home.ManufacturingQueue.Queue;
             ProductionOrder defenses = queue.FirstOrDefault(order => order.Unit is DefenseProductionUnit);
             Assert.IsNotNull(defenses, "the bomber pass queued defences");
-            Assert.AreEqual(4, defenses.Quantity, "R = 100: n = 100 / 25 = 4, within m = 100");
+            // Category 2 (Automitrons) at turn 25 takes a 20% research share: R = 100 - 20 = 80,
+            // so n = 80 / 25 = 3, within m = 100.
+            Assert.AreEqual(3, defenses.Quantity, "R = 80 after the research share: n = 80 / 25 = 3, within m = 100");
             Assert.Less(queue.IndexOf(defenses), queue.IndexOf(existing), "inserted at the top, above the existing item");
         }
 

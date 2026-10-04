@@ -529,7 +529,7 @@ namespace Nova.Ai
 
                 Star star = planet.Planet;
                 Resources surplus = planet.Surplus();
-                int resources = star.GetResourceRate();
+                int resources = planet.ProjectedResources();
                 long surplusS = AiPacketRules.AttackSurplus(surplus);
                 long budget = AiPacketRules.AttackBudget(surplusS, resources);
                 if (surplusS <= AiPacketRules.AttackSurplusAtMost)
