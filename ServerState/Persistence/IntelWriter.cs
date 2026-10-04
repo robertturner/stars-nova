@@ -80,6 +80,19 @@ namespace Nova.Server
         }
 
         /// <summary>
+        /// The Mystery Traders one player's turn file carries: all of them, for every empire.
+        /// behavior-specs-11/turn-generation-engine.md §5a "Who sees a Trader": the Trader-visibility
+        /// pass marks every Trader entry as seen with no test at all - distance, scanners, cloak,
+        /// Tachyon Detectors and race play no part - so every player sees every Trader anywhere in
+        /// the galaxy every turn. A fresh dictionary so a player's snapshot cannot alias the live
+        /// table.
+        /// </summary>
+        public static Dictionary<long, MysteryTrader> VisibleMysteryTradersFor(ServerData serverState)
+        {
+            return new Dictionary<long, MysteryTrader>(serverState.AllMysteryTraders);
+        }
+
+        /// <summary>
         /// The score records one player's turn file carries (behavior-specs-11/
         /// save-turn-file-format.md §3, "Score records"): the viewer's own race, any eliminated
         /// race (its final standing is public), every race once the game is over (the winner mark
@@ -123,6 +136,7 @@ namespace Nova.Server
             {
                 turnData = new Intel();
                 turnData.AllMinefields = VisibleMinefieldsFor(serverState, empire);
+                turnData.AllMysteryTraders = VisibleMysteryTradersFor(serverState);
                 turnData.EmpireState = serverState.AllEmpires[empire.Id];
                 
                 

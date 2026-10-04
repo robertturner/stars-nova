@@ -60,10 +60,11 @@ namespace Nova.Server.TurnSteps
     /// redraws per trading planet when the Trader's part is already owned. It reads the skill
     /// tier from <see cref="PlayerSettings.AiSkill"/>, which the New Game flow must record.
     ///
-    /// Not implemented (reported): the withdrawal of message-78 "completed its orders" notices
-    /// (this port has no such message); message 272 (a fleet heading for a removed Trader -
-    /// fleets cannot target a Trader
-    /// here); and the Trader's appearance in the players' scan data.
+    /// Message 78 (a fleet that completed its orders) is posted by the server's waypoint-task
+    /// passes and withdrawn here just before a Trader absorbs the fleet
+    /// (<see cref="FleetOrdersNotice"/>). Not implemented (reported): message 272 (a fleet heading
+    /// for a removed Trader - fleets cannot target a Trader here). The Trader's appearance in the
+    /// players' turn files is handled by <see cref="IntelWriter.VisibleMysteryTradersFor"/>.
     /// </summary>
     public class MysteryTraderStep : ITurnStep
     {
@@ -547,11 +548,13 @@ namespace Nova.Server.TurnSteps
             }
 
             // 3. The trade goes ahead: the race is served and the WHOLE fleet is absorbed, ships and
-            // cargo. (The original first withdraws this generation's message-78 "completed its
-            // assigned orders" notices for the fleet; this port posts no such notice.)
+            // cargo. Just before that, this generation's message-78 "completed its assigned orders"
+            // notices for the fleet are withdrawn, so the player is not told a fleet that no longer
+            // exists finished its orders (behavior-specs-11/turn-generation-engine.md §5a).
             trader.ServedRaces.Add(empire.Id);
             NovaPoint giftPosition = new NovaPoint(fleet.Position);
             Mappable giftOrbit = fleet.InOrbit;
+            FleetOrdersNotice.Withdraw(serverState.AllMessages, fleet.Key);
             empire.RemoveFleet(fleet.Key);
             serverState.MysteryTraderGiftFleets.Remove(fleet.Key);
 

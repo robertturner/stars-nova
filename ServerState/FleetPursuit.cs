@@ -200,7 +200,11 @@ namespace Nova.Server
                 recycled.WarpFactor = reached.WarpFactor;
             }
 
-            // The reached leg becomes waypoint 0 (the current-position placeholder goes).
+            // The reached leg becomes waypoint 0 (the current-position placeholder goes). The
+            // reached leg is the fleet's only remaining waypoint when the placeholder was the
+            // only one before it, which is the "only remaining waypoint carries a task" test for
+            // message 78 (behavior-specs-11/turn-generation-engine.md §5a).
+            bool onlyRemainingWaypoint = fleet.Waypoints.Count == 2;
             fleet.Waypoints.RemoveAt(0);
 
             Star star = StarAt(fleet.Position);
@@ -239,9 +243,20 @@ namespace Nova.Server
 
             // Same clearing rule as an ordinary arrival (TurnGenerator.UpdateFleet): Lay Mine
             // Field and Patrol stay on the current waypoint.
-            if (!(taskValid && task is LayMinesTask) && !(task is PatrolTask))
+            bool taskHolds = (taskValid && task is LayMinesTask) || task is PatrolTask;
+            if (!taskHolds)
             {
                 reached.Task = new NoTask();
+            }
+
+            // Message 78 (behavior-specs-11/turn-generation-engine.md §5a): a finished task on the
+            // fleet's only remaining waypoint posts a "completed its orders" notice; a fleet that
+            // left play (scrapped, colonised, merged away, absorbed) instead has any earlier one
+            // withdrawn.
+            if (taskValid && !taskHolds)
+            {
+                FleetOrdersNotice.OnTaskFinished(
+                    serverState.AllMessages, task, fleet, onlyRemainingWaypoint, sender, receiver);
             }
 
             if (!keepsFleetTarget)

@@ -830,13 +830,18 @@ namespace Nova.Server
                         recycledWaypoint.WarpFactor = legWarp;
                     }
 
-                    bool taskValid = waypointZero.Task.IsValid(fleet, target, sender, reciever);
+                    // The task object can be replaced with a NoTask just below, but message 78 and
+                    // the merge withdrawal still need to see what was performed.
+                    IWaypointTask performedTask = waypointZero.Task;
+                    bool onlyRemainingWaypoint = fleet.Waypoints.Count == 1;
+
+                    bool taskValid = performedTask.IsValid(fleet, target, sender, reciever);
                     if (taskValid)
                     {
-                        waypointZero.Task.Perform(fleet, target, sender, reciever); // ToDo: scrapping fleet may be performed as waypoint 1 task here which is not correct.
+                        performedTask.Perform(fleet, target, sender, reciever); // ToDo: scrapping fleet may be performed as waypoint 1 task here which is not correct.
                     }
 
-                    serverState.AllMessages.AddRange(waypointZero.Task.Messages);
+                    serverState.AllMessages.AddRange(performedTask.Messages);
 
                     // Task is done, clear it - except Lay Mine Field, which stays on the
                     // current waypoint (holding the fleet there) until its duration runs out;
@@ -844,11 +849,21 @@ namespace Nova.Server
                     // Patrol likewise stays: it is not an arrival action (PatrolStep).
                     // An unfinished Transport task (CargoTask.Pending) and a Transfer Fleet task
                     // (settled after the battle by TransferFleetStep) stay too, holding the fleet.
-                    if (!(taskValid && waypointZero.Task is LayMinesTask) && !(waypointZero.Task is PatrolTask)
-                        && !(taskValid && waypointZero.Task is CargoTask pendingCargo && pendingCargo.Pending)
-                        && !(waypointZero.Task is TransferFleetTask))
+                    bool taskHolds = (taskValid && performedTask is LayMinesTask) || performedTask is PatrolTask
+                        || (taskValid && performedTask is CargoTask pendingCargo && pendingCargo.Pending)
+                        || performedTask is TransferFleetTask;
+                    if (!taskHolds)
                     {
                         waypointZero.Task = new NoTask();
+                    }
+
+                    // Message 78 (behavior-specs-11/turn-generation-engine.md §5a): a task finished
+                    // on the fleet's only remaining waypoint posts a "completed its orders" notice;
+                    // a fleet that left play instead has any earlier notice withdrawn.
+                    if (taskValid && !taskHolds)
+                    {
+                        FleetOrdersNotice.OnTaskFinished(
+                            serverState.AllMessages, performedTask, fleet, onlyRemainingWaypoint, sender, reciever);
                     }
 
                     /*if (thisWaypoint.Task != WaypointTask.LayMines)

@@ -50,6 +50,14 @@ namespace Nova.Client
         
         public Intel InputTurn = null;            
         
+        /// <summary>
+        /// The Mystery Traders visible to this client (behavior-specs-11/turn-generation-engine.md
+        /// §5a "Who sees a Trader"): every Trader in the galaxy, every turn. Populated from the
+        /// turn file's <see cref="Intel.AllMysteryTraders"/>; persistent copies come back through
+        /// <see cref="InputTurn"/>.
+        /// </summary>
+        public Dictionary<long, MysteryTrader> AllMysteryTraders = new Dictionary<long, MysteryTrader>();
+
         public bool FirstTurn = true;  
         
         public string GameFolder = null;
@@ -131,6 +139,13 @@ namespace Nova.Client
                     // Waypoint.cs's own comment for the live-reproduced crash this pattern caused).
                     Report.Error(e.Message + "\n Details: \n" + e);
                 }
+            }
+
+            // The visible Traders ride inside InputTurn's Intel element; mirror them into the
+            // client's own collection so a restored state has them even before a turn is read.
+            if (InputTurn != null)
+            {
+                AllMysteryTraders = new Dictionary<long, MysteryTrader>(InputTurn.AllMysteryTraders);
             }
         }
 
@@ -305,6 +320,7 @@ namespace Nova.Client
             Messages        = newState.Messages;   
             
             InputTurn      = newState.InputTurn;
+            AllMysteryTraders = newState.AllMysteryTraders;
             
             EmpireState = newState.EmpireState;
             

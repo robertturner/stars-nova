@@ -51,6 +51,22 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
+        public void ToXml_FleetOrdersCompleteMessage_WritesTheFleetKeyWithoutAnError()
+        {
+            // Message 78 (behavior-specs-11/turn-generation-engine.md §5a): the message is keyed by
+            // the fleet, and its Event is a long key - the default case would otherwise report an
+            // error on every save.
+            Message message = new Message(1, "Fleet 7 has completed its orders.", FleetOrdersNotice.MessageType, 7L);
+
+            XmlElement element = message.ToXml(new XmlDocument());
+
+            Assert.That(lastReportedError, Is.Null);
+            XmlNode? eventNode = element.SelectSingleNode("Event");
+            Assert.That(eventNode, Is.Not.Null);
+            Assert.That(eventNode!.FirstChild!.Value, Is.EqualTo("7"));
+        }
+
+        [Test]
         public void ToXml_MinefieldMessage_RoundTripsTheActualMinefieldKey()
         {
             Minefield minefield = new Minefield { Key = 0x2A };

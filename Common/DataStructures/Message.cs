@@ -168,6 +168,11 @@ namespace Nova.Common
                         Global.SaveData(xmldoc, xmlelMessage, "Event", Event.ToString());
                         break;
 
+                    case FleetOrdersNotice.MessageType:
+                        // Message 78: the finished fleet's key (withdrawal is per fleet).
+                        Global.SaveData(xmldoc, xmlelMessage, "Event", Event.ToString());
+                        break;
+
                     default:
                         Report.Error("Message.ToXml() - Unable to convert Message.Event of type " + Event.ToString());
                         break;

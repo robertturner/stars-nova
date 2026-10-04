@@ -67,6 +67,14 @@ namespace Nova.Common
         public Dictionary<long, Minefield> AllMinefields = new Dictionary<long, Minefield>();
 
         /// <summary>
+        /// The Mystery Traders written into this player's turn file (behavior-specs-11/
+        /// turn-generation-engine.md §5a "Who sees a Trader"): every player sees every Trader every
+        /// turn, so this holds the whole special-object table (position, destination, speed, served
+        /// mask and the item it carries) with no visibility test.
+        /// </summary>
+        public Dictionary<long, MysteryTrader> AllMysteryTraders = new Dictionary<long, MysteryTrader>();
+
+        /// <summary>
         /// Default constructor.
         /// </summary>
         public Intel()
@@ -79,6 +87,7 @@ namespace Nova.Common
         public void Clear()
         {
             AllMinefields.Clear();
+            AllMysteryTraders.Clear();
             Messages.Clear();
             EmpireState.Clear();
         }
@@ -132,6 +141,11 @@ namespace Nova.Common
                             AllMinefields.Add(minefield.Key, minefield);
                             break;
 
+                        case "mysterytrader":
+                            MysteryTrader trader = new MysteryTrader(xmlnode);
+                            AllMysteryTraders.Add(trader.Key, trader);
+                            break;
+
                         default: break;
                     }
                 }
@@ -177,6 +191,12 @@ namespace Nova.Common
             foreach (Minefield mine in AllMinefields.Values)
             {
                 xmlelIntel.AppendChild(mine.ToXml(xmldoc));
+            }
+
+            // AllMysteryTraders
+            foreach (MysteryTrader trader in AllMysteryTraders.Values)
+            {
+                xmlelIntel.AppendChild(trader.ToXml(xmldoc));
             }
 
             // return the outer element

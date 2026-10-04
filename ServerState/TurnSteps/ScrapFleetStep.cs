@@ -78,6 +78,11 @@ namespace Nova.Server.TurnSteps
 
                         scrapTask.Perform(fleet, targetStar, sender, receiver);
 
+                        // Message 78 (behavior-specs-11/turn-generation-engine.md §5a): a scrapped
+                        // fleet leaves play, so any earlier "completed its orders" notice for it is
+                        // withdrawn, with nothing posted.
+                        FleetOrdersNotice.Withdraw(serverState.AllMessages, fleet.Key);
+
                         // Deep space: the salvage is left as a wreckage object, the same decaying
                         // DeepSpaceMinerals concentration the battle pass leaves (reading note 3),
                         // made by the same wreckage routine: at most 30,000 kT per object, the rest

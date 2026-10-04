@@ -124,6 +124,11 @@ namespace Nova.Client
         {
             clientState.EmpireState = clientState.InputTurn.EmpireState;
 
+            // Every Trader in the turn file is visible to this player (behavior-specs-11/
+            // turn-generation-engine.md §5a "Who sees a Trader": every player sees every Trader
+            // every turn). Mirror the Intel collection into the client's own.
+            clientState.AllMysteryTraders = new Dictionary<long, MysteryTrader>(clientState.InputTurn.AllMysteryTraders);
+
             // Clear old turn data from StateData
             clientState.Messages.Clear();
 
