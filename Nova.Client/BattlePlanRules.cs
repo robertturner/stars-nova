@@ -38,9 +38,10 @@ namespace Nova.Client
     /// Nova keys plans by name, not by index, so there is no index shift to fix up; what can go
     /// stale is a fleet still naming the deleted (or renamed) plan, which the battle engine would
     /// fail to find.
-    /// AMBIGUITY: the spec does not say which plan the deleted plan's own fleets end up on (an
-    /// index walk that only shifts later plans leaves them on the plan that followed it). Here
-    /// they move to the first plan, the one that can never be deleted.
+    /// The spec (behavior-specs-11/client-interface.md, "Battle Plans and Relations dialogs", and
+    /// ship-design-and-components.md section 3) says a fleet on the deleted plan gets "the plan
+    /// just above it" - the plan immediately preceding it in the list. The first record can never
+    /// be deleted, so one always exists.
     /// </summary>
     public static class BattlePlanRules
     {
@@ -71,8 +72,34 @@ namespace Nova.Client
         }
 
         /// <summary>
-        /// Removes the plan and moves every fleet that used it to the first plan. Returns the
-        /// fleets moved (empty when nothing was deleted).
+        /// The plan immediately above <paramref name="planName"/> in the list (the plan a deleted
+        /// plan's fleets are reassigned to), or null when it is missing or is already the first.
+        /// </summary>
+        public static string PlanAbove(IDictionary<string, BattlePlan> plans, string planName)
+        {
+            if (plans == null || planName == null)
+            {
+                return null;
+            }
+
+            string above = null;
+            foreach (string key in plans.Keys)
+            {
+                if (key == planName)
+                {
+                    return above;
+                }
+
+                above = key;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Removes the plan and moves every fleet that used it to the plan just above it (the
+        /// preceding record; the protected first plan guarantees one exists). Returns the fleets
+        /// moved (empty when nothing was deleted).
         /// </summary>
         public static List<Fleet> Delete(Dictionary<string, BattlePlan> plans, string planName, IEnumerable<Fleet> fleets)
         {
@@ -81,11 +108,11 @@ namespace Nova.Client
                 return new List<Fleet>();
             }
 
-            string firstPlan = plans.Keys.First();
+            string above = PlanAbove(plans, planName);
             List<Fleet> moved = FleetsUsing(planName, fleets);
             foreach (Fleet fleet in moved)
             {
-                fleet.BattlePlan = firstPlan;
+                fleet.BattlePlan = above;
             }
 
             plans.Remove(planName);

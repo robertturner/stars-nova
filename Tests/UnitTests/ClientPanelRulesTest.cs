@@ -92,7 +92,7 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void DeletingAnAssignedPlan_NeedsConfirmation_AndMovesItsFleetsToTheFirstPlan()
+        public void DeletingAnAssignedPlan_NeedsConfirmation_AndMovesItsFleetsToThePlanAbove()
         {
             Dictionary<string, BattlePlan> plans = ThreePlans();
             Fleet onIt = new Fleet(1) { BattlePlan = "Kill Starbase" };
@@ -105,9 +105,25 @@ namespace Nova.Tests.UnitTests
             List<Fleet> moved = BattlePlanRules.Delete(plans, "Kill Starbase", fleets);
 
             CollectionAssert.AreEqual(new[] { onIt }, moved);
-            Assert.AreEqual("Default", onIt.BattlePlan);
+            Assert.AreEqual("Default", onIt.BattlePlan, "the plan just above the deleted one");
             Assert.AreEqual("Run", onLater.BattlePlan, "a fleet on a later plan keeps its own plan");
             CollectionAssert.AreEqual(new[] { "Default", "Run" }, plans.Keys.ToArray());
+        }
+
+        [Test]
+        public void DeletingTheLastPlan_MovesItsFleetsToThePlanAbove_NotTheFirst()
+        {
+            Dictionary<string, BattlePlan> plans = ThreePlans();
+            Fleet onLast = new Fleet(1) { BattlePlan = "Run" };
+            Fleet onFirst = new Fleet(2) { BattlePlan = "Default" };
+            List<Fleet> fleets = new List<Fleet> { onLast, onFirst };
+
+            List<Fleet> moved = BattlePlanRules.Delete(plans, "Run", fleets);
+
+            CollectionAssert.AreEqual(new[] { onLast }, moved);
+            Assert.AreEqual("Kill Starbase", onLast.BattlePlan, "the plan just above the deleted last plan");
+            Assert.AreEqual("Default", onFirst.BattlePlan);
+            CollectionAssert.AreEqual(new[] { "Default", "Kill Starbase" }, plans.Keys.ToArray());
         }
 
         [Test]

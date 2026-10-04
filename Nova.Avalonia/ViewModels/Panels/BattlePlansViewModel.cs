@@ -16,8 +16,8 @@ namespace Nova.Avalonia.ViewModels.Panels;
 /// - the first record cannot be removed (Delete is disabled on it);
 /// - deleting a plan still assigned to a fleet first asks Yes/No (an inline confirmation, the
 ///   same arm-then-confirm shape the mobile shell's Close Game uses); declining changes nothing;
-///   accepting moves those fleets to the first plan (Nova.Client.BattlePlanRules.Delete, see its
-///   AMBIGUITY note) so no fleet is left naming a plan that no longer exists;
+///   accepting moves those fleets to the plan just above the deleted one
+///   (Nova.Client.BattlePlanRules.Delete) so no fleet is left naming a plan that no longer exists;
 /// - renaming is committed on accept and follows the fleets (BattlePlanRules.Rename).
 /// The dictionary's insertion order is the list order (Plans[0] is the protected "Default"
 /// record EmpireData's constructor adds first); BattlePlanRules.Rename rebuilds the dictionary
@@ -210,7 +210,7 @@ public class BattlePlansViewModel : Tool
             return;
         }
 
-        ConfirmDeleteText = $"\"{SelectedPlan.Name}\" is assigned to {users} fleet(s). Delete it anyway? They will use \"{battlePlans.Keys.First()}\".";
+        ConfirmDeleteText = $"\"{SelectedPlan.Name}\" is assigned to {users} fleet(s). Delete it anyway? They will use \"{BattlePlanRules.PlanAbove(battlePlans, SelectedPlan.Name)}\".";
         IsConfirmingDelete = true;
     }
 
@@ -228,12 +228,13 @@ public class BattlePlansViewModel : Tool
             return;
         }
 
+        string above = BattlePlanRules.PlanAbove(battlePlans, name);
         List<Fleet> moved = BattlePlanRules.Delete(battlePlans, name, OwnFleets);
         RebuildPlans();
         SelectedPlan = Plans.FirstOrDefault();
         BattlePlanOrders.Queue(clientState);
         StatusMessage = moved.Count > 0
-            ? $"Deleted \"{name}\"; {moved.Count} fleet(s) now use \"{battlePlans.Keys.First()}\"."
+            ? $"Deleted \"{name}\"; {moved.Count} fleet(s) now use \"{above}\"."
             : $"Deleted \"{name}\".";
     }
 

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Avalonia.Headless.NUnit;
 using Nova.Avalonia.ViewModels.Panels;
@@ -10,9 +11,9 @@ namespace Nova.Avalonia.Tests;
 
 /// <summary>
 /// The Battle Plans editor (client-interface.md rows 59-61, 78; race-designer-ui-and-
-/// availability.md rows 27/28 "Battle-plan editor"). Which plan a deleted plan's fleets move to is
-/// a recorded AMBIGUITY (BattlePlanRules), so the tests only require that they end on a plan that
-/// still exists.
+/// availability.md rows 27/28 "Battle-plan editor"). A deleted plan's fleets move to the plan just
+/// above it in the list (BattlePlanRules.Delete; client-interface.md "Battle Plans and Relations
+/// dialogs").
 /// </summary>
 [TestFixture]
 public class BattlePlansViewModelTests
@@ -90,6 +91,8 @@ public class BattlePlansViewModelTests
         BattlePlansViewModel plans = Open(out ClientData client);
         plans.NewPlanCommand.Execute(null);
         string doomed = plans.SelectedPlan!.Name;
+        List<string> orderBefore = client.EmpireState.BattlePlans.Keys.ToList();
+        string above = orderBefore[orderBefore.IndexOf(doomed) - 1];
         Fleet fleet = client.EmpireState.OwnedFleets.Values.First(f => !f.IsStarbase);
         fleet.BattlePlan = doomed;
 
@@ -107,6 +110,7 @@ public class BattlePlansViewModelTests
         plans.ConfirmDeleteCommand.Execute(null);
 
         Assert.That(client.EmpireState.BattlePlans.ContainsKey(doomed), Is.False);
+        Assert.That(fleet.BattlePlan, Is.EqualTo(above), "the fleet moved to the plan just above the deleted one");
         Assert.That(client.EmpireState.BattlePlans.ContainsKey(fleet.BattlePlan), Is.True, "the fleet names a plan that exists");
         Assert.That(plans.Plans.Select(row => row.Name), Has.No.Member(doomed));
     }
