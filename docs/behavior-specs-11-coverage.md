@@ -90,6 +90,8 @@ items. The headline numbers above predate this update; the per-file tables below
   `StarMapGenerator.PlaceStarsByCount` (`PresetStarSeparation = 12`) and `RelaxStars`.
 - new-game §3 **second planet's own state** (#8) and **Simplified setup / written defaults** (#9):
   `StarMapInitialiser` and `NewGameSetup.SimplifiedPlayerCountTable` / `ApplySimplifiedDefaults` / `ResetToDefaults`.
+- **Expert +10% starting population** (#52): `Race.GetStartingPopulation(expertComputerPlayer)` adds the
+  tenth for `PlayerSettings.AiSkill >= Race.ExpertAiSkill` (3), with a generated-home-world test.
 
 **Landed (each with a unit test; main suite 3068/3068, `Nova.Avalonia.Tests` 105 passed / 1 skipped):**
 
