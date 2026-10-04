@@ -307,13 +307,12 @@ namespace Nova.Server
             // that superseded list.
             serverState.CleanupFleets();
 
-            // Mystery Trader movement: the special-object pass, mode 0, runs before fleets move
-            // (behavior-specs-10/turn-generation-engine.md §1 step 15, §5a).
-            new MysteryTraderMovementStep().Process(serverState);
-
-            // Mass packets take their full step (and may arrive and impact) in the same pass,
-            // before fleets move (step 15).
+            // Special-object pass mode 0 (behavior-specs-11/turn-generation-engine.md §1 step 15):
+            // mass packets take their full step (and may arrive and impact) before the Mystery
+            // Trader moves, and both run before fleets move.
             new PacketMovementStep(false).Process(serverState);
+
+            new MysteryTraderMovementStep().Process(serverState);
 
             HashSet<long> minefieldsBeforeMovement = new HashSet<long>(serverState.AllMinefields.Keys);
 
