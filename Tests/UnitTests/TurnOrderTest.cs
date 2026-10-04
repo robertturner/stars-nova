@@ -101,6 +101,34 @@ namespace Nova.Tests.UnitTests
             return probe;
         }
 
+        /// <summary>A step that records how many pending colonisation landings a star holds.</summary>
+        private class PendingProbe : ITurnStep
+        {
+            private readonly Star watched;
+
+            public int PendingSeen = -1;
+
+            public PendingProbe(Star watched)
+            {
+                this.watched = watched;
+            }
+
+            public void Process(ServerData state)
+            {
+                PendingSeen = watched.PendingColonizations.Count;
+            }
+        }
+
+        private PendingProbe AddPendingProbe(int order, Star watched)
+        {
+            FieldInfo field = typeof(TurnGenerator).GetField("turnSteps", BindingFlags.Instance | BindingFlags.NonPublic);
+            var steps = (SortedList<int, ITurnStep>)field.GetValue(generator);
+
+            PendingProbe probe = new PendingProbe(watched);
+            steps.Add(order, probe);
+            return probe;
+        }
+
         [Test]
         public void Battle_RunsAfterTheProductionSteps_AndBeforeTheLaterSteps()
         {
@@ -119,6 +147,33 @@ namespace Nova.Tests.UnitTests
                 "Every step up to and including the production ones still precedes combat");
             Assert.AreEqual(1, afterBattle.BattleReportsSeen,
                 "Combat resolves once production is done, before the later steps (bombing onward)");
+        }
+
+        [Test]
+        public void SecondInvasionPass_RunsAfterBombingAndBeforeTransferFleet()
+        {
+            // Pair 8 of the master routine's 14 ordered pairs (behavior-specs-11/
+            // turn-generation-engine.md section 1 step 23): battle, bombardment, the Trader
+            // encounter, then the second colonisation/invasion pass, then Transfer Fleet. The
+            // pending-landing ledger is the observable: a probe keyed in the first post-battle
+            // bucket (before RemainingInvasion) still sees the landing, one keyed after Transfer
+            // Fleet sees it cleared.
+            Star pending = new Star { Name = "Pending", Owner = 2 };
+            serverState.AllStars.Add(pending.Key, pending);
+
+            Fleet colonizer = new Fleet("Colonizer", empire1.Id, 99, new Point(0, 0));
+            colonizer.Cargo.ColonistsInKilotons = 5;
+            pending.PendingColonizations.Add(new ColonizationAttempt(colonizer, empire1) { ColonistUnits = 5 });
+
+            PendingProbe beforeResolver = AddPendingProbe(22, pending);
+            PendingProbe afterResolver = AddPendingProbe(27, pending);
+
+            generator.Generate();
+
+            Assert.AreEqual(1, beforeResolver.PendingSeen,
+                "the landing is still unresolved while the bombardment/Trader steps run");
+            Assert.AreEqual(0, afterResolver.PendingSeen,
+                "the second invasion pass resolved it before Transfer Fleet and the later steps");
         }
 
         [Test]

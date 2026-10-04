@@ -397,6 +397,81 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
+        public void MetBits_AreSetWhetherOrNotTheConditionIsEnabled()
+        {
+            // behavior-specs-11/victory-conditions.md section 2: a condition that is currently met
+            // sets its bit whether or not it is enabled; only enabled conditions count towards the
+            // winner test.
+            var (serverData, empireA) = MakeTwoEmpireGame();
+            GameSettings.Data.PlanetsOwned = new EnabledValue(false, 50); // DISABLED, but met
+            GameSettings.Data.TargetsToMeet = 1;
+
+            new VictoryCheck(serverData, new Scores(serverData)).Victor();
+
+            Assert.AreEqual(1, empireA.ConditionsMetMask & 1, "the owned-planets bit is set even though the condition is disabled");
+            Assert.IsFalse(empireA.Winner, "no condition is enabled, so no winner");
+        }
+
+        [Test]
+        public void WinnerMark_PersistsAndIsCarriedOnEveryScoreRecord()
+        {
+            var (serverData, empireA) = MakeTwoEmpireGame();
+            GameSettings.Data.PlanetsOwned = new EnabledValue(true, 50);
+            GameSettings.Data.TargetsToMeet = 1;
+            GameSettings.Data.MinimumGameTime = 0;
+            serverData.TurnYear = Global.StartingYear + 1;
+
+            VictoryCheck check = new VictoryCheck(serverData, new Scores(serverData));
+            check.Victor();
+
+            Assert.IsTrue(empireA.Winner);
+            Assert.IsTrue(serverData.AllMessages.Exists(m => m.Text != null && m.Text.Contains("have won the game")));
+
+            // The mark survives on the empire and is copied onto every later score record.
+            ScoreRecord record = new Scores(serverData).GetScores().Find(s => s.EmpireId == empireA.Id);
+            Assert.IsNotNull(record);
+            Assert.IsTrue(record.Winner, "the winner mark is carried on the score record");
+            Assert.AreNotEqual(0, record.MetMask & 1);
+
+            // Turning the condition off later does not clear the winner mark.
+            GameSettings.Data.PlanetsOwned = new EnabledValue(false, 50);
+            serverData.AllMessages.Clear();
+            check.Victor();
+            Assert.IsTrue(empireA.Winner);
+            Assert.IsFalse(serverData.AllMessages.Exists(m => m.Text != null && m.Text.Contains("have won the game")),
+                "the notice is not repeated once the mark is set");
+        }
+
+        [Test]
+        public void ScoreRecordAndEmpire_PersistTheWinnerAndMetBits()
+        {
+            System.Xml.XmlDocument doc = new System.Xml.XmlDocument();
+            System.Xml.XmlElement root = doc.CreateElement("Root");
+            doc.AppendChild(root);
+
+            ScoreRecord record = new ScoreRecord { EmpireId = 3, MetMask = 0x15, Winner = true };
+            root.AppendChild(record.ToXml(doc));
+            ScoreRecord loadedRecord = new ScoreRecord(root.FirstChild);
+            Assert.AreEqual(0x15, loadedRecord.MetMask);
+            Assert.IsTrue(loadedRecord.Winner);
+
+            EmpireData empire = new EmpireData();
+            empire.Id = 4;
+            empire.Race = new Race();
+            empire.Winner = true;
+            empire.ConditionsMetMask = 0x2A;
+
+            System.Xml.XmlDocument empireDoc = new System.Xml.XmlDocument();
+            System.Xml.XmlElement empireRoot = empireDoc.CreateElement("Root");
+            empireDoc.AppendChild(empireRoot);
+            empireRoot.AppendChild(empire.ToXml(empireDoc));
+            EmpireData loaded = new EmpireData(empireRoot.FirstChild);
+
+            Assert.IsTrue(loaded.Winner);
+            Assert.AreEqual(0x2A, loaded.ConditionsMetMask);
+        }
+
+        [Test]
         public void EliminatedFlag_RoundTripsThroughEmpireDataXml()
         {
             EmpireData empire = new EmpireData();

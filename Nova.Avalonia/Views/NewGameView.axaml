@@ -157,6 +157,7 @@
                             <CheckBox Content="Slower Tech Advances" IsChecked="{Binding SlowTechAdvance}" />
                             <CheckBox Content="Accelerated BBS Play" IsChecked="{Binding AcceleratedStart}" />
                             <CheckBox Content="No Random Events" IsChecked="{Binding NoRandomEvents}" />
+                            <CheckBox Content="Public Player Scores" IsChecked="{Binding PublicPlayerScores}" />
                             <CheckBox Content="Galaxy Clumping" IsChecked="{Binding GalaxyClumping}" />
                         </StackPanel>
                     </Border>

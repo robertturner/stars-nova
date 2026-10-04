@@ -93,7 +93,7 @@ items. The headline numbers above predate this update; the per-file tables below
 - **Expert +10% starting population** (#52): `Race.GetStartingPopulation(expertComputerPlayer)` adds the
   tenth for `PlayerSettings.AiSkill >= Race.ExpertAiSkill` (3), with a generated-home-world test.
 
-**Landed (each with a unit test; main suite 3095/3095, `Nova.Avalonia.Tests` 105 passed / 1 skipped):**
+**Landed (each with a unit test; main suite 3104/3104, `Nova.Avalonia.Tests` 105 passed / 1 skipped):**
 
 | Report item | Fix |
 |---|---|
@@ -120,11 +120,14 @@ items. The headline numbers above predate this update; the per-file tables below
 | #17 Transfer Fleet | `TransferFleetTask.Transfer` now blocks only colonists (329), a computer recipient or one rating the giver Enemy (332) and a recipient with no free 16-ship/10-starbase design slot (330/331); minerals and fuel go with the ships, a copied design is flagged failed-legality, and each refusal posts to the giver (and 331 to the recipient). `TransferFleetStep` resolves the computer flag from `AllPlayers`. |
 | #19 Repeat Orders and Patrol (partial) | a reached non-Patrol fleet-targeted waypoint is now recycled with its target (a pending Patrol intercept is not), recycling is skipped when the last waypoint stands on the reached point, and `PatrolStep.EfficientWarp` applies Patrol's free-speed preference (drop 1-3 warps to a free speed, both scoop engines excepted). The fuel 39/139 downgrade remains. |
 | #13 Packet Physics terraforming on arrival | `PacketArrival.ApplyPacketTerraforming` (production-queue.md §10m): when the PP sender's packet is not fully caught, each uncaught mineral drives one axis (gravity/temperature/radiation) in turn; per 100 kT chunk a 0-199 roll below the chunk size is an ordinary hit and a 0-9 roll of 0 a permanent one. Permanent hits move the ORIGINAL value towards the sender's ideal (or the nearer end when immune); ordinary hits then move the CURRENT value towards the sender's own `TerraformProductionUnit.AxisTarget` (half when immune). Messages 305/307 to the sender and (per the spec's reimplementation note) 306/308 to the planet owner. **Goldens regenerated** (the terraform rolls changed the RNG sequence). |
+| #26 turn order: bombardment before the second invasion pass | the post-battle stage now runs the bombing/artifact/research/Trader steps (keys 19-23) first, then `ColonizationResolver.ResolvePendingColonizations`, then Transfer Fleet and the remaining steps (key 24 on), matching pair 8 (behavior-specs-11/turn-generation-engine.md §1 step 23). `TurnOrderTest` probes the pending-landing ledger either side of the resolver. |
+| #29 victory met bits, winner mark, two-races gate | `VictoryCheck` computes all seven condition-met bits whether or not each is enabled (`EmpireData.ConditionsMetMask` / `ScoreRecord.MetMask`) and counts only enabled ones; a qualifying race gets a persistent `Winner` mark once (spec bit 14, never cleared) only while at least two races remain; both fields round-trip through the save. `Scores` copies them onto every record. |
+| #30 score visibility | a new `GameSettings.PublicPlayerScores` option (New Game checkbox) and `IntelWriter.VisibleScores`: a player receives race k's record only when k is its own, k is eliminated, the game is over (a winner mark exists), or Public Player Scores is on and the turn counter exceeds 19 (2420 onward). Other records stay private. **Goldens regenerated** (the new persisted fields changed the save hashes). |
 | (TODO-FEATURES #1) Ship Design tab | a single tap on a design shows its details straight away, including cargo capacity and the full summary figures (`Nova.Client.DesignDetails`) |
 
 **Still open** from the overturns table / "What's next": #2's step-29 waypoint resynchronisation (message 248; the port has no waypoint aimed at a special object - the map picker lists only fleets and planets - so the spec's step 5 is not ported),
 #3's remaining 197-200 / 201-204 message-recipient swap, #10 production templates, #11 catalog 10l,
-#18-#24 combat/damage (and the #19/#20 fuel 39/139 downgrade), #26-#29 turn order / Trader / packets / victory, #30 score visibility, #31's
+#18-#24 combat/damage (and the #19/#20 fuel 39/139 downgrade), #27 Trader visibility / message 78, #31's
 server-side cap/name enforcement (blocked on the AI design planner's slot management and name lengths), #35's nine-step planet pass and the rest
 of #37's P2/P3/P4 corrections, and the AI rows #36/#38/#40-#41, #42 planet route, and the rest of #44-#51 client work.
 

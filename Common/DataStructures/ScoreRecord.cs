@@ -45,6 +45,17 @@ namespace Nova.Common
         public int Resources;
 
         /// <summary>
+        /// The seven "condition met" bits, 0-6 in the spec's order (owned planets, tech levels,
+        /// score, lead over second place, production capacity, capital ships, sole highest score).
+        /// A met condition sets its bit whether or not it is enabled (victory-conditions.md §2,
+        /// "Which bits the evaluation sets").
+        /// </summary>
+        public int MetMask;
+
+        /// <summary>The persistent winner mark (spec bit 14): once set it is never cleared.</summary>
+        public bool Winner;
+
+        /// <summary>
         /// Default constructor.
         /// </summary>
         public ScoreRecord()
@@ -115,6 +126,14 @@ namespace Nova.Common
                         case "resources":
                             Resources = int.Parse(subnode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
                             break;
+
+                        case "metmask":
+                            MetMask = int.Parse(subnode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
+                            break;
+
+                        case "winner":
+                            Winner = bool.Parse(subnode.FirstChild.Value);
+                            break;
                     }
                 }
                 catch (Exception e)
@@ -165,6 +184,12 @@ namespace Nova.Common
 
             // Resources;
             Global.SaveData(xmldoc, xmlelScoreRecord, "Resources", Resources.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+            Global.SaveData(xmldoc, xmlelScoreRecord, "MetMask", MetMask.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (Winner)
+            {
+                Global.SaveData(xmldoc, xmlelScoreRecord, "Winner", "true");
+            }
 
             return xmlelScoreRecord;
         }

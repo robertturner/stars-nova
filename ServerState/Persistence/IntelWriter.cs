@@ -79,6 +79,44 @@ namespace Nova.Server
             return visible;
         }
 
+        /// <summary>
+        /// The score records one player's turn file carries (behavior-specs-11/
+        /// save-turn-file-format.md §3, "Score records"): the viewer's own race, any eliminated
+        /// race (its final standing is public), every race once the game is over (the winner mark
+        /// is set), and every race under "Public Player Scores" once the new turn counter exceeds
+        /// 19 (the file for 2420 onward). Otherwise another race's score never reaches the player.
+        /// </summary>
+        public List<ScoreRecord> VisibleScores(EmpireData viewer, List<ScoreRecord> allScores)
+        {
+            bool gameOver = false;
+            foreach (EmpireData empire in serverState.AllEmpires.Values)
+            {
+                if (empire.Winner)
+                {
+                    gameOver = true;
+                    break;
+                }
+            }
+
+            bool publicScores = GameSettings.Data.PublicPlayerScores
+                && serverState.TurnYear - Global.StartingYear > 19;
+
+            List<ScoreRecord> visible = new List<ScoreRecord>();
+            foreach (ScoreRecord record in allScores)
+            {
+                bool own = record.EmpireId == viewer.Id;
+                bool eliminated = serverState.AllEmpires.TryGetValue((ushort)record.EmpireId, out EmpireData scored)
+                    && scored.Eliminated;
+
+                if (own || eliminated || gameOver || publicScores)
+                {
+                    visible.Add(record);
+                }
+            }
+
+            return visible;
+        }
+
         public void WriteIntel()
         {
             foreach (EmpireData empire in serverState.AllEmpires.Values)
@@ -102,7 +140,7 @@ namespace Nova.Server
 
                 if (serverState.TurnYear > Global.StartingYear)
                 {
-                    turnData.AllScores = scores.GetScores();
+                    turnData.AllScores = VisibleScores(empire, scores.GetScores());
                 }
                 else
                 {

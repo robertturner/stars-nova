@@ -1,4 +1,4 @@
-﻿#region Copyright Notice
+#region Copyright Notice
 // ============================================================================
 // Copyright (C) 2010, 2011 The Stars-Nova Project
 //
@@ -77,6 +77,14 @@ namespace Nova.Common
         /// deposit - see RandomEventsStep). Persisted with the rest of the settings.
         /// </summary>
         public bool NoRandomEvents = false;
+
+        /// <summary>
+        /// The "Public Player Scores" game option (behavior-specs-11/save-turn-file-format.md §3,
+        /// "Score records"): when on and the new turn counter exceeds 19 (the file for 2420
+        /// onward), every player's turn file carries every race's score record; otherwise only the
+        /// viewer's own, an eliminated race's, and (once the game is over) every race's.
+        /// </summary>
+        public bool PublicPlayerScores = false;
 
         /// <summary>
         /// The "Slow Tech Advance" game option: every research level costs twice as much, the

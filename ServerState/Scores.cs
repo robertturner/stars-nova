@@ -76,6 +76,12 @@ namespace Nova.Server
             ScoreRecord score = new ScoreRecord();
             score.EmpireId = empireId;
 
+            // The persistent winner mark and the met-condition bits from the last evaluation
+            // (behavior-specs-11/victory-conditions.md section 2): the record carries them for the
+            // Score window and for the next turn's score visibility.
+            score.Winner = empire.Winner;
+            score.MetMask = empire.ConditionsMetMask;
+
             // ----------------------------------------------------------------------------
             // Planet-derived values: Planets, Starbases, Resources and the population points.
             // ----------------------------------------------------------------------------

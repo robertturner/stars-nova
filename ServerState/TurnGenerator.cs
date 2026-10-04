@@ -350,16 +350,23 @@ namespace Nova.Server
 
             serverState.CleanupFleets();
 
+            // The post-battle stage, in the master routine's order (behavior-specs-11/
+            // turn-generation-engine.md section 1 step 23, the 14 ordered pairs): battle, orbital
+            // bombardment, the Trader encounter, then the second colonisation/invasion pass, then
+            // Transfer Fleet. The bombardment and Trader steps are keyed below Transfer Fleet, so
+            // the second invasion pass runs after them and before Transfer Fleet (pair 8).
+            RunTurnSteps(step => step >= BOMBINGSTEP && step < TRANSFERFLEETSTEP);
+
             // Every fleet has now had its chance to arrive and register a colonization attempt
-            // (ColoniseTask.Perform), and any that survived the battle can now resolve - the real
-            // routine resolves colonisation and invasion once more after the battle pass (step
-            // 23f). Resolve simultaneous-arrival contests here; a winning attempt clears its
-            // fleet's composition, so a second cleanup removes that now-empty fleet the same way
+            // (ColoniseTask.Perform), and any that survived the battle and bombardment can now
+            // resolve - the real routine resolves colonisation and invasion once more after the
+            // battle pass (step 23f). Resolve simultaneous-arrival contests here; a winning attempt
+            // clears its fleet's composition, so a cleanup removes that now-empty fleet the same way
             // the pre-fix immediate-Perform() path did.
             ColonizationResolver.ResolvePendingColonizations(serverState);
             serverState.CleanupFleets();
 
-            RunTurnSteps(step => step >= BOMBINGSTEP && step < SCANSTEP);
+            RunTurnSteps(step => step >= TRANSFERFLEETSTEP && step < SCANSTEP);
 
             // Victory evaluation runs after the year counter increments (step 33 then 35) and after
             // all simulation - VictoryCheck.Victor() computes gameTime from serverState.TurnYear,

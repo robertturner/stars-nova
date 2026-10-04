@@ -481,6 +481,15 @@ public class NewGameViewModel : ViewModelBase
         set => SetGameSetting(() => GameSettings.Data.NoRandomEvents = value);
     }
 
+    /// <summary>"Public Player Scores" (save-turn-file-format.md §3): after turn counter 19 every
+    /// player receives every race's score record; otherwise only its own, an eliminated race's,
+    /// and (once the game is over) every race's.</summary>
+    public bool PublicPlayerScores
+    {
+        get => GameSettings.Data.PublicPlayerScores;
+        set => SetGameSetting(() => GameSettings.Data.PublicPlayerScores = value);
+    }
+
     /// <summary>"Beginner: Maximum Minerals" (option bit 0x01).</summary>
     public bool MaximumMinerals
     {
@@ -741,8 +750,8 @@ public class NewGameViewModel : ViewModelBase
         RaiseMapProperties();
         foreach (string property in new[]
         {
-            nameof(StartingDistanceIndex), nameof(AcceleratedStart), nameof(NoRandomEvents), nameof(MaximumMinerals),
-            nameof(SlowTechAdvance), nameof(GalaxyClumping), nameof(StarSeparation), nameof(TargetsToMeet),
+            nameof(StartingDistanceIndex), nameof(AcceleratedStart), nameof(NoRandomEvents), nameof(PublicPlayerScores),
+            nameof(MaximumMinerals), nameof(SlowTechAdvance), nameof(GalaxyClumping), nameof(StarSeparation), nameof(TargetsToMeet),
             nameof(MinimumGameTime), nameof(SimplifiedPlayerRange), nameof(SimplifiedYearGate),
         })
         {

@@ -70,6 +70,20 @@ namespace Nova.Common
         public bool         Eliminated              = false;
 
         /// <summary>
+        /// The persistent winner mark (spec bit 14): set once by VictoryCheck when the race meets
+        /// its enabled victory conditions and at least two races remain; never cleared
+        /// (behavior-specs-11/victory-conditions.md section 2, "Which bits the evaluation sets").
+        /// </summary>
+        public bool         Winner                  = false;
+
+        /// <summary>
+        /// The race's seven "condition met" bits from the last score evaluation (bits 0-6 of
+        /// <see cref="ScoreRecord.MetMask"/>), persisted so every per-turn score record carries
+        /// them whether or not each condition is enabled.
+        /// </summary>
+        public int          ConditionsMetMask       = 0;
+
+        /// <summary>
         /// Whether this empire has already picked up a traded tech level this turn (from
         /// scrapping, battle, or invasion — only one such gain is allowed per turn regardless of
         /// how many qualifying events occur). Reset at the start of each turn. See
@@ -440,6 +454,14 @@ namespace Nova.Common
                         Eliminated = bool.Parse(mainNode.FirstChild.Value);
                         break;
 
+                    case "winner":
+                        Winner = bool.Parse(mainNode.FirstChild.Value);
+                        break;
+
+                    case "conditionsmetmask":
+                        ConditionsMetMask = int.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
+                        break;
+
                     case "randomseed":
                         RandomSeed = int.Parse(mainNode.FirstChild.Value, System.Globalization.CultureInfo.InvariantCulture);
                         break;
@@ -647,6 +669,16 @@ namespace Nova.Common
             if (Eliminated)
             {
                 Global.SaveData(xmldoc, xmlelEmpireData, "Eliminated", "True");
+            }
+
+            if (Winner)
+            {
+                Global.SaveData(xmldoc, xmlelEmpireData, "Winner", "True");
+            }
+
+            if (ConditionsMetMask != 0)
+            {
+                Global.SaveData(xmldoc, xmlelEmpireData, "ConditionsMetMask", ConditionsMetMask.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
 
             if (RandomSeed != 0)
