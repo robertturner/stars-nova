@@ -17,6 +17,24 @@
              filtered). -->
         <Border DockPanel.Dock="Top" BorderBrush="#333" BorderThickness="0,0,0,1" Padding="8,4">
             <StackPanel Spacing="2">
+                <!-- The four category-selection controls (client-ui-dialog-catalog.md, Messages).
+                     They scope the message list view; they are independent of the per-type filter.
+                     The spec names exactly four categories but not their identities - the
+                     membership is the named Nova.Client.MessageCategories seam. -->
+                <ItemsControl ItemsSource="{Binding CategoryOptions}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="4" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="panels:MessageCategoryOption">
+                            <RadioButton Content="{Binding Name}" GroupName="MessageCategory"
+                                         IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                         Command="{Binding SelectCommand}" Padding="6,2" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
                 <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
                     <Button Grid.Column="0" Content="&#9664; Prev" Command="{Binding PreviousCommand}" Padding="6,2" />
                     <Button Grid.Column="1" Content="Next &#9654;" Command="{Binding NextCommand}" Padding="6,2" Margin="4,0,0,0" />

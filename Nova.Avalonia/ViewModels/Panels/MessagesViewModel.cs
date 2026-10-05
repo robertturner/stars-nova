@@ -30,6 +30,14 @@ public class MessagesViewModel : Tool
 
     private readonly List<string> types;
 
+    /// <summary>
+    /// The four category-selection controls at the top of the pane (client-ui-dialog-catalog.md,
+    /// Messages). Selecting one scopes the message list; it is independent of the per-type filter.
+    /// The spec names exactly four but not their identities, so the membership is the named
+    /// {@link Nova.Client.MessageCategories} seam.
+    /// </summary>
+    public IReadOnlyList<MessageCategoryOption> CategoryOptions { get; }
+
     /// <summary>Every message this turn, filtered or not.</summary>
     public IReadOnlyList<MessageItemViewModel> Messages { get; }
 
@@ -170,13 +178,71 @@ public class MessagesViewModel : Tool
 
         types = Messages.Select(message => message.Type).ToList();
 
-        NextCommand = new RelayCommand(() => MoveTo(filter.Next(types, currentIndex)), () => filter.Next(types, currentIndex) >= 0);
-        PreviousCommand = new RelayCommand(() => MoveTo(filter.Previous(types, currentIndex)), () => filter.Previous(types, currentIndex) >= 0);
+        CategoryOptions = MessageCategories.All
+            .Select((category, index) => new MessageCategoryOption(index, MessageCategories.Name(category), SelectCategory))
+            .ToList();
+
+        NextCommand = new RelayCommand(() => MoveTo(filter.Next(types, currentIndex, InCategory)), () => filter.Next(types, currentIndex, InCategory) >= 0);
+        PreviousCommand = new RelayCommand(() => MoveTo(filter.Previous(types, currentIndex, InCategory)), () => filter.Previous(types, currentIndex, InCategory) >= 0);
         ToggleFilterCommand = new RelayCommand(ToggleFilter, () => current != null);
         ToggleShowFilteredCommand = new RelayCommand(ToggleShowFiltered, () => IsMagnifierVisible || ShowFiltered);
 
-        currentIndex = filter.First(types);
+        currentIndex = filter.First(types, InCategory);
         Refresh();
+    }
+
+    private int selectedCategoryIndex;
+
+    /// <summary>The selected category control, an index into <see cref="CategoryOptions"/> (0 =
+    /// All, the default). Changing it refreshes the current-message area.</summary>
+    public int SelectedCategoryIndex
+    {
+        get => selectedCategoryIndex;
+        set
+        {
+            if (value < 0 || value >= CategoryOptions.Count || value == selectedCategoryIndex)
+            {
+                return;
+            }
+
+            selectedCategoryIndex = value;
+            OnPropertyChanged();
+
+            // The spec: changing a category refreshes the current-message area. If nothing is
+            // current, or the current message is not in the new view, move to the first one that is.
+            if (currentIndex < 0 || !InCategory(currentIndex))
+            {
+                currentIndex = FirstVisibleInCategory();
+            }
+
+            Refresh();
+        }
+    }
+
+    private MessageCategory SelectedCategory => MessageCategories.All[selectedCategoryIndex];
+
+    private bool InCategory(int index)
+    {
+        return index >= 0 && index < Messages.Count
+            && MessageCategories.Includes(SelectedCategory, Messages[index].Destination.Kind);
+    }
+
+    private int FirstVisibleInCategory()
+    {
+        for (int i = 0; i < Messages.Count; i++)
+        {
+            if (InCategory(i) && filter.IsVisible(Messages[i].Type))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private void SelectCategory(int index)
+    {
+        SelectedCategoryIndex = index;
     }
 
     private void Select(MessageItemViewModel item)
@@ -210,7 +276,7 @@ public class MessagesViewModel : Tool
 
     private void ToggleShowFiltered()
     {
-        currentIndex = filter.ToggleShowFiltered(types, currentIndex);
+        currentIndex = filter.ToggleShowFiltered(types, currentIndex, InCategory);
         Refresh();
     }
 
@@ -219,16 +285,21 @@ public class MessagesViewModel : Tool
         ShowFiltered = filter.ShowFiltered;
         IsMagnifierVisible = filter.IsMagnifierVisible(types);
 
+        foreach (MessageCategoryOption option in CategoryOptions)
+        {
+            option.SetSelected(option.Index == selectedCategoryIndex);
+        }
+
         foreach (MessageItemViewModel item in Messages)
         {
             item.IsTypeFiltered = filter.IsFiltered(item.Type);
             item.IsSelected = item.Index == currentIndex;
         }
 
-        // The list shows what Next/Previous can reach, plus the current message itself (which
-        // stays on screen after its own type has just been filtered).
+        // The list shows what Next/Previous can reach in the selected category, plus the current
+        // message itself (which stays on screen after its own type has just been filtered).
         VisibleMessages = Messages
-            .Where(item => filter.IsVisible(item.Type) || item.Index == currentIndex)
+            .Where((item, index) => (InCategory(index) && filter.IsVisible(item.Type)) || item.Index == currentIndex)
             .ToList();
 
         Current = currentIndex >= 0 && currentIndex < Messages.Count ? Messages[currentIndex] : null;
@@ -245,5 +316,41 @@ public class MessagesViewModel : Tool
         PreviousCommand.NotifyCanExecuteChanged();
         ToggleFilterCommand.NotifyCanExecuteChanged();
         ToggleShowFilteredCommand.NotifyCanExecuteChanged();
+    }
+}
+
+/// <summary>
+/// One of the Messages pane's four category-selection controls (client-ui-dialog-catalog.md,
+/// Messages). The category identities are the named <see cref="MessageCategories"/> seam.
+/// </summary>
+public sealed class MessageCategoryOption : ViewModelBase
+{
+    public MessageCategoryOption(int index, string name, Action<int> onSelect)
+    {
+        Index = index;
+        Name = name;
+        SelectCommand = new RelayCommand(() => onSelect(Index));
+    }
+
+    /// <summary>Position in <see cref="MessageCategories.All"/>.</summary>
+    public int Index { get; }
+
+    /// <summary>The control's caption.</summary>
+    public string Name { get; }
+
+    public IRelayCommand SelectCommand { get; }
+
+    private bool isSelected;
+
+    /// <summary>True for the selected category (one of the four).</summary>
+    public bool IsSelected
+    {
+        get => isSelected;
+        private set => SetProperty(ref isSelected, value);
+    }
+
+    internal void SetSelected(bool value)
+    {
+        IsSelected = value;
     }
 }

@@ -139,6 +139,151 @@ namespace Nova.Tests.UnitTests
             }
         }
 
+        // ---------------- message filter: the spec's numeric type-to-group map ----------------
+
+        [Test]
+        public void MessageFilter_NumericGroupMap_MatchesTheSpecsCompleteMap()
+        {
+            // behavior-specs-11/client-ui-dialog-catalog.md, Messages, "Complete type-to-group
+            // map": group key = the lowest type in the group; every one of the 387 types is in
+            // exactly one group.
+            Assert.AreEqual(387, MessageFilter.TypeCount);
+
+            // Runs.
+            foreach (int type in new[] { 43, 44, 45, 46 })
+            {
+                Assert.AreEqual(43, MessageFilter.GroupKey(type), $"groups of {type}");
+            }
+
+            foreach (int type in new[] { 96, 97, 98, 99, 100 })
+            {
+                Assert.AreEqual(96, MessageFilter.GroupKey(type), $"groups of {type}");
+            }
+
+            foreach (int type in new[] { 106, 107, 108, 109, 110 })
+            {
+                Assert.AreEqual(106, MessageFilter.GroupKey(type), $"groups of {type}");
+            }
+
+            for (int type = 145; type <= 168; type++)
+            {
+                Assert.AreEqual(145, MessageFilter.GroupKey(type), $"groups of {type}");
+            }
+
+            // Pairs.
+            Assert.AreEqual(47, MessageFilter.GroupKey(48));
+            Assert.AreEqual(53, MessageFilter.GroupKey(54));
+            Assert.AreEqual(55, MessageFilter.GroupKey(56));
+            Assert.AreEqual(57, MessageFilter.GroupKey(58));
+            Assert.AreEqual(66, MessageFilter.GroupKey(67));
+            Assert.AreEqual(68, MessageFilter.GroupKey(69));
+            Assert.AreEqual(70, MessageFilter.GroupKey(71));
+            Assert.AreEqual(72, MessageFilter.GroupKey(73));
+            Assert.AreEqual(74, MessageFilter.GroupKey(75));
+            Assert.AreEqual(76, MessageFilter.GroupKey(77));
+            Assert.AreEqual(121, MessageFilter.GroupKey(122));
+
+            // Types the spec calls out as deliberately not grouped are their own group.
+            foreach (int type in new[] { 49, 50, 51, 52, 101, 102, 103, 104, 105 })
+            {
+                Assert.AreEqual(type, MessageFilter.GroupKey(type), $"{type} is a group of one");
+            }
+
+            // Spot checks across the singletons.
+            foreach (int type in new[] { 0, 42, 59, 65, 78, 95, 111, 120, 123, 144, 169, 386 })
+            {
+                Assert.AreEqual(type, MessageFilter.GroupKey(type));
+            }
+        }
+
+        [Test]
+        public void MessageFilter_TogglingOneNumericType_FlipsItsWholeGroup_AndHidesThem()
+        {
+            MessageFilter filter = new MessageFilter();
+
+            // The battle-summary run: toggling any member filters all of 145-168 and nothing else.
+            filter.Toggle(150);
+
+            Assert.IsTrue(filter.IsFiltered(145));
+            Assert.IsTrue(filter.IsFiltered(168));
+            Assert.IsFalse(filter.IsFiltered(144));
+            Assert.IsFalse(filter.IsFiltered(169));
+
+            // In hide mode the whole group is skipped; a lone type is still shown.
+            var types = new List<int> { 1, 146, 2, 151, 3 };
+            Assert.AreEqual(0, filter.First(types));
+            Assert.AreEqual(2, filter.Next(types, 0), "146 and 151 are filtered");
+            Assert.AreEqual(4, filter.Next(types, 2));
+            Assert.AreEqual(2, filter.Previous(types, 4));
+
+            filter.ShowFiltered = true;
+            Assert.AreEqual(1, filter.Next(types, 0), "show mode steps through every message");
+
+            // Toggling the group again restores it.
+            filter.Toggle(160);
+            Assert.IsFalse(filter.IsFiltered(145));
+            Assert.IsEmpty(filter.FilteredTypeGroups);
+        }
+
+        // ---------------- message view: the four category-selection controls ----------------
+
+        [Test]
+        public void MessageCategories_ThereAreExactlyFour_NamedAllPlanetsFleetsOther()
+        {
+            Assert.AreEqual(4, MessageCategories.All.Count);
+            Assert.AreEqual("All", MessageCategories.Name(MessageCategories.All[0]));
+            Assert.AreEqual("Planets", MessageCategories.Name(MessageCategories.All[1]));
+            Assert.AreEqual("Fleets", MessageCategories.Name(MessageCategories.All[2]));
+            Assert.AreEqual("Other", MessageCategories.Name(MessageCategories.All[3]));
+        }
+
+        [Test]
+        public void MessageCategories_ScopeIsTheStandInDestinationRule()
+        {
+            // All includes every destination kind.
+            foreach (MessageDestinationKind kind in System.Enum.GetValues(typeof(MessageDestinationKind)))
+            {
+                Assert.IsTrue(MessageCategories.Includes(MessageCategory.All, kind));
+            }
+
+            // Planets: planet and its production queue.
+            Assert.IsTrue(MessageCategories.Includes(MessageCategory.Planets, MessageDestinationKind.Planet));
+            Assert.IsTrue(MessageCategories.Includes(MessageCategory.Planets, MessageDestinationKind.ProductionQueue));
+            Assert.IsFalse(MessageCategories.Includes(MessageCategory.Planets, MessageDestinationKind.Fleet));
+
+            // Fleets: fleet and battle replay.
+            Assert.IsTrue(MessageCategories.Includes(MessageCategory.Fleets, MessageDestinationKind.Fleet));
+            Assert.IsTrue(MessageCategories.Includes(MessageCategory.Fleets, MessageDestinationKind.BattleReplay));
+            Assert.IsFalse(MessageCategories.Includes(MessageCategory.Fleets, MessageDestinationKind.Planet));
+
+            // Other is everything that is neither.
+            Assert.IsTrue(MessageCategories.Includes(MessageCategory.Other, MessageDestinationKind.Research));
+            Assert.IsTrue(MessageCategories.Includes(MessageCategory.Other, MessageDestinationKind.None));
+            Assert.IsFalse(MessageCategories.Includes(MessageCategory.Other, MessageDestinationKind.Planet));
+            Assert.IsFalse(MessageCategories.Includes(MessageCategory.Other, MessageDestinationKind.BattleReplay));
+        }
+
+        [Test]
+        public void MessageFilter_CategoryScope_IsIndependentOfThePerTypeFilter()
+        {
+            // A category (view scope) only limits which indices Next/Previous can reach; the
+            // per-type filter still decides visibility within it (client-ui-dialog-catalog.md:
+            // "The four category controls ... select the message list view, not the filter").
+            var types = new List<string> { "A", "B", "C", "D" };
+            MessageFilter filter = new MessageFilter();
+            filter.Toggle("B");
+
+            // Scope: only indices 0, 2 and 3 are in view.
+            bool InScope(int i) => i != 1;
+
+            Assert.AreEqual(0, filter.First(types, InScope));
+            Assert.AreEqual(2, filter.Next(types, 0, InScope));
+
+            // Scope everything but filter B: B is skipped inside the scope too.
+            Assert.IsTrue(filter.IsVisible("A"));
+            Assert.IsFalse(filter.IsVisible("B"));
+        }
+
         // ---------------- detail-card status line ----------------
 
         private static Race CostRace()

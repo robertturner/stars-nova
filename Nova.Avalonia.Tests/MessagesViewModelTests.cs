@@ -107,4 +107,72 @@ public class MessagesViewModelTests
         Assert.That(messages.PositionText, Does.Contain("3"));
         Assert.That(messages.Messages.Count(m => m.IsSelected), Is.EqualTo(1));
     }
+
+    // ---------------- the four category-selection controls (row 53) ----------------
+
+    private static MessagesViewModel OpenWithTypes(out ClientData client, params string[] types)
+    {
+        client = TestGame.Load();
+        client.Messages.Clear();
+        int index = 0;
+        foreach (string type in types)
+        {
+            client.Messages.Add(new Message(client.EmpireState.Id, "text " + index, type, null));
+            index++;
+        }
+
+        return new MessagesViewModel("Messages", "Messages", client);
+    }
+
+    [AvaloniaTest]
+    public void Offers_ExactlyFourCategorySelectionControls()
+    {
+        MessagesViewModel messages = Open(out _);
+
+        Assert.That(messages.CategoryOptions, Has.Count.EqualTo(4), "the spec's four category controls");
+        Assert.That(messages.CategoryOptions.Select(o => o.Name), Is.EqualTo(new[] { "All", "Planets", "Fleets", "Other" }));
+        Assert.That(messages.CategoryOptions.Count(o => o.IsSelected), Is.EqualTo(1), "exactly one is selected");
+        Assert.That(messages.CategoryOptions[0].IsSelected, Is.True, "All is the default view");
+        Assert.That(messages.SelectedCategoryIndex, Is.EqualTo(0));
+    }
+
+    [AvaloniaTest]
+    public void ChangingCategory_RefreshesTheCurrentMessageArea()
+    {
+        MessagesViewModel messages = Open(out _);
+        Assert.That(messages.VisibleMessages, Has.Count.EqualTo(4));
+
+        // These test messages route nowhere, so the category seam puts them in "Other"; the
+        // Planets view is empty. (The category identities are the spec-unnamed seam - only the
+        // presence of four controls and the refresh are spec-guaranteed.)
+        messages.SelectedCategoryIndex = 1;
+        Assert.That(messages.VisibleMessages, Is.Empty);
+        Assert.That(messages.Current, Is.Null);
+        Assert.That(messages.CategoryOptions[1].IsSelected, Is.True);
+        Assert.That(messages.NextCommand.CanExecute(null), Is.False);
+
+        messages.SelectedCategoryIndex = 3;
+        Assert.That(messages.VisibleMessages, Has.Count.EqualTo(4), "Other holds every unrouted message");
+        Assert.That(messages.Current, Is.Not.Null);
+
+        messages.SelectedCategoryIndex = 0;
+        Assert.That(messages.VisibleMessages, Has.Count.EqualTo(4));
+        Assert.That(messages.Current, Is.Not.Null, "changing back refreshes the current-message area");
+    }
+
+    [AvaloniaTest]
+    public void TogglingAFilterGroup_HidesAndShowsEverySibling()
+    {
+        MessagesViewModel messages = OpenWithTypes(out _, "Battle", "Notice", "BattleReport", "BattleSummary");
+        Assert.That(messages.Current?.Type, Is.EqualTo("Battle"));
+
+        messages.ToggleFilterCommand.Execute(null);
+
+        Assert.That(messages.Messages.Where(m => m.Type == "BattleReport").Select(m => m.IsTypeFiltered), Is.All.True, "the 145-168 run shares a group");
+        Assert.That(messages.Messages.Where(m => m.Type == "BattleSummary").Select(m => m.IsTypeFiltered), Is.All.True);
+        Assert.That(messages.Messages.Where(m => m.Type == "Notice").Select(m => m.IsTypeFiltered), Is.All.False, "an unlisted type is its own group");
+
+        messages.NextCommand.Execute(null);
+        Assert.That(messages.Current?.Type, Is.EqualTo("Notice"), "Next skips the whole filtered group");
+    }
 }
