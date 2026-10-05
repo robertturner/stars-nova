@@ -70,6 +70,34 @@ public class NewGameViewModelTests
         Assert.That(newGame.DifficultyOptions, Has.Count.EqualTo(4));
     }
 
+    /// <summary>Victory row 25 / new-game row 49: the Detailed wizard re-seeds the year gate from
+    /// the galaxy size each time the Options or Players tab is left, until the Victory tab has
+    /// been shown; after that the player's value is kept.</summary>
+    [AvaloniaTest]
+    public void DetailedWizard_ReseedsTheYearGateUntilTheVictoryTabIsReached()
+    {
+        NewGameViewModel newGame = Open();
+        newGame.SelectedSetupMode = NewGameViewModel.DetailedMode;
+        Assert.That(newGame.IsDetailed, Is.True);
+        newGame.GalaxySizeIndex = (int)GalaxySize.Large;
+
+        newGame.SelectedTabIndex = 1;
+        Assert.That(newGame.MinimumGameTime, Is.EqualTo(NewGameSetup.SimplifiedYearGate(GalaxySize.Large)),
+            "leaving the Options tab re-seeds the gate from the galaxy size");
+
+        // Leaving Players for Victory still re-seeds: the Victory page has not been shown yet.
+        newGame.MinimumGameTime = 77;
+        newGame.SelectedTabIndex = 2;
+        Assert.That(newGame.MinimumGameTime, Is.EqualTo(NewGameSetup.SimplifiedYearGate(GalaxySize.Large)));
+
+        // Once the Victory page has been reached, leaving a page keeps the player's value.
+        newGame.MinimumGameTime = 88;
+        newGame.SelectedTabIndex = 0;
+        Assert.That(newGame.MinimumGameTime, Is.EqualTo(88));
+        newGame.SelectedTabIndex = 1;
+        Assert.That(newGame.MinimumGameTime, Is.EqualTo(88));
+    }
+
     /// <summary>Row 17: a Simplified game is you plus computer players, all created at once.</summary>
     [AvaloniaTest]
     public void SimplifiedPath_CreatesYouPlusComputerPlayers()

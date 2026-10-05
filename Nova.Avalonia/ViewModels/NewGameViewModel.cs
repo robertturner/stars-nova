@@ -46,6 +46,14 @@ public class NewGameViewModel : ViewModelBase
 
     private int selectedTabIndex;
 
+    /// <summary>True once the Victory tab has been shown: from then on the year gate keeps the
+    /// player's value rather than being re-seeded from the galaxy size (new-game-setup.md section
+    /// 49 / victory-conditions.md section 25).</summary>
+    private bool victoryTabReached;
+
+    /// <summary>The Victory tab's index in <see cref="SelectedTabIndex"/>.</summary>
+    private const int VictoryTabIndex = 2;
+
     /// <summary>
     /// Which of the three tabs ("Options"/"Players"/"Victory") is showing. Race Designer's own
     /// ComboBox (see RaceDesignerViewModel.Page's own comment) exists because a default
@@ -61,7 +69,28 @@ public class NewGameViewModel : ViewModelBase
     public int SelectedTabIndex
     {
         get => selectedTabIndex;
-        set => SetProperty(ref selectedTabIndex, value);
+        set
+        {
+            int previous = selectedTabIndex;
+            if (!SetProperty(ref selectedTabIndex, value))
+            {
+                return;
+            }
+
+            // new-game-setup.md section 49 / victory-conditions.md section 25: while the Victory
+            // tab has not been reached, leaving the Options or Players tab re-seeds the year gate
+            // from the galaxy size, so changing the size on the first page updates it. Once the
+            // Victory page has been shown, the player's own value is kept.
+            if (!victoryTabReached && IsDetailed && (previous == 0 || previous == 1))
+            {
+                MinimumGameTime = NewGameSetup.SimplifiedYearGate(GameSettings.Data.GalaxySizeSetting);
+            }
+
+            if (value == VictoryTabIndex)
+            {
+                victoryTabReached = true;
+            }
+        }
     }
 
     private readonly Dictionary<string, Race> knownRaces = new();
