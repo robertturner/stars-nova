@@ -66,6 +66,26 @@ public class ProductionViewModelTests
         Assert.That(production.AvailableItems.Select(item => item.CostSummary), Has.All.Not.Empty);
     }
 
+    /// <summary>A ship design must survive the catalog refresh the add itself triggers - a real
+    /// design's key carries its owner in the high bits, so the catalog row and the queued order
+    /// have to agree on Key (not Key-vs-Id), or the refresh drops the ship as an orphan and Add
+    /// silently does nothing.</summary>
+    [AvaloniaTest]
+    public void ShipDesign_IsAddedToTheQueue()
+    {
+        (_, SelectionService selection, ProductionViewModel production, Star home) = Open();
+        selection.Selected = home;
+
+        ProductionCatalogItemViewModel ship = production.AvailableItems.First(item => item.Unit is ShipProductionUnit);
+        production.SelectedAvailableItem = ship;
+        production.AddQuantity = 1;
+        production.AddToQueueCommand.Execute(null);
+
+        Assert.That(home.ManufacturingQueue.Queue, Has.Count.EqualTo(1), "the ship survives the post-add refresh");
+        Assert.That(home.ManufacturingQueue.Queue[0].Unit, Is.InstanceOf<ShipProductionUnit>());
+        Assert.That(production.Queue, Has.Count.EqualTo(1));
+    }
+
     /// <summary>production-queue.md section 6/10k: the auto terraform entry can only be added as an
     /// auto-build order and carries the Min / Max choice.</summary>
     [AvaloniaTest]

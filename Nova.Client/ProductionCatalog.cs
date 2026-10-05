@@ -193,7 +193,7 @@ namespace Nova.Client
                 items.Add(new ProductionCatalogEntry(
                     design.IsStarbase ? ProductionCatalogKind.StarbaseDesign : ProductionCatalogKind.ShipDesign,
                     new ShipProductionUnit(design),
-                    designKey: design.Id));
+                    designKey: design.Key));
             }
 
             // 3: the Genesis Device, when the empire may build it.

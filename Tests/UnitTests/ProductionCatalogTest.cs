@@ -278,6 +278,30 @@ namespace Nova.Tests.UnitTests
             arStar.ManufacturingQueue.Queue.Add(new ProductionOrder(5, new FactoryProductionUnit(ar), true));
             Assert.AreEqual(1, ProductionCatalog.FilterQueue(arStar, EmpireFor(ar), ProductionCatalog.Build(arStar, EmpireFor(ar))).Dropped.Count);
         }
+
+        [Test]
+        public void ShipDesign_WithOwnerBits_MatchesItsQueuedOrder()
+        {
+            // A real design's key carries the owner in its high bits, so Key != Id. The catalog row
+            // and the queued order must use the same basis (the unit's DesignKey is design.Key), or
+            // the post-add catalog refresh treats the just-added ship as an orphan and silently drops
+            // it (ProductionViewModel.DropOrphanQueueEntries) - the "Add to Queue does nothing" bug.
+            Race race = DefaultRace();
+            EmpireData empire = EmpireFor(race);
+            Star star = IdealPlanet(race);
+
+            ShipDesign design = new ShipDesign(empire.GetNextDesignKey());
+            design.Name = "Scout";
+            design.Blueprint = new Component();
+            design.Blueprint.Properties.Add("Hull", new Hull { Modules = new List<HullModule>() });
+            empire.Designs[design.Key] = design;
+            Assert.AreNotEqual(design.Key, (long)design.Id, "precondition: owner bits make Key and Id differ");
+
+            star.ManufacturingQueue.Queue.Add(new ProductionOrder(1, new ShipProductionUnit(design), false));
+
+            Assert.IsEmpty(ProductionCatalog.FilterQueue(star, empire, ProductionCatalog.Build(star, empire)).Dropped,
+                "an owned ship design is not dropped as an orphan");
+        }
     }
 
     /// <summary>
