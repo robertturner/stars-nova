@@ -113,7 +113,7 @@ public class NovaDockFactory : Factory
         var othersFleetReport = new OthersFleetReportViewModel("OthersFleetReport", "Others' Fleets", clientState);
         var battleReport = new BattleReportViewModel("BattleReport", "Battle Report", clientState);
         var scoreReport = new ScoreReportViewModel("ScoreReport", "Score Report", clientState);
-        var victoryConditions = new VictoryConditionsViewModel("VictoryConditions", "Victory Conditions");
+        var victoryConditions = new VictoryConditionsViewModel("VictoryConditions", "Victory Conditions", clientState);
         var help = new HelpViewModel("Help", "Manual");
 
         var bottomPane = new ToolDock

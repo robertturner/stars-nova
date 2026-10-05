@@ -1,26 +1,57 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
-             xmlns:client="using:Nova.Client"
              x:Class="Nova.Avalonia.Views.Panels.VictoryConditionsView"
              x:DataType="panels:VictoryConditionsViewModel">
-    <!-- The in-session Victory Conditions summary - see VictoryConditionsViewModel. -->
+    <!-- The in-session Victory Conditions view (behavior-specs-11/victory-conditions.md section 3):
+         one line per player - grey when out, blue with the winner mark, black otherwise - with
+         seven check columns from the record's met bits, over the nine-line condition list. The
+         columns carry no headings; the list below explains them. See VictoryConditionsViewModel. -->
     <ScrollViewer>
     <StackPanel Margin="8" Spacing="4">
         <TextBlock Text="Victory Conditions" FontWeight="Bold" Opacity="0.8" />
-        <ItemsControl ItemsSource="{Binding Rows}">
+
+        <!-- One line per player: name plus the seven check columns (no headings). -->
+        <ItemsControl ItemsSource="{Binding PlayerRows}">
             <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="client:VictorySummaryRow">
-                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
-                        <CheckBox Grid.Column="0" IsChecked="{Binding Enabled, Mode=OneWay}" IsHitTestVisible="False" Focusable="False" />
-                        <TextBlock Grid.Column="1" Text="{Binding Condition}" VerticalAlignment="Center" TextWrapping="Wrap" />
-                        <TextBlock Grid.Column="2" Text="{Binding Threshold}" VerticalAlignment="Center" Margin="8,0,0,0" />
-                    </Grid>
+                <DataTemplate x:DataType="panels:VictoryConditionsPlayerRowViewModel">
+                    <Border BorderBrush="#333" BorderThickness="0,0,0,1" Padding="0,3">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center"
+                                       Foreground="{Binding NameForeground}" />
+                            <ItemsControl Grid.Column="1" ItemsSource="{Binding Marks}" VerticalAlignment="Center">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="panels:VictoryConditionMarkViewModel">
+                                        <TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}"
+                                                   Width="20" TextAlignment="Center" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
+                    </Border>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <TextBlock Text="{Binding ConditionsLine}" TextWrapping="Wrap" Margin="0,8,0,0" />
-        <TextBlock Text="{Binding YearGateLine}" TextWrapping="Wrap" />
+
+        <TextBlock Text="No score records are visible yet." Opacity="0.6" IsVisible="{Binding !HasPlayers}" />
+
+        <!-- The game's condition list, lines 1-9: grey when disabled (1-7), always black (8-9),
+             with a thin rule between rows and an extra gap before line 8. -->
+        <ItemsControl ItemsSource="{Binding ConditionLines}" Margin="0,4,0,0">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="panels:VictoryConditionLineViewModel">
+                    <Border BorderBrush="#333" BorderThickness="0,0,0,1" Padding="0,3" Margin="{Binding TopMargin}">
+                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Foreground="{Binding Foreground}" />
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
         <Button Content="Refresh" Command="{Binding RefreshCommand}" HorizontalAlignment="Left" Margin="0,8,0,0" />
     </StackPanel>
     </ScrollViewer>

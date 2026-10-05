@@ -250,7 +250,7 @@ public class MobileMainViewModel : GameShellViewModelBase
         FleetReport = new FleetReportViewModel("FleetReport", "Fleet Report", clientState);
         BattleReport = new BattleReportViewModel("BattleReport", "Battle Report", clientState);
         ScoreReport = new ScoreReportViewModel("ScoreReport", "Score Report", clientState);
-        VictoryConditions = new VictoryConditionsViewModel("VictoryConditions", "Victory Conditions");
+        VictoryConditions = new VictoryConditionsViewModel("VictoryConditions", "Victory Conditions", clientState);
         ProductionTemplates = new ProductionTemplatesViewModel("ProductionTemplates", "Production Templates", clientState, selection);
         TechnologyBrowser = new TechnologyBrowserViewModel("TechnologyBrowser", "Technology Browser", clientState);
         Help = new HelpViewModel("Help", "Manual");
