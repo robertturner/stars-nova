@@ -8,6 +8,8 @@ namespace Nova.Tests.UnitTests
 
     using Nova.Common;
     using Nova.Common.Components;
+    using Nova.Server;
+    using Nova.Server.TurnSteps;
 
     /// <summary>
     /// behavior-specs-10/ship-design-and-components.md coverage rows 19 and 20 (and race-traits.md
@@ -174,6 +176,86 @@ namespace Nova.Tests.UnitTests
         public void WarMonger_IsBlockedFromTheThreeBestDefences(string name, bool blocked)
         {
             Assert.AreEqual(blocked, Fetch(name).Restrictions.Availability("WM") == RaceAvailability.not_available);
+        }
+
+        // ---- Frozen design prices (ship-design row 47, section 8) ----
+
+        /// <summary>A one-slot hull whose hull and sole part both require Energy 1, so a gain from
+        /// Energy 1 to 2 moves the miniaturization margin from 0 to 1 and an explicit reprice drops
+        /// each 100-Energy item to 96 (4% per level).</summary>
+        private static ShipDesign TechSensitiveDesign(out EmpireData empire)
+        {
+            Race race = new Race();
+            race.Traits.SetPrimary("JOAT");
+            race.ResearchCosts[TechLevel.ResearchField.Energy] = 100;
+
+            TechLevel requirement = new TechLevel();
+            requirement[TechLevel.ResearchField.Energy] = 1;
+
+            Component hullBlueprint = new Component { Name = "Test Hull", Mass = 10, Cost = new Resources(0, 0, 0, 100), RequiredTech = requirement };
+            Hull hull = new Hull { FuelCapacity = 100, Modules = new List<HullModule>() };
+            Component part = new Component { Name = "Test Part", Mass = 1, Cost = new Resources(0, 0, 0, 100), Type = ItemType.Shield, RequiredTech = requirement };
+            hull.Modules.Add(new HullModule { CellNumber = 0, ComponentType = "Shield", ComponentMaximum = 1, ComponentCount = 1, AllocatedComponent = part });
+            hullBlueprint.Properties.Add("Hull", hull);
+
+            ShipDesign design = new ShipDesign(1) { Blueprint = hullBlueprint, Name = "Frozen" };
+
+            empire = new SimpleEmpireData();
+            empire.Id = 1;
+            empire.Race = race;
+            empire.ResearchLevels = new TechLevel();
+            empire.ResearchLevels[TechLevel.ResearchField.Energy] = 1;
+            empire.AvailableComponents = new RaceComponents();
+            empire.Designs.Add(design.Key, design);
+            design.Update(race, empire.ResearchLevels);
+            return design;
+        }
+
+        [Test]
+        public void ATechLevelGainWithinAGeneration_DoesNotRepriceAnExistingDesign()
+        {
+            // ship-design-and-components.md section 8, coverage row 47: a design is priced at host
+            // load and again only in step 6 when an order creates or changes it. A research gain
+            // inside the generation must not reprice it, so production, Scrap/Colonize credits and
+            // battle wreckage keep reading the start-of-generation figure.
+            ShipDesign design = TechSensitiveDesign(out EmpireData empire);
+            int startOfGeneration = design.Cost.Energy;
+            Assert.AreEqual(200, startOfGeneration, "100-Energy hull plus one 100-Energy part");
+
+            ServerData server = new ServerData();
+            server.AllEmpires.Add(empire.Id, empire);
+
+            new StarUpdateStep().RaiseTechLevel(server, empire, TechLevel.ResearchField.Energy);
+
+            Assert.AreEqual(2, empire.ResearchLevels[TechLevel.ResearchField.Energy], "the tech gain did happen");
+            Assert.AreEqual(startOfGeneration, design.Cost.Energy, "the tech gain must not reprice the design");
+
+            // Control: the design is genuinely price-sensitive to tech - only an explicit Update
+            // (what a new or changed design order does) reprices it.
+            design.Update(empire.Race, empire.ResearchLevels);
+            Assert.AreEqual(192, design.Cost.Energy, "4% miniaturization once the margin is 1");
+        }
+
+        [Test]
+        public void TheResearchBuyLoopWithinAGeneration_DoesNotRepriceAnExistingDesign()
+        {
+            // The ordinary research path buys levels through ApplyLevelUps (not the Mystery
+            // Trader's RaiseTechLevel); it must not reprice a design either.
+            ShipDesign design = TechSensitiveDesign(out EmpireData empire);
+            int startOfGeneration = design.Cost.Energy;
+            Assert.AreEqual(200, startOfGeneration);
+
+            ServerData server = new ServerData();
+            server.AllEmpires.Add(empire.Id, empire);
+            empire.ResearchResources[TechLevel.ResearchField.Energy] = 1000000;
+
+            new StarUpdateStep().SpendBankedResearch(server, empire);
+
+            Assert.Greater(empire.ResearchLevels[TechLevel.ResearchField.Energy], 1, "the buy loop raised the level");
+            Assert.AreEqual(startOfGeneration, design.Cost.Energy, "research must not reprice the design");
+
+            design.Update(empire.Race, empire.ResearchLevels);
+            Assert.Less(design.Cost.Energy, startOfGeneration);
         }
     }
 }

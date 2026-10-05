@@ -147,6 +147,16 @@ namespace Nova.Common.Commands
                     {
                         return false;
                     }
+
+                    // Host step 6 (save-turn-file-format.md section 3): replacing a design that
+                    // is in use and has ships in existence fails. Deleting it is still allowed
+                    // (the delete path scraps the ships).
+                    if (Mode == CommandMode.Edit
+                        && empire.Designs[Design.Key].Type != ItemType.Starbase
+                        && IsShipDesignInUse(empire, Design.Key))
+                    {
+                        return false;
+                    }
                 break;
             }
 
@@ -223,6 +233,35 @@ namespace Nova.Common.Commands
             foreach (Fleet fleet in empire.OwnedFleets.Values)
             {
                 if (fleet.Composition.ContainsKey(design.Key))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Host step 6 (save-turn-file-format.md section 3): a design record that replaces an
+        /// existing design which is in use and has ships in existence fails. The port rejects the
+        /// order rather than aborting the whole turn generation. "In use with ships in existence"
+        /// is read from the empire's own fleet compositions: any owned fleet carrying a token of
+        /// the design's key. A star's starbase is an owned fleet too, but only ever carries a
+        /// starbase-design token, so this test is scoped to hull (non-starbase) designs;
+        /// save-turn-file-format.md section 3 uses "ships" for the 0-15 hull-design slots in the
+        /// same sentence that uses "starbases" for the 16-25 starbase slots. An in-use starbase
+        /// design is instead governed by <see cref="IsProtectedAlternateRealityDesign"/>.
+        /// </summary>
+        public static bool IsShipDesignInUse(EmpireData empire, long designKey)
+        {
+            if (empire == null)
+            {
+                return false;
+            }
+
+            foreach (Fleet fleet in empire.OwnedFleets.Values)
+            {
+                if (fleet.Composition != null && fleet.Composition.ContainsKey(designKey))
                 {
                     return true;
                 }
