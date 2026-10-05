@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
+using Avalonia.Data.Converters;
 using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
@@ -126,32 +128,36 @@ public class StarMapDocumentViewModel : Document
 
     // ---------------- zoom ----------------
 
-    private int zoomLevel = MapZoom.DefaultLevel;
-
     /// <summary>One of the 9 fixed zoom steps, -4 (25%) to +4 (400%) - see Nova.Client.Map.MapZoom.
-    /// The view recentres on the same world point whenever this changes.</summary>
+    /// This is slot 16 of the shared view-option word (client-interface.md, "Shared view-option
+    /// slots": "Zoom menu | the zoom step"), so the choice lives in <see cref="ViewOptions"/>
+    /// rather than a private field: it survives a map rebuild and is addressable through
+    /// MapViewOptions.GetSlot(16)/SetSlot(16). The view recentres on the same world point whenever
+    /// this changes.</summary>
     public int ZoomLevel
     {
-        get => zoomLevel;
+        get => ViewOptions.ZoomStep;
         set
         {
-            if (SetProperty(ref zoomLevel, MapZoom.Clamp(value)))
+            if (ViewOptions.ZoomStep != MapZoom.Clamp(value))
             {
+                ViewOptions.ZoomStep = value;
+                OnPropertyChanged();
                 OnPropertyChanged(nameof(Zoom));
                 OnPropertyChanged(nameof(ZoomLabel));
                 OnPropertyChanged(nameof(ZoomLevelIndex));
                 foreach (StarMapStarViewModel star in Stars)
                 {
-                    star.ApplyZoom(zoomLevel);
+                    star.ApplyZoom(ZoomLevel);
                 }
             }
         }
     }
 
     /// <summary>The exact scale factor of <see cref="ZoomLevel"/> (bound to the map's ScaleTransform).</summary>
-    public double Zoom => MapZoom.ScaleFactor(zoomLevel);
+    public double Zoom => MapZoom.ScaleFactor(ZoomLevel);
 
-    public string ZoomLabel => "Zoom " + MapZoom.Label(zoomLevel);
+    public string ZoomLabel => "Zoom " + MapZoom.Label(ZoomLevel);
 
     public IReadOnlyList<string> ZoomLevelLabels { get; } =
         Enumerable.Range(MapZoom.MinLevel, MapZoom.MaxLevel - MapZoom.MinLevel + 1).Select(MapZoom.Label).ToList();
@@ -159,7 +165,7 @@ public class StarMapDocumentViewModel : Document
     /// <summary>0-8 index into <see cref="ZoomLevelLabels"/> (the View > Zoom items).</summary>
     public int ZoomLevelIndex
     {
-        get => zoomLevel - MapZoom.MinLevel;
+        get => ZoomLevel - MapZoom.MinLevel;
         set
         {
             if (value >= 0)
@@ -296,6 +302,23 @@ public class StarMapDocumentViewModel : Document
         set
         {
             ViewOptions.ShowShipCountBadges = value;
+            ApplyViewOptions();
+        }
+    }
+
+    /// <summary>
+    /// View > Player Colors (the spec's command 2445, second-word bit 0x20, outside the slot
+    /// mechanism): draws the ship-count badge digits and the planet-name labels in the owning
+    /// race's colour instead of a plain default (client-interface.md, "Shared view-option slots";
+    /// behavior-specs-11 row 93). The XAML applies this through
+    /// <see cref="PlayerColorConverter"/>, which combines each marker's own colour with this flag.
+    /// </summary>
+    public bool ShowPlayerColors
+    {
+        get => ViewOptions.ShowPlayerColors;
+        set
+        {
+            ViewOptions.ShowPlayerColors = value;
             ApplyViewOptions();
         }
     }
@@ -623,7 +646,7 @@ public class StarMapDocumentViewModel : Document
                     && empire.EmpireReports.TryGetValue(report.Owner, out EmpireIntel? intel)
                     && intel.Relation == PlayerRelation.Friend;
                 star.SetPopulation(PlanetOverlayRules.PopulationSteps(population.Value), PlanetOverlayRules.PopulationColour(ownership, friendly));
-                star.ApplyZoom(zoomLevel);
+                star.ApplyZoom(ZoomLevel);
             }
 
             int[]? amounts = ownStar?.ResourcesOnHand == null ? null : new[]
@@ -889,6 +912,7 @@ public class StarMapDocumentViewModel : Document
         OnPropertyChanged(nameof(ShowRouteOverlap));
         OnPropertyChanged(nameof(ShowPlanetNames));
         OnPropertyChanged(nameof(ShowShipCountBadges));
+        OnPropertyChanged(nameof(ShowPlayerColors));
         OnPropertyChanged(nameof(ScannerPercentage));
         OnPropertyChanged(nameof(ScannerTooltipText));
         OnPropertyChanged(nameof(MinefieldMask));
@@ -1143,5 +1167,34 @@ public class StarMapDocumentViewModel : Document
     private static double EstimateNameHalfWidth(string name)
     {
         return string.IsNullOrEmpty(name) ? 0 : name.Length * ApproxCharWidthAtFontSize10 / 2.0;
+    }
+}
+
+/// <summary>
+/// The View > Player Colors sub-option (the spec's command 2445, second-word bit 0x20): given a
+/// marker's own colour and the shared <see cref="StarMapDocumentViewModel.ShowPlayerColors"/> flag,
+/// returns the owner colour when the option is on and a plain default (white) when it is off -
+/// the spec says the ship-count badge digits and the planet-name labels are drawn "in the owning
+/// race's UI color ... or left in a plain default color" (client-interface.md, "Shared view-option
+/// slots").
+/// <para>
+/// SPEC GAP: the spec names a per-race UI colour table but does not give its colours, so the
+/// marker's own relation colour (StarMapDocumentViewModel's own/other/unowned choice) is the named
+/// seam used here instead.
+/// </para>
+/// </summary>
+public sealed class PlayerColorConverter : IMultiValueConverter
+{
+    public static readonly PlayerColorConverter Instance = new();
+
+    public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        bool showPlayerColors = values.Count > 1 && values[1] is true;
+        if (showPlayerColors && values.Count > 0 && values[0] is IBrush ownerColor)
+        {
+            return ownerColor;
+        }
+
+        return Brushes.White;
     }
 }

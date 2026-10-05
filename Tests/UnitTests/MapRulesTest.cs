@@ -140,6 +140,45 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
+        public void ViewOptions_ZoomIsSlot16()
+        {
+            // behavior-specs-11/client-interface.md, "Shared view-option slots": slot 16 = Zoom
+            // menu, storage "the zoom step" (a value slot, not a bit).
+            var options = new MapViewOptions();
+            Assert.AreEqual(0, options.ZoomStep, "the default zoom step is 100%");
+            Assert.AreEqual(MapZoom.DefaultLevel, options.GetSlot(16), "slot 16 reads the zoom step");
+
+            options.SetSlot(16, MapZoom.MaxLevel);
+            Assert.AreEqual(MapZoom.MaxLevel, options.ZoomStep);
+            Assert.AreEqual(MapZoom.MaxLevel, options.GetSlot(16), "slot 16 round-trips through the getter");
+
+            options.SetSlot(16, 99);
+            Assert.AreEqual(MapZoom.MaxLevel, options.ZoomStep, "the zoom step clamps to the nine steps");
+
+            options.ZoomStep = MapZoom.MinLevel - 10;
+            Assert.AreEqual(MapZoom.MinLevel, options.GetSlot(16), "the low end clamps too");
+        }
+
+        [Test]
+        public void ViewOptions_PlayerColorsBitIsOutsideTheSlots()
+        {
+            // behavior-specs-11/client-interface.md, "Shared view-option slots": bit 0x2000 of the
+            // combined word (second-word bit 0x20) is View > Player Colors, command 2445, and is
+            // explicitly outside the slot mechanism.
+            var options = new MapViewOptions();
+            Assert.IsFalse(options.ShowPlayerColors, "Player Colors starts off (start-up word 0x00E0 has the high byte clear)");
+
+            options.ShowPlayerColors = true;
+            Assert.IsTrue(options.ShowPlayerColors);
+            Assert.AreEqual(MapViewOptions.PlayerColorsBit, options.Word2 & MapViewOptions.PlayerColorsBit,
+                "View > Player Colors = second word bit 0x20 (bit 0x2000 of the combined word)");
+
+            options.ApplyDigitKey(0, false);
+            options.ApplyDigitKey(0, true);
+            Assert.IsTrue(options.ShowPlayerColors, "no digit key reaches the Player Colors bit");
+        }
+
+        [Test]
         public void ViewOptions_ScannerPercentageClampsAndForcesScanCircles()
         {
             var options = new MapViewOptions();

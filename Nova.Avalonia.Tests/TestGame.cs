@@ -135,6 +135,7 @@ public static class TestGame
         options.ShowRouteOverlap = (MapViewOptions.DefaultWord1 & MapViewOptions.RouteOverlapBit) != 0;
         options.ShowPlanetNames = (MapViewOptions.DefaultWord2 & MapViewOptions.PlanetNamesBit) != 0;
         options.ShowShipCountBadges = (MapViewOptions.DefaultWord2 & MapViewOptions.BadgeBit) != 0;
+        options.ZoomStep = MapZoom.DefaultLevel;
     }
 
     /// <summary>The empire's home world: the owned planet whose starbase is the full "Starbase".</summary>

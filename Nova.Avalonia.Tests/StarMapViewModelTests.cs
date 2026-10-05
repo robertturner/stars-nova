@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Avalonia.Headless.NUnit;
+using Avalonia.Media;
 using Nova.Avalonia.ViewModels;
 using Nova.Avalonia.ViewModels.Panels;
 using Nova.Client;
@@ -441,5 +443,63 @@ public class StarMapViewModelTests
         Assert.That(map.ScannerPercentage, Is.EqualTo(60), "Escape does not commit the typed value");
         Assert.That(map.ScannerPercentageText, Is.EqualTo("60%"));
         Assert.That(map.ShowScanCircles, Is.True);
+    }
+
+    /// <summary>Row 93: the View > Zoom menu drives slot 16 of the shared view-option word, so the
+    /// step survives a map rebuild and is addressable through MapViewOptions.GetSlot/SetSlot(16).</summary>
+    [AvaloniaTest]
+    public void ZoomLevel_IsTheSharedViewOptionSlot16()
+    {
+        (_, _, StarMapDocumentViewModel map) = Open();
+        try
+        {
+            map.ZoomLevel = MapZoom.MaxLevel;
+            Assert.That(StarMapDocumentViewModel.ViewOptions.GetSlot(16), Is.EqualTo(MapZoom.MaxLevel));
+            Assert.That(map.Zoom, Is.EqualTo(4.0));
+
+            StarMapDocumentViewModel.ViewOptions.SetSlot(16, MapZoom.MinLevel);
+            Assert.That(map.ZoomLevel, Is.EqualTo(MapZoom.MinLevel), "the slot reads back through the view model");
+            Assert.That(map.Zoom, Is.EqualTo(0.25));
+        }
+        finally
+        {
+            StarMapDocumentViewModel.ViewOptions.ZoomStep = MapZoom.DefaultLevel;
+        }
+    }
+
+    /// <summary>Row 93: View > Player Colors (command 2445) toggles second-word bit 0x20 and is
+    /// exposed to the map so the name/badge colour converter can follow it.</summary>
+    [AvaloniaTest]
+    public void PlayerColors_TogglesTheSharedViewOptionBit()
+    {
+        (_, _, StarMapDocumentViewModel map) = Open();
+        StarMapDocumentViewModel.ViewOptions.ShowPlayerColors = false;
+        try
+        {
+            map.ShowPlayerColors = true;
+            Assert.That(map.ShowPlayerColors, Is.True);
+            Assert.That(StarMapDocumentViewModel.ViewOptions.Word2 & MapViewOptions.PlayerColorsBit,
+                Is.EqualTo(MapViewOptions.PlayerColorsBit), "second word bit 0x20");
+
+            map.ShowPlayerColors = false;
+            Assert.That(StarMapDocumentViewModel.ViewOptions.Word2 & MapViewOptions.PlayerColorsBit, Is.Zero);
+        }
+        finally
+        {
+            StarMapDocumentViewModel.ViewOptions.ShowPlayerColors = false;
+        }
+    }
+
+    /// <summary>Row 93: the name/badge colour converter returns the owner colour only while Player
+    /// Colors is on, otherwise the spec's plain default.</summary>
+    [AvaloniaTest]
+    public void PlayerColorConverter_UsesOwnerColourOnlyWhenEnabled()
+    {
+        IBrush owner = Brushes.Red;
+        object? on = PlayerColorConverter.Instance.Convert(new object?[] { owner, true }, typeof(IBrush), null, CultureInfo.InvariantCulture);
+        object? off = PlayerColorConverter.Instance.Convert(new object?[] { owner, false }, typeof(IBrush), null, CultureInfo.InvariantCulture);
+
+        Assert.That(on, Is.SameAs(owner));
+        Assert.That(off, Is.SameAs(Brushes.White), "Player Colors off falls back to the plain default");
     }
 }

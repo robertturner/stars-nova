@@ -53,8 +53,11 @@ namespace Nova.Client.Map
     /// substitute (slot 6, never bound to a digit key); 0x20 = scan circles (slot 7, key 7);
     /// 0x40 = minefields (slot 8, key 8); 0x80 = route-overlap dashing (slot 9, key 9).
     /// Second word: 0x01 slot 10, 0x04 slot 11 (planet names, key 0), 0x02 slot 12, 0x08 slot 14,
-    /// 0x10 slot 17 (ship-count badge, Shift+0); 0x20 = owner colouring of badges and names
-    /// (View > Player Colors, not a slot); 0x40/0x80 unused.
+    /// 0x10 slot 17 (ship-count badge, Shift+0).
+    /// Value slots (not bits): 16 = the zoom step, 18 = the scanner percentage (behavior-specs-11/
+    /// client-interface.md, "Shared view-option slots"): neither is a bit in either word.
+    /// Outside the slot mechanism: 0x20 (bit 0x2000 of the combined 16-bit word) = owner colouring
+    /// of badges and names (View > Player Colors, command 2445); 0x40/0x80 unused.
     /// </summary>
     public sealed class MapViewOptions
     {
@@ -70,6 +73,10 @@ namespace Nova.Client.Map
         public const int BadgeForeignRaceMaskBit = 0x08;
         public const int BadgeBit = 0x10;
         public const int PlayerColorsBit = 0x20;
+
+        /// <summary>Slot 16 - the View > Zoom step (the spec stores "the zoom step" as a value,
+        /// not a bit; see the class comment).</summary>
+        public const int ZoomSlot = 16;
 
         public const int ModeCount = 6;
         public const int MinScannerPercentage = 2;
@@ -140,6 +147,7 @@ namespace Nova.Client.Map
         private int word1 = DefaultWord1;
         private int word2 = DefaultWord2;
         private int scannerPercentage = MaxScannerPercentage;
+        private int zoomStep = MapZoom.DefaultLevel;
 
         /// <summary>The 4-bit minefield owner mask (slot 8's companion at DS 0x4a7c); the field
         /// overlay button "reads as pressed only when the bit is set and the mask is full"
@@ -170,6 +178,29 @@ namespace Nova.Client.Map
         }
 
         public PlanetOverlayKind Overlay => ModeOverlays[Mode];
+
+        /// <summary>
+        /// Slot 16 - the zoom step (View > Zoom). The spec's slot table stores "the zoom step" as a
+        /// value rather than a bit (client-interface.md, "Shared view-option slots"), so this is a
+        /// value slot like the scanner percentage, addressed by <see cref="GetSlot"/>/
+        /// <see cref="SetSlot"/>. Held as the port's <see cref="MapZoom"/> level, -4..+4 (0 = 100%);
+        /// the spec fixes the nine menu steps (3901-3909: 25%, 38%, 50%, 75%, 100%, 125%, 150%,
+        /// 200%, 400%) but not the stored encoding. Default: 100% (the start-up word says nothing
+        /// about zoom; the tutorial picks a zoom from the screen width, which this port does not).
+        /// </summary>
+        public int ZoomStep
+        {
+            get => zoomStep;
+            set
+            {
+                int clamped = MapZoom.Clamp(value);
+                if (clamped != zoomStep)
+                {
+                    zoomStep = clamped;
+                    Changed?.Invoke(this, EventArgs.Empty);
+                }
+            }
+        }
 
         public bool ShowScanCircles
         {
@@ -216,6 +247,21 @@ namespace Nova.Client.Map
         }
 
         /// <summary>
+        /// View > Player Colors (command 2445): when set, the ship-count badge digits and the
+        /// planet-name label are drawn in the owning race's colour instead of a plain default
+        /// (client-interface.md, "Shared view-option slots", and behavior-specs-11 row 93). This is
+        /// second-word bit 0x20 (bit 0x2000 of the combined 16-bit word) and is deliberately
+        /// <b>not</b> addressable through <see cref="GetSlot"/>/<see cref="SetSlot"/> - the spec
+        /// says it is "outside the slot mechanism" and has no digit-key binding. Default: off, as
+        /// the start-up word 0x00E0 has the whole high byte clear.
+        /// </summary>
+        public bool ShowPlayerColors
+        {
+            get => (word2 & PlayerColorsBit) != 0;
+            set => SetWord2(value ? word2 | PlayerColorsBit : word2 & ~PlayerColorsBit);
+        }
+
+        /// <summary>
         /// The scanner display percentage (2-100, default 100). Changing it always force-enables the
         /// scan-circle overlay (client-interface.md, "Scan-range overlay").
         /// </summary>
@@ -251,6 +297,11 @@ namespace Nova.Client.Map
                 return Mode == slot ? 1 : 0;
             }
 
+            if (slot == ZoomSlot)
+            {
+                return zoomStep;
+            }
+
             (bool first, int bit) = SlotBit(slot);
             if (bit == 0)
             {
@@ -273,6 +324,12 @@ namespace Nova.Client.Map
                     Mode = slot;
                 }
 
+                return;
+            }
+
+            if (slot == ZoomSlot)
+            {
+                ZoomStep = value;
                 return;
             }
 

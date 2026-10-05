@@ -275,8 +275,16 @@
                                        ToolTip.Tip="Mass Driver" />
                             <!-- Horizontally centred on the anchor point via a TranslateTransform
                                  bound to this TextBlock's own measured width. Key 0 toggles it. -->
-                            <TextBlock x:Name="StarNameLabel" Text="{Binding Name}" Foreground="White" FontSize="10"
+                            <TextBlock x:Name="StarNameLabel" Text="{Binding Name}" FontSize="10"
                                        Canvas.Left="0" Canvas.Top="10" IsVisible="{Binding ShowName}" IsHitTestVisible="False">
+                                <!-- Player Colors off (the default) draws the name in the plain
+                                     white default; on, the marker's owner/relation colour. -->
+                                <TextBlock.Foreground>
+                                    <MultiBinding Converter="{x:Static panels:PlayerColorConverter.Instance}">
+                                        <Binding Path="Color" />
+                                        <Binding Path="$parent[UserControl].((panels:StarMapDocumentViewModel)DataContext).ShowPlayerColors" />
+                                    </MultiBinding>
+                                </TextBlock.Foreground>
                                 <TextBlock.RenderTransform>
                                     <TranslateTransform X="{Binding #StarNameLabel.Bounds.Width, Converter={x:Static conv:NegateHalfConverter.Instance}}" />
                                 </TextBlock.RenderTransform>
@@ -321,10 +329,18 @@
                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Panel>
                             </Button>
-                            <!-- Ship-count badge (Shift+0 toggles it). -->
-                            <TextBlock Text="{Binding ShipCountDisplay}" Foreground="{Binding Color}"
+                            <!-- Ship-count badge (Shift+0 toggles it); Player Colors switches the
+                                 digits between the plain white default and the owner colour. -->
+                            <TextBlock Text="{Binding ShipCountDisplay}"
                                        FontSize="9" FontWeight="Bold" IsHitTestVisible="False"
-                                       Canvas.Left="6" Canvas.Top="2" IsVisible="{Binding ShowBadge}" />
+                                       Canvas.Left="6" Canvas.Top="2" IsVisible="{Binding ShowBadge}">
+                                <TextBlock.Foreground>
+                                    <MultiBinding Converter="{x:Static panels:PlayerColorConverter.Instance}">
+                                        <Binding Path="Color" />
+                                        <Binding Path="$parent[UserControl].((panels:StarMapDocumentViewModel)DataContext).ShowPlayerColors" />
+                                    </MultiBinding>
+                                </TextBlock.Foreground>
+                            </TextBlock>
                         </Canvas>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
@@ -377,6 +393,11 @@
                                     <CheckBox Content="Dash overlapping route legs (9)" IsChecked="{Binding ShowRouteOverlap}" />
                                     <CheckBox Content="Planet names (0)" IsChecked="{Binding ShowPlanetNames}" />
                                     <CheckBox Content="Ship counts (Shift+0)" IsChecked="{Binding ShowShipCountBadges}" />
+                                    <!-- View > Player Colors (command 2445, second-word bit 0x20):
+                                         colours the ship-count badge digits and the planet-name
+                                         labels by owner instead of the plain default. -->
+                                    <CheckBox Content="Player Colors" IsChecked="{Binding ShowPlayerColors}"
+                                              ToolTip.Tip="Colour badges and planet names by owner (command 2445)" />
                                     <TextBlock Text="Scanner display" Margin="0,6,0,0" />
                                     <!-- The map toolbar's scanner-percentage field (slot 18): an
                                          editable drop-down pre-filled 100% down to 10% in steps
