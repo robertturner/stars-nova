@@ -110,6 +110,7 @@ public class NovaDockFactory : Factory
         var battlePlans = new BattlePlansViewModel("BattlePlans", "Battle Plans", clientState);
         var planetReport = new PlanetReportViewModel("PlanetReport", "Planet Report", clientState);
         var fleetReport = new FleetReportViewModel("FleetReport", "Fleet Report", clientState);
+        var othersFleetReport = new OthersFleetReportViewModel("OthersFleetReport", "Others' Fleets", clientState);
         var battleReport = new BattleReportViewModel("BattleReport", "Battle Report", clientState);
         var scoreReport = new ScoreReportViewModel("ScoreReport", "Score Report", clientState);
         var victoryConditions = new VictoryConditionsViewModel("VictoryConditions", "Victory Conditions");
@@ -121,7 +122,7 @@ public class NovaDockFactory : Factory
             ActiveDockable = messages,
             VisibleDockables = CreateList<IDockable>(
                 messages, summary, playerRelations, battlePlans,
-                planetReport, fleetReport, battleReport, scoreReport, victoryConditions, help),
+                planetReport, fleetReport, othersFleetReport, battleReport, scoreReport, victoryConditions, help),
             Alignment = Alignment.Bottom,
             Proportion = 0.22,
         };
