@@ -47,12 +47,15 @@ public class BattleReportViewModel : Tool
     public BattleReportViewModel(string id, string title, ClientData clientState)
     {
         Id = id;
-        Title = title;
         empireId = clientState.EmpireState.Id;
 
         Battles = clientState.EmpireState.BattleReports
             .Select(report => new BattleReportRowViewModel(report, empireId))
             .ToList();
+
+        // Title carries the row count and a plural marker (client-ui-dialog-catalog.md Reports
+        // line 369; the recovered template is in ReportTitles).
+        Title = ReportTitles.Summary("Battle", Battles.Count, "Battle");
     }
 
     /// <summary>

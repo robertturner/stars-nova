@@ -11,11 +11,20 @@
                      CanUserSortColumns="True" CanUserResizeColumns="True" SelectionMode="Single">
             <dg:DataGrid.Columns>
                 <dg:DataGridTextColumn Header="Location" Binding="{Binding Location}" />
+                <dg:DataGridTextColumn Header="Starbase Present" Binding="{Binding StarbasePresent}" />
                 <dg:DataGridTextColumn Header="Sides" Binding="{Binding Sides}" />
-                <dg:DataGridTextColumn Header="Our Ships" Binding="{Binding OurShips}" />
-                <dg:DataGridTextColumn Header="Their Ships" Binding="{Binding TheirShips}" />
-                <dg:DataGridTextColumn Header="Our Losses" Binding="{Binding OurLosses}" />
-                <dg:DataGridTextColumn Header="Their Losses" Binding="{Binding TheirLosses}" />
+                <dg:DataGridTextColumn Header="Units" Binding="{Binding Units}" />
+                <dg:DataGridTextColumn Header="Ours" Binding="{Binding Ours}" />
+                <dg:DataGridTextColumn Header="Theirs" Binding="{Binding Theirs}" />
+                <dg:DataGridTextColumn Header="Unarmed" Binding="{Binding Unarmed}" />
+                <dg:DataGridTextColumn Header="Scout" Binding="{Binding Scout}" />
+                <dg:DataGridTextColumn Header="Warship" Binding="{Binding Warship}" />
+                <dg:DataGridTextColumn Header="Bomber" Binding="{Binding Bomber}" />
+                <dg:DataGridTextColumn Header="Utility" Binding="{Binding Utility}" />
+                <dg:DataGridTextColumn Header="Our Dead" Binding="{Binding OurDead}" />
+                <dg:DataGridTextColumn Header="Their Dead" Binding="{Binding TheirDead}" />
+                <dg:DataGridTextColumn Header="Ours Left" Binding="{Binding OursLeft}" />
+                <dg:DataGridTextColumn Header="Theirs Left" Binding="{Binding TheirsLeft}" />
             </dg:DataGrid.Columns>
         </dg:DataGrid>
 

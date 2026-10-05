@@ -10,14 +10,18 @@
             <dg:DataGridTextColumn Header="Planet Name" Binding="{Binding Name}" />
             <dg:DataGridTextColumn Header="Starbase" Binding="{Binding Starbase}" />
             <dg:DataGridTextColumn Header="Population" Binding="{Binding Population}" />
-            <dg:DataGridTextColumn Header="Capacity %" Binding="{Binding Capacity}" />
-            <dg:DataGridTextColumn Header="Value %" Binding="{Binding Value}" />
+            <dg:DataGridTextColumn Header="Cap" Binding="{Binding Cap}" />
+            <dg:DataGridTextColumn Header="Value" Binding="{Binding Value}" />
+            <dg:DataGridTextColumn Header="Production" Binding="{Binding Production}" />
             <dg:DataGridTextColumn Header="Mines" Binding="{Binding Mines}" />
             <dg:DataGridTextColumn Header="Factories" Binding="{Binding Factories}" />
-            <dg:DataGridTextColumn Header="Defenses %" Binding="{Binding Defenses}" />
-            <dg:DataGridTextColumn Header="Minerals (I/B/G)" Binding="{Binding Minerals}" />
-            <dg:DataGridTextColumn Header="Concentration %" Binding="{Binding Concentration}" />
+            <dg:DataGridTextColumn Header="Defense" Binding="{Binding Defenses}" />
+            <dg:DataGridTextColumn Header="Minerals" Binding="{Binding Minerals}" />
+            <dg:DataGridTextColumn Header="Mining Rate" Binding="{Binding MiningRate}" />
+            <dg:DataGridTextColumn Header="Mineral Concentration" Binding="{Binding Concentration}" />
             <dg:DataGridTextColumn Header="Resources" Binding="{Binding Resources}" />
+            <dg:DataGridTextColumn Header="Driver Destination" Binding="{Binding DriverDestination}" />
+            <dg:DataGridTextColumn Header="Routing Destination" Binding="{Binding RoutingDestination}" />
         </dg:DataGrid.Columns>
     </dg:DataGrid>
 </UserControl>

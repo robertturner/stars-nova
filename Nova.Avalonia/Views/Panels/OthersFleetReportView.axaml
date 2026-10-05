@@ -2,23 +2,23 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:panels="using:Nova.Avalonia.ViewModels.Panels"
              xmlns:dg="using:Avalonia.Controls"
-             x:Class="Nova.Avalonia.Views.Panels.FleetReportView"
-             x:DataType="panels:FleetReportViewModel">
+             x:Class="Nova.Avalonia.Views.Panels.OthersFleetReportView"
+             x:DataType="panels:OthersFleetReportViewModel">
     <dg:DataGrid ItemsSource="{Binding Fleets}" IsReadOnly="True" AutoGenerateColumns="False"
                  GridLinesVisibility="Horizontal" CanUserSortColumns="True" CanUserResizeColumns="True">
         <dg:DataGrid.Columns>
             <dg:DataGridTextColumn Header="Fleet Name" Binding="{Binding Name}" />
             <dg:DataGridTextColumn Header="Id" Binding="{Binding Id}" />
             <dg:DataGridTextColumn Header="Location" Binding="{Binding Location}" />
-            <dg:DataGridTextColumn Header="Destination" Binding="{Binding Destination}" />
-            <dg:DataGridTextColumn Header="ETA" Binding="{Binding Eta}" />
-            <dg:DataGridTextColumn Header="Task" Binding="{Binding Task}" />
-            <dg:DataGridTextColumn Header="Fuel" Binding="{Binding Fuel}" />
-            <dg:DataGridTextColumn Header="Cargo" Binding="{Binding Cargo}" />
-            <dg:DataGridTextColumn Header="Composition" Binding="{Binding Composition}" />
-            <dg:DataGridTextColumn Header="Cloak" Binding="{Binding Cloak}" />
-            <dg:DataGridTextColumn Header="Battle Plan" Binding="{Binding BattlePlan}" />
+            <dg:DataGridTextColumn Header="Warp" Binding="{Binding Warp}" />
             <dg:DataGridTextColumn Header="Mass" Binding="{Binding Mass}" />
+            <dg:DataGridTextColumn Header="Composition" Binding="{Binding Composition}" />
+            <dg:DataGridTextColumn Header="Number of Ships" Binding="{Binding NumberOfShips}" />
+            <dg:DataGridTextColumn Header="Unarmed" Binding="{Binding Unarmed}" />
+            <dg:DataGridTextColumn Header="Scout" Binding="{Binding Scout}" />
+            <dg:DataGridTextColumn Header="Warship" Binding="{Binding Warship}" />
+            <dg:DataGridTextColumn Header="Bomber" Binding="{Binding Bomber}" />
+            <dg:DataGridTextColumn Header="Utility" Binding="{Binding Utility}" />
         </dg:DataGrid.Columns>
     </dg:DataGrid>
 </UserControl>
