@@ -76,44 +76,66 @@ namespace Nova.Client.Map
         public const int MaxScannerPercentage = 100;
 
         /// <summary>
-        /// SPEC GAP seam: which overlay each of the six mode values (0-5) paints. The spec names the
-        /// four painting modes and says two paint nothing, but not their slot order. Neutral default:
-        /// the spec's own listing order (the two bar modes, the bullseye, the population ring), then
-        /// the two non-painting modes.
+        /// Which overlay each of the six mode values (0-5) paints
+        /// (behavior-specs-11/client-interface.md, "Planet views"): 0 normal, 1 surface minerals,
+        /// 2 mineral concentrations, 3 planet value (the bullseye), 4 population, 5 no player
+        /// information.
         /// </summary>
         public static readonly PlanetOverlayKind[] ModeOverlays =
         {
+            PlanetOverlayKind.None,
             PlanetOverlayKind.MineralAmount,
             PlanetOverlayKind.MineralConcentration,
             PlanetOverlayKind.Habitability,
             PlanetOverlayKind.Population,
             PlanetOverlayKind.None,
-            PlanetOverlayKind.None,
         };
 
-        /// <summary>SPEC GAP seam: the selector's captions (no strings are given). Neutral labels
-        /// carrying the digit key that selects each mode.</summary>
+        /// <summary>The six "Planets:" selector captions, in mode order (the spec's own names for
+        /// modes 0-5; the toolbar tooltips 362-367 are not recovered, see client-interface row 84).</summary>
         public static readonly string[] ModeLabels =
         {
-            "1: Mineral amounts",
-            "2: Mineral concentrations",
-            "3: Habitability",
-            "4: Population",
-            "5: No overlay",
-            "6: No overlay (alternate)",
+            "Normal",
+            "Surface minerals",
+            "Mineral concentrations",
+            "Planet value",
+            "Population",
+            "No player information",
         };
 
-        /// <summary>SPEC GAP seam: the initial mode (not specified). Neutral default: the first
-        /// non-painting mode, so a fresh map looks like it did before the overlays existed.</summary>
-        public const int DefaultMode = 4;
+        /// <summary>The initial mode: the spec's start-up word is 0x00E0, normal planet view
+        /// (mode 0).</summary>
+        public const int DefaultMode = 0;
 
-        /// <summary>SPEC GAP seam: the initial first word (not specified). Neutral default keeps what
-        /// this port already drew (scan circles, minefields) and turns on route dashing.</summary>
+        /// <summary>The spec's start-up first word 0x00E0: normal planet view (mode 0) with the
+        /// scanner-coverage, mine-field and fleet-path overlays on (client-interface.md,
+        /// "Shared view-option slots", "Start-up values").</summary>
         public const int DefaultWord1 = DefaultMode | ScanCirclesBit | MinefieldsBit | RouteOverlapBit;
 
-        /// <summary>SPEC GAP seam: the initial second word. Neutral default keeps what this port
-        /// already drew (planet names, ship-count badges).</summary>
+        /// <summary>
+        /// The initial second word. The spec's 0x00E0 has its high byte off (planet names and
+        /// ship-count badges off, every filter off), but whether this port keeps names/badges on is
+        /// an explicit product decision left open by client-interface row 94 ("names/badges off by
+        /// default is a product decision to confirm"), so the port's existing choice is retained.
+        /// </summary>
         public const int DefaultWord2 = PlanetNamesBit | BadgeBit;
+
+        /// <summary>
+        /// The spec's stored-value sanity rule (client-interface.md, "Start-up values"): a stored
+        /// word whose mode nibble is above 5, or that has bit 0x4000 or 0x8000 set (the second
+        /// word's 0x40/0x80, unused), is replaced by 0 - normal view with every overlay off, and
+        /// the design-filter mask is cleared too. Returns the cleaned (word1, word2); the caller
+        /// resets its design mask when the value changed. Words are held to a byte each.
+        /// </summary>
+        public static (int Word1, int Word2) SanitizeStoredWords(int word1, int word2)
+        {
+            word1 &= 0xFF;
+            word2 &= 0xFF;
+
+            // 0x4000/0x8000 live in the combined 16-bit word's high byte: word2 bits 0x40/0x80.
+            bool invalid = (word1 & ModeMask) > 5 || (word2 & 0xC0) != 0;
+            return invalid ? (0, 0) : (word1, word2);
+        }
 
         private int word1 = DefaultWord1;
         private int word2 = DefaultWord2;

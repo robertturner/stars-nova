@@ -178,8 +178,12 @@ public class StarMapDocumentViewModel : Document
 
     // ---------------- view options ----------------
 
-    /// <summary>The "Planets:" selector's captions (see MapViewOptions.ModeLabels' SPEC GAP note).</summary>
+    /// <summary>The "Planets:" selector's captions (mode order 0-5).</summary>
     public IReadOnlyList<string> PlanetModeLabels { get; } = MapViewOptions.ModeLabels;
+
+    /// <summary>Mode 5 ("no player information") draws no fleets
+    /// (behavior-specs-11/client-interface.md, mode 5).</summary>
+    public bool ShowFleetsLayer => PlanetOverlayRules.ModeShowsFleets(ViewOptions.Mode);
 
     /// <summary>The 6-way "Planets:" mode (slots 0-5, keys 1-6).</summary>
     public int PlanetMode
@@ -432,14 +436,10 @@ public class StarMapDocumentViewModel : Document
 
         bool isClaimAdjuster = race != null && race.HasTrait("CA");
 
-        // The amount-mode bar's "shared reference maximum" (SPEC GAP: its value is not given).
-        // Neutral reading: the largest single surface-mineral amount on any of this empire's own
-        // planets this turn, so the fullest bar on the map is full-height.
-        int mineralReferenceMaximum = empire.OwnedStars.Values
-            .Where(star => star.ResourcesOnHand != null)
-            .SelectMany(star => new[] { star.ResourcesOnHand.Ironium, star.ResourcesOnHand.Boranium, star.ResourcesOnHand.Germanium })
-            .DefaultIfEmpty(0)
-            .Max();
+        // The amount-mode bar's mineral-chart scale M (behavior-specs-11/client-interface.md,
+        // mode 1): 5,000 kT by default. The original's selectable scale/summary popup has no port
+        // surface yet, so M is the fixed default.
+        int mineralReferenceMaximum = PlanetOverlayRules.DefaultMineralScale;
 
         var stars = new List<StarMapStarViewModel>();
         foreach (StarIntel report in empire.StarReports.Values)
@@ -499,17 +499,22 @@ public class StarMapDocumentViewModel : Document
             MapOwnership ownership = OwnershipOf(report.Owner);
 
             // Habitability for the viewing race (Race.HabPercent, the original's integer
-            // -45..100 evaluator). "Exact" uses the live Star where this empire owns it; the
-            // "estimated" re-derivation uses the report's visible readings. For any planet this
-            // empire does not own both come from the same report, so the olive (sign-disagreement)
-            // styling can only arise on an own planet whose report lags its live environment.
+            // -45..100 evaluator). The bullseye's current value v uses the live Star where this
+            // empire owns the planet and the report's readings otherwise; the terraformed value t
+            // moves each axis toward this race's ideal by the empire's terraforming reach from the
+            // planet's ORIGINAL value. Nova's StarIntel carries no original environment, so a
+            // foreign planet's t falls back to v (SPEC GAP: "yellow on a foreign planet" cannot
+            // arise until the report carries the original environment - see the questions file).
             int? habitability = null;
             if (explored && race != null)
             {
-                int estimated = (int)Math.Round(race.HabitalValue(report) * 100);
-                int exact = ownStar != null ? race.HabPercent(ownStar) : estimated;
-                habitability = exact;
-                star.SetHabitability(exact, PlanetOverlayRules.HabitabilityColour(exact, estimated, isClaimAdjuster), report.Owner == Global.Nobody);
+                int current = ownStar != null ? race.HabPercent(ownStar) : (int)Math.Round(race.HabitalValue(report) * 100);
+                int terraformed = ownStar != null
+                    ? PlanetOverlayRules.TerraformedHabitability(race, TerraformReach.For(empire), ownStar)
+                    : current;
+                (HabitabilityRingColour colour, int value) = PlanetOverlayRules.HabitabilityReading(current, terraformed, isClaimAdjuster);
+                habitability = current;
+                star.SetHabitability(value, colour, report.Owner != Global.Nobody);
             }
 
             // Population: own planets read the live colonist count, others the report's coarser
@@ -763,6 +768,7 @@ public class StarMapDocumentViewModel : Document
         foreach (StarMapStarViewModel star in Stars)
         {
             star.Overlay = overlay;
+            star.ViewMode = ViewOptions.Mode;
             star.ShowName = ViewOptions.ShowPlanetNames;
         }
 
@@ -780,6 +786,7 @@ public class StarMapDocumentViewModel : Document
         RouteLegs = BuildRouteLegs(selection.Selected as Fleet);
 
         OnPropertyChanged(nameof(PlanetMode));
+        OnPropertyChanged(nameof(ShowFleetsLayer));
         OnPropertyChanged(nameof(ShowScanCircles));
         OnPropertyChanged(nameof(ShowMinefields));
         OnPropertyChanged(nameof(ShowRouteOverlap));

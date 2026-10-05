@@ -23,18 +23,20 @@ namespace Nova.Client.Map
 {
     using System;
 
+    using Nova.Common;
+
     /// <summary>The bullseye's matched dark-fill / bright-outline colour pair.</summary>
     public enum HabitabilityRingColour
     {
-        /// <summary>Dark red / bright red: outside tolerance (negative value).</summary>
+        /// <summary>Dark red / bright red: outside tolerance (a hostile value).</summary>
         Red,
 
-        /// <summary>Dark green / bright green: non-negative value.</summary>
+        /// <summary>Dark green / bright green: habitable (the value used is non-negative).</summary>
         Green,
 
-        /// <summary>Dark yellow (olive) / bright yellow: the exact and estimated readings disagree
-        /// in sign, in the Claim-Adjuster-gated cases.</summary>
-        Olive,
+        /// <summary>Dark yellow (olive) / bright yellow: habitable after terraforming, but not
+        /// now.</summary>
+        Yellow,
     }
 
     /// <summary>The population ring's solid colour.</summary>
@@ -43,99 +45,122 @@ namespace Nova.Client.Map
         /// <summary>The viewer's own planet.</summary>
         Green,
 
-        /// <summary>A planet of a race the relationship table marks as seen/friendly.</summary>
+        /// <summary>A planet of a race the viewer rates Friend.</summary>
         Yellow,
 
-        /// <summary>Unknown or hostile owner.</summary>
+        /// <summary>A neutral or enemy owner.</summary>
         Red,
     }
 
     /// <summary>
-    /// The "Planets:" view-mode overlays (behavior-specs-10/client-interface.md, "Planet
-    /// display-mode ring/bar overlay"). Sizes are in zoom-scaled map pixels, i.e. world units in
-    /// this client, unless stated otherwise.
+    /// The "Planets:" view-mode overlays and their exact arithmetic
+    /// (behavior-specs-11/client-interface.md, "Planet views"). All radii are in screen pixels;
+    /// callers divide by the zoom scale factor to draw them.
     /// </summary>
     public static class PlanetOverlayRules
     {
-        /// <summary>The bullseye's radius cap: "clamped to at most 10 zoom-scaled steps".</summary>
-        public const double MaxHabitabilityRingRadius = 10;
-
-        /// <summary>SPEC GAP seam: the inner ring's size relative to the outer one ("an outer,
-        /// larger circle and an inner, smaller one"). Neutral default: half.</summary>
-        public const double InnerRingFraction = 0.5;
-
-        /// <summary>SPEC GAP seam: the side of the small square drawn for an unowned planet in the
-        /// habitability mode (size not given).</summary>
-        public const double UnownedMarkerSize = 3;
+        /// <summary>The bullseye outer radius cap: 2 to 10 pixels.</summary>
+        public const int MaxHabitabilityOuterRadius = 10;
 
         /// <summary>The bars' 0-20 step scale.</summary>
         public const int MaxBarSteps = 20;
 
         /// <summary>
-        /// SPEC GAP seam: the 19 ascending population thresholds the population ring brackets
-        /// against (the spec gives the count, not the values). Neutral placeholder: 0, then doubling
-        /// from 1,000 colonists.
+        /// The mineral-chart scale M default for mode 1: 5,000 kT (client-interface.md, mode 1).
+        /// The original also offers 100, 500, 1,000, 2,500, 5,000, 7,500, 10,000, 20,000 and 30,000
+        /// from the planet summary's scale popup, saved in the .ini; the port has no such control
+        /// yet, so M is fixed at the default.
         /// </summary>
-        public static readonly int[] PopulationRingThresholds = BuildPlaceholderThresholds();
+        public const int DefaultMineralScale = 5000;
 
         /// <summary>
-        /// SPEC GAP seam: the population ring is "halved at the lowest zoom levels", which levels is
-        /// not stated. Neutral reading: every level below 50% (25% and 37.5%).
+        /// The 19 ascending population thresholds, in units of 100 colonists (client-interface.md,
+        /// mode 4): 2,500 to 2,500,000 colonists. There is no zero threshold, so a population under
+        /// 2,500 gives a step count of 0.
         /// </summary>
-        public const int PopulationRingHalvedAtOrBelowLevel = -3;
-
-        /// <summary>
-        /// Which colour pair the bullseye uses. <paramref name="exactValue"/> is the stored-environment
-        /// habitability (-45..100), <paramref name="estimatedValue"/> the value re-derived from the
-        /// visible/estimated environment readings. Olive is reached only when the two disagree in
-        /// sign, and the recheck runs for a negative exact value only when the race is NOT Claim
-        /// Adjuster, and for a non-negative exact value only when it IS.
-        /// </summary>
-        public static HabitabilityRingColour HabitabilityColour(int exactValue, int estimatedValue, bool isClaimAdjuster)
+        public static readonly int[] PopulationRingThresholds =
         {
-            if (exactValue < 0)
+            25, 50, 100, 200, 400, 800, 1000, 1500, 2250, 3000,
+            4000, 5000, 6000, 7500, 9000, 11000, 14000, 18000, 25000,
+        };
+
+        /// <summary>
+        /// The bullseye's reading (client-interface.md, mode 3): the colour and the value whose
+        /// magnitude sizes the disc. <paramref name="current"/> is the viewer's habitability for
+        /// the planet's stored environment (-45..100) and <paramref name="terraformed"/> the same
+        /// evaluation after moving each axis toward the viewer's ideal as far as the viewer's
+        /// terraforming reaches. A non-Claim-Adjuster viewer uses the current value when it is
+        /// non-negative (green), otherwise the terraformed value (yellow when non-negative -
+        /// "habitable after terraforming" - and red otherwise). A Claim Adjuster viewer always
+        /// uses the terraformed value and sees only green or red.
+        /// </summary>
+        public static (HabitabilityRingColour Colour, int Value) HabitabilityReading(int current, int terraformed, bool isClaimAdjuster)
+        {
+            if (!isClaimAdjuster && current >= 0)
             {
-                return !isClaimAdjuster && estimatedValue >= 0 ? HabitabilityRingColour.Olive : HabitabilityRingColour.Red;
+                return (HabitabilityRingColour.Green, current);
             }
 
-            return isClaimAdjuster && estimatedValue < 0 ? HabitabilityRingColour.Olive : HabitabilityRingColour.Green;
+            if (terraformed >= 0)
+            {
+                return (isClaimAdjuster ? HabitabilityRingColour.Green : HabitabilityRingColour.Yellow, terraformed);
+            }
+
+            return (HabitabilityRingColour.Red, terraformed);
         }
 
         /// <summary>
-        /// The bullseye's outer radius: proportional to the value, clamped to 10 steps.
-        /// Ambiguity (documented): "proportional" is read as |value| / 10, so 100% reaches the cap
-        /// exactly; a negative (hostility) value uses its magnitude the same way.
+        /// The bullseye's outer radius: value / 11 + 2 for a non-negative value, |value| / 5 + 2 for
+        /// a negative one, both integer division, capped at 10 (so 2 to 10 pixels).
         /// </summary>
-        public static double HabitabilityRingRadius(int value)
+        public static int HabitabilityRingRadius(int value)
         {
-            return Math.Min(Math.Abs(value) / 10.0, MaxHabitabilityRingRadius);
+            int radius = value >= 0 ? (value / 11) + 2 : (Math.Abs(value) / 5) + 2;
+            return Math.Min(radius, MaxHabitabilityOuterRadius);
         }
 
-        /// <summary>The population ring's 0-18 step count: the index of the highest threshold the
-        /// population reaches (0 below the second threshold).</summary>
+        /// <summary>
+        /// The inner disc radius: outer - 2, or outer - 1 when outer - 2 would be below 3, and never
+        /// below 1 (client-interface.md, mode 3).
+        /// </summary>
+        public static int HabitabilityInnerRadius(int outerRadius)
+        {
+            int radius = outerRadius - 2;
+            if (radius < 3)
+            {
+                radius = outerRadius - 1;
+            }
+
+            return Math.Max(1, radius);
+        }
+
+        /// <summary>
+        /// The population step count n: how many of the 19 thresholds are at most
+        /// <paramref name="population"/> (which is in units of 100 colonists). 0 to 19.
+        /// </summary>
         public static int PopulationSteps(int population)
         {
             int steps = 0;
-            for (int i = 1; i < PopulationRingThresholds.Length; i++)
+            foreach (int threshold in PopulationRingThresholds)
             {
-                if (population >= PopulationRingThresholds[i])
+                if (population < threshold)
                 {
-                    steps = i;
+                    break;
                 }
+
+                steps++;
             }
 
             return steps;
         }
 
         /// <summary>
-        /// The population ring's radius: step count plus 2, halved at the lowest zoom levels.
-        /// Ambiguity (documented): because the spec halves it at low zoom, the radius is read as
-        /// SCREEN pixels (not zoom-scaled); the caller divides by the zoom factor to draw it.
+        /// The population ring radius in screen pixels (client-interface.md, mode 4): n + 2 at 200%
+        /// and 400% zoom (levels +3 and +4), otherwise (n + 3) / 2 with integer division.
         /// </summary>
-        public static double PopulationRingScreenRadius(int steps, int zoomLevel)
+        public static int PopulationRingScreenRadius(int steps, int zoomLevel)
         {
-            double radius = steps + 2;
-            return zoomLevel <= PopulationRingHalvedAtOrBelowLevel ? radius / 2 : radius;
+            return zoomLevel >= MapZoom.DefaultLevel + 3 ? steps + 2 : (steps + 3) / 2;
         }
 
         public static PopulationRingColour PopulationColour(MapOwnership ownership, bool ownerIsSeenFriendly)
@@ -149,9 +174,9 @@ namespace Nova.Client.Map
         }
 
         /// <summary>
-        /// The amount-mode bar: the value normalised against the shared reference maximum, on the
-        /// 0-20 step scale. SPEC GAP: the reference maximum itself is not given; the caller supplies
-        /// it (see the map view model's comment for the neutral choice).
+        /// The amount-mode bar (client-interface.md, mode 1): (amount + M/40) / (M/20) steps, all
+        /// divisions truncating, capped at 20. M is the planet summary's mineral-chart scale
+        /// (5,000 kT by default), supplied by the caller.
         /// </summary>
         public static int AmountBarSteps(int amount, int referenceMaximum)
         {
@@ -160,26 +185,93 @@ namespace Nova.Client.Map
                 return 0;
             }
 
-            long steps = (long)amount * MaxBarSteps / referenceMaximum;
-            return (int)Math.Min(steps, MaxBarSteps);
+            int unit = referenceMaximum / 20;
+            if (unit <= 0)
+            {
+                return MaxBarSteps;
+            }
+
+            int steps = (amount + (referenceMaximum / 40)) / unit;
+            return Math.Min(steps, MaxBarSteps);
         }
 
-        /// <summary>The concentration-mode bar: a 0-100 percentage divided by 5.</summary>
+        /// <summary>The concentration-mode bar (client-interface.md, mode 2): concentration / 5,
+        /// capped at 20.</summary>
         public static int ConcentrationBarSteps(int percent)
         {
             return Math.Max(0, Math.Min(100, percent)) / 5;
         }
 
-        private static int[] BuildPlaceholderThresholds()
+        /// <summary>Mode 5 ("no player information") skips the second pass and draws no fleets
+        /// (client-interface.md, mode 5).</summary>
+        public static bool ModeShowsFleets(int mode)
         {
-            var thresholds = new int[19];
-            thresholds[0] = 0;
-            for (int i = 1; i < thresholds.Length; i++)
+            return mode != 5;
+        }
+
+        /// <summary>The fleet-in-orbit ring is drawn only in planet views 0-2
+        /// (client-interface.md, "Fleet-in-orbit ring").</summary>
+        public static bool ModeShowsOrbitRing(int mode)
+        {
+            return mode >= 0 && mode <= 2;
+        }
+
+        /// <summary>
+        /// The minimum viewer report level a mode needs before its second-pass figure is drawn
+        /// (client-interface.md, modes 1-4): mode 1 (surface minerals) level 4, modes 2-4
+        /// (concentrations / value / population) level 3, all others none.
+        /// </summary>
+        public static int ModeMinReportLevel(int mode)
+        {
+            switch (mode)
             {
-                thresholds[i] = 1000 << (i - 1);
+                case 1: return 4;
+                case 2:
+                case 3:
+                case 4: return 3;
+                default: return 0;
+            }
+        }
+
+        /// <summary>
+        /// The terraformed habitability t (client-interface.md, mode 3): move each axis from the
+        /// planet's ORIGINAL value toward the race's ideal, but no further than that axis's
+        /// terraforming reach (the target rule of production-queue.md 10a), then evaluate.
+        /// </summary>
+        public static int TerraformedHabitability(Race race, TerraformReach reach, int gravity, int temperature, int radiation,
+            int originalGravity, int originalTemperature, int originalRadiation)
+        {
+            if (race == null)
+            {
+                return 0;
             }
 
-            return thresholds;
+            var projected = new Star
+            {
+                Gravity = TerraformProductionUnit.AxisTarget(race, TerraformReach.GravityAxis, originalGravity, reach?.Gravity ?? 0),
+                Temperature = TerraformProductionUnit.AxisTarget(race, TerraformReach.TemperatureAxis, originalTemperature, reach?.Temperature ?? 0),
+                Radiation = TerraformProductionUnit.AxisTarget(race, TerraformReach.RadiationAxis, originalRadiation, reach?.Radiation ?? 0),
+            };
+
+            // AxisTarget returns -1 when the axis has no target (immune, or no reach): keep the
+            // planet's original value there.
+            if (projected.Gravity < 0) projected.Gravity = originalGravity;
+            if (projected.Temperature < 0) projected.Temperature = originalTemperature;
+            if (projected.Radiation < 0) projected.Radiation = originalRadiation;
+
+            return race.HabPercent(projected);
+        }
+
+        /// <summary>The terraformed habitability of a live star this race owns.</summary>
+        public static int TerraformedHabitability(Race race, TerraformReach reach, Star star)
+        {
+            if (race == null || star == null)
+            {
+                return 0;
+            }
+
+            return TerraformedHabitability(race, reach, star.Gravity, star.Temperature, star.Radiation,
+                star.OriginalGravity, star.OriginalTemperature, star.OriginalRadiation);
         }
     }
 }

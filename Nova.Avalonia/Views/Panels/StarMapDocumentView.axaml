@@ -193,11 +193,11 @@
                              (X,Y); everything below positions relative to that origin, so a long
                              name can never push the icon off its true centre. -->
                         <Canvas>
-                            <!-- "Planets:" view-mode overlays (behavior-specs-10/client-interface.md,
-                                 "Planet display-mode ring/bar overlay"), all centred on the planet
-                                 and never hit-testable. Habitability: a dark-fill/bright-outline
-                                 bullseye pair (red outside tolerance, green inside, olive when the
-                                 exact and estimated readings disagree). -->
+                            <!-- "Planets:" view-mode overlays (behavior-specs-11/client-interface.md,
+                                 "Planet views"), all centred on the planet and never hit-testable.
+                                 Habitability: a dark-fill/bright-outline bullseye pair (red outside
+                                 tolerance, green habitable now, yellow habitable after
+                                 terraforming). -->
                             <Ellipse Width="{Binding HabitabilityOuterDiameter}" Height="{Binding HabitabilityOuterDiameter}"
                                      Canvas.Left="{Binding HabitabilityOuterOffset}" Canvas.Top="{Binding HabitabilityOuterOffset}"
                                      Fill="{Binding HabitabilityFill}" Stroke="{Binding HabitabilityStroke}" StrokeThickness="1"
@@ -240,11 +240,13 @@
                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Panel>
                             </Button>
-                            <!-- The habitability mode's small square for a planet with no owner. -->
-                            <Rectangle Width="{Binding UnownedMarkerSize}" Height="{Binding UnownedMarkerSize}"
-                                       Canvas.Left="{Binding UnownedMarkerOffset}" Canvas.Top="{Binding UnownedMarkerOffset}"
+                            <!-- The habitability mode's owner flag, drawn on owned planets.
+                                 (Simplified: the spec's exact black block / pole / 7x6 flag
+                                 geometry is not fully recovered.) -->
+                            <Rectangle Width="{Binding OwnerFlagMarkerSize}" Height="{Binding OwnerFlagMarkerSize}"
+                                       Canvas.Left="{Binding OwnerFlagMarkerOffset}" Canvas.Top="{Binding OwnerFlagMarkerOffset}"
                                        Fill="{Binding HabitabilityStroke}"
-                                       IsVisible="{Binding ShowUnownedMarker}" IsHitTestVisible="False" />
+                                       IsVisible="{Binding ShowOwnerFlag}" IsHitTestVisible="False" />
                             <!-- Fleet-in-orbit ring - two size classes (behavior-specs-10/
                                  client-interface.md, "Fleet-in-orbit ring"): 11x11 normally, 19x19
                                  while this planet is the tracked (selected) object; light-gray /
@@ -253,11 +255,11 @@
                             <Ellipse Width="{Binding OrbitRingDiameter}" Height="{Binding OrbitRingDiameter}"
                                      Canvas.Left="{Binding OrbitRingOffset}" Canvas.Top="{Binding OrbitRingOffset}"
                                      Stroke="{Binding OrbitRingStroke}" StrokeThickness="1" IsHitTestVisible="False"
-                                     IsVisible="{Binding HasFleetsInOrbit}" />
+                                     IsVisible="{Binding ShowOrbitRing}" />
                             <Ellipse Width="{Binding OrbitRingInnerDiameter}" Height="{Binding OrbitRingInnerDiameter}"
                                      Canvas.Left="{Binding OrbitRingInnerOffset}" Canvas.Top="{Binding OrbitRingInnerOffset}"
                                      Stroke="{Binding OrbitRingInnerStroke}" StrokeThickness="1" IsHitTestVisible="False"
-                                     IsVisible="{Binding HasFleetsInOrbit}" />
+                                     IsVisible="{Binding ShowOrbitRing}" />
                             <!-- Starbase capability dots - up to three small colored squares, one
                                  per independent condition, each at its own fixed offset from the
                                  star icon. Colors are this port's own choice. -->
@@ -284,7 +286,7 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <ItemsControl Classes="mapLayer" ItemsSource="{Binding Fleets}">
+            <ItemsControl Classes="mapLayer" ItemsSource="{Binding Fleets}" IsVisible="{Binding ShowFleetsLayer}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <Canvas />

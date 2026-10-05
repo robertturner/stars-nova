@@ -151,6 +151,23 @@ namespace Nova.Tests.UnitTests
             Assert.AreEqual(100, options.ScannerPercentage);
         }
 
+        [Test]
+        public void ViewOptions_StartUpWordIsE0AndStoredWordsAreSanitized()
+        {
+            var options = new MapViewOptions();
+            Assert.AreEqual(0, options.Mode, "normal planet view by default");
+            Assert.AreEqual(PlanetOverlayKind.None, options.Overlay);
+            Assert.AreEqual(0xE0, options.Word1, "start-up word 0x00E0: normal view, scanner, minefields, fleet paths");
+            Assert.IsTrue(options.ShowScanCircles);
+            Assert.IsTrue(options.ShowMinefields);
+            Assert.IsTrue(options.ShowRouteOverlap);
+
+            Assert.AreEqual((0, 0), MapViewOptions.SanitizeStoredWords(6, 0), "a mode nibble above 5 resets the word");
+            Assert.AreEqual((0, 0), MapViewOptions.SanitizeStoredWords(0, 0x40), "bit 0x4000 (second word 0x40) resets the word");
+            Assert.AreEqual((0, 0), MapViewOptions.SanitizeStoredWords(0, 0x80), "bit 0x8000 (second word 0x80) resets the word");
+            Assert.AreEqual((0xE0, 0x14), MapViewOptions.SanitizeStoredWords(0xE0, 0x14), "a valid word passes through");
+        }
+
         // ---------------- scan circles ----------------
 
         [Test]
@@ -505,42 +522,52 @@ namespace Nova.Tests.UnitTests
         // ---------------- planet overlays ----------------
 
         [Test]
-        public void Habitability_ColourPairs()
+        public void Habitability_ColourAndValue()
         {
-            Assert.AreEqual(HabitabilityRingColour.Green, PlanetOverlayRules.HabitabilityColour(40, 40, false));
-            Assert.AreEqual(HabitabilityRingColour.Red, PlanetOverlayRules.HabitabilityColour(-10, -10, false));
-            Assert.AreEqual(HabitabilityRingColour.Olive, PlanetOverlayRules.HabitabilityColour(-10, 5, false), "negative exact, estimate disagrees, not CA");
-            Assert.AreEqual(HabitabilityRingColour.Red, PlanetOverlayRules.HabitabilityColour(-10, 5, true), "negative exact: no recheck for CA");
-            Assert.AreEqual(HabitabilityRingColour.Olive, PlanetOverlayRules.HabitabilityColour(10, -5, true), "non-negative exact rechecked only for CA");
-            Assert.AreEqual(HabitabilityRingColour.Green, PlanetOverlayRules.HabitabilityColour(10, -5, false));
+            // behavior-specs-11/client-interface.md, mode 3.
+            Assert.AreEqual((HabitabilityRingColour.Green, 40), PlanetOverlayRules.HabitabilityReading(40, 40, false));
+            Assert.AreEqual((HabitabilityRingColour.Red, -10), PlanetOverlayRules.HabitabilityReading(-10, -10, false));
+            Assert.AreEqual((HabitabilityRingColour.Yellow, 5), PlanetOverlayRules.HabitabilityReading(-10, 5, false), "not habitable now, habitable after terraforming");
+            Assert.AreEqual((HabitabilityRingColour.Green, 5), PlanetOverlayRules.HabitabilityReading(-10, 5, true), "a Claim Adjuster always uses t");
+            Assert.AreEqual((HabitabilityRingColour.Red, -5), PlanetOverlayRules.HabitabilityReading(10, -5, true), "a Claim Adjuster sees only green/red");
+            Assert.AreEqual((HabitabilityRingColour.Green, 10), PlanetOverlayRules.HabitabilityReading(10, -5, false));
         }
 
         [Test]
-        public void Habitability_RadiusClampedAtTenSteps()
+        public void Habitability_RadiusAndInnerRadius()
         {
-            Assert.AreEqual(10, PlanetOverlayRules.HabitabilityRingRadius(100));
-            Assert.AreEqual(5, PlanetOverlayRules.HabitabilityRingRadius(50));
-            Assert.AreEqual(4.5, PlanetOverlayRules.HabitabilityRingRadius(-45));
-            Assert.AreEqual(10, PlanetOverlayRules.HabitabilityRingRadius(250));
+            Assert.AreEqual(2, PlanetOverlayRules.HabitabilityRingRadius(0));
+            Assert.AreEqual(6, PlanetOverlayRules.HabitabilityRingRadius(50), "50 / 11 + 2");
+            Assert.AreEqual(10, PlanetOverlayRules.HabitabilityRingRadius(100), "capped at 10");
+            Assert.AreEqual(4, PlanetOverlayRules.HabitabilityRingRadius(-10), "|value| / 5 + 2");
+            Assert.AreEqual(10, PlanetOverlayRules.HabitabilityRingRadius(-40), "capped at 10");
+            Assert.AreEqual(10, PlanetOverlayRules.HabitabilityRingRadius(-250));
+
+            Assert.AreEqual(1, PlanetOverlayRules.HabitabilityInnerRadius(2), "outer - 1 when outer - 2 would be below 3");
+            Assert.AreEqual(2, PlanetOverlayRules.HabitabilityInnerRadius(3));
+            Assert.AreEqual(3, PlanetOverlayRules.HabitabilityInnerRadius(4));
+            Assert.AreEqual(3, PlanetOverlayRules.HabitabilityInnerRadius(5));
+            Assert.AreEqual(8, PlanetOverlayRules.HabitabilityInnerRadius(10));
         }
 
         [Test]
-        public void Population_StepsRadiusAndColour()
+        public void Population_ExactThresholdsStepsAndRadius()
         {
-            Assert.AreEqual(19, PlanetOverlayRules.PopulationRingThresholds.Length, "19 ascending thresholds");
-            for (int i = 1; i < 19; i++)
-            {
-                Assert.Greater(PlanetOverlayRules.PopulationRingThresholds[i], PlanetOverlayRules.PopulationRingThresholds[i - 1]);
-            }
+            int[] expected = { 25, 50, 100, 200, 400, 800, 1000, 1500, 2250, 3000, 4000, 5000, 6000, 7500, 9000, 11000, 14000, 18000, 25000 };
+            CollectionAssert.AreEqual(expected, PlanetOverlayRules.PopulationRingThresholds, "19 ascending thresholds in units of 100 colonists");
 
             Assert.AreEqual(0, PlanetOverlayRules.PopulationSteps(0));
-            Assert.AreEqual(18, PlanetOverlayRules.PopulationSteps(int.MaxValue), "0-18 steps");
-            int t5 = PlanetOverlayRules.PopulationRingThresholds[5];
-            Assert.AreEqual(5, PlanetOverlayRules.PopulationSteps(t5));
-            Assert.AreEqual(4, PlanetOverlayRules.PopulationSteps(t5 - 1));
+            Assert.AreEqual(0, PlanetOverlayRules.PopulationSteps(24), "under the first threshold");
+            Assert.AreEqual(1, PlanetOverlayRules.PopulationSteps(25), "at the first threshold");
+            Assert.AreEqual(5, PlanetOverlayRules.PopulationSteps(400), "five thresholds reached");
+            Assert.AreEqual(19, PlanetOverlayRules.PopulationSteps(25000));
+            Assert.AreEqual(19, PlanetOverlayRules.PopulationSteps(int.MaxValue));
 
-            Assert.AreEqual(7, PlanetOverlayRules.PopulationRingScreenRadius(5, 0), "steps + 2");
-            Assert.AreEqual(3.5, PlanetOverlayRules.PopulationRingScreenRadius(5, -4), "halved at the lowest zoom levels");
+            Assert.AreEqual(4, PlanetOverlayRules.PopulationRingScreenRadius(5, 0), "(n + 3) / 2");
+            Assert.AreEqual(4, PlanetOverlayRules.PopulationRingScreenRadius(5, -4));
+            Assert.AreEqual(7, PlanetOverlayRules.PopulationRingScreenRadius(5, 3), "n + 2 at 200%");
+            Assert.AreEqual(7, PlanetOverlayRules.PopulationRingScreenRadius(5, 4), "n + 2 at 400%");
+            Assert.AreEqual(21, PlanetOverlayRules.PopulationRingScreenRadius(19, 4), "up to 21 pixels");
 
             Assert.AreEqual(PopulationRingColour.Green, PlanetOverlayRules.PopulationColour(MapOwnership.Own, false));
             Assert.AreEqual(PopulationRingColour.Yellow, PlanetOverlayRules.PopulationColour(MapOwnership.Other, true));
@@ -548,14 +575,42 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
-        public void MineralBars_TwentySteps()
+        public void MineralBars_ExactFormulas()
         {
             Assert.AreEqual(20, PlanetOverlayRules.ConcentrationBarSteps(100));
             Assert.AreEqual(9, PlanetOverlayRules.ConcentrationBarSteps(49), "divided by 5");
-            Assert.AreEqual(20, PlanetOverlayRules.ConcentrationBarSteps(140), "clamped to 100");
-            Assert.AreEqual(10, PlanetOverlayRules.AmountBarSteps(500, 1000), "normalised against the reference maximum");
-            Assert.AreEqual(20, PlanetOverlayRules.AmountBarSteps(1000, 1000));
-            Assert.AreEqual(0, PlanetOverlayRules.AmountBarSteps(1000, 0));
+            Assert.AreEqual(20, PlanetOverlayRules.ConcentrationBarSteps(140), "capped at 20");
+
+            Assert.AreEqual(20, PlanetOverlayRules.AmountBarSteps(5000, 5000), "(amount + M/40) / (M/20)");
+            Assert.AreEqual(2, PlanetOverlayRules.AmountBarSteps(500, 5000));
+            Assert.AreEqual(1, PlanetOverlayRules.AmountBarSteps(125, 5000), "the M/40 rounding half-step");
+            Assert.AreEqual(0, PlanetOverlayRules.AmountBarSteps(0, 5000));
+            Assert.AreEqual(0, PlanetOverlayRules.AmountBarSteps(500, 0), "no scale, no bar");
+        }
+
+        [Test]
+        public void ModeGating_Predicates()
+        {
+            Assert.AreEqual(PlanetOverlayKind.None, MapViewOptions.ModeOverlays[0]);
+            Assert.AreEqual(PlanetOverlayKind.MineralAmount, MapViewOptions.ModeOverlays[1]);
+            Assert.AreEqual(PlanetOverlayKind.MineralConcentration, MapViewOptions.ModeOverlays[2]);
+            Assert.AreEqual(PlanetOverlayKind.Habitability, MapViewOptions.ModeOverlays[3]);
+            Assert.AreEqual(PlanetOverlayKind.Population, MapViewOptions.ModeOverlays[4]);
+            Assert.AreEqual(PlanetOverlayKind.None, MapViewOptions.ModeOverlays[5]);
+
+            Assert.IsFalse(PlanetOverlayRules.ModeShowsFleets(5), "mode 5 hides fleets");
+            Assert.IsTrue(PlanetOverlayRules.ModeShowsFleets(0));
+
+            Assert.IsTrue(PlanetOverlayRules.ModeShowsOrbitRing(0));
+            Assert.IsTrue(PlanetOverlayRules.ModeShowsOrbitRing(2));
+            Assert.IsFalse(PlanetOverlayRules.ModeShowsOrbitRing(3), "the value/population disc replaces the ring");
+            Assert.IsFalse(PlanetOverlayRules.ModeShowsOrbitRing(5));
+
+            Assert.AreEqual(4, PlanetOverlayRules.ModeMinReportLevel(1), "surface minerals need level 4");
+            Assert.AreEqual(3, PlanetOverlayRules.ModeMinReportLevel(2));
+            Assert.AreEqual(3, PlanetOverlayRules.ModeMinReportLevel(3));
+            Assert.AreEqual(3, PlanetOverlayRules.ModeMinReportLevel(4));
+            Assert.AreEqual(0, PlanetOverlayRules.ModeMinReportLevel(0));
         }
 
         // ---------------- tracked chevron ----------------

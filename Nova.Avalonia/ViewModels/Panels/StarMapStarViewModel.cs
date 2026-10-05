@@ -37,6 +37,24 @@ public class StarMapStarViewModel : MapMarkerViewModel
 
     public bool HasForeignFleetInOrbit { get; }
 
+    private int viewMode;
+
+    /// <summary>The current "Planets:" mode (0-5) - the orbit ring is drawn only in modes 0-2
+    /// (behavior-specs-11/client-interface.md, "Fleet-in-orbit ring").</summary>
+    public int ViewMode
+    {
+        get => viewMode;
+        set
+        {
+            if (SetProperty(ref viewMode, value))
+            {
+                OnPropertyChanged(nameof(ShowOrbitRing));
+            }
+        }
+    }
+
+    public bool ShowOrbitRing => PlanetOverlayRules.ModeShowsOrbitRing(viewMode) && HasFleetsInOrbit;
+
     // ---- fleet-in-orbit ring: two size classes (behavior-specs-10/client-interface.md,
     // "Fleet-in-orbit ring"): 11x11 normally, 19x19 when this planet is the tracked (selected)
     // object. The small own-race tile is a light-gray/dark-gray bevel, the large one pure white;
@@ -89,7 +107,7 @@ public class StarMapStarViewModel : MapMarkerViewModel
             if (SetProperty(ref overlay, value))
             {
                 OnPropertyChanged(nameof(ShowHabitabilityRing));
-                OnPropertyChanged(nameof(ShowUnownedMarker));
+                OnPropertyChanged(nameof(ShowOwnerFlag));
                 OnPropertyChanged(nameof(ShowPopulationRing));
                 OnPropertyChanged(nameof(ShowMineralBars));
                 OnPropertyChanged(nameof(IroniumBarHeight));
@@ -114,13 +132,16 @@ public class StarMapStarViewModel : MapMarkerViewModel
     /// <summary>Whether the viewing race knows this planet's environment (explored).</summary>
     public bool HasHabitability { get; private set; }
 
-    public bool IsUnowned { get; private set; }
+    /// <summary>Whether the planet has an owner (the habitability mode adds an owner flag to those).</summary>
+    public bool IsOwned { get; private set; }
 
-    public double HabitabilityOuterDiameter { get; private set; }
+    private int habitabilityOuterRadius;
+
+    public double HabitabilityOuterDiameter => habitabilityOuterRadius * 2;
 
     public double HabitabilityOuterOffset => -HabitabilityOuterDiameter / 2;
 
-    public double HabitabilityInnerDiameter => HabitabilityOuterDiameter * PlanetOverlayRules.InnerRingFraction;
+    public double HabitabilityInnerDiameter => PlanetOverlayRules.HabitabilityInnerRadius(habitabilityOuterRadius) * 2;
 
     public double HabitabilityInnerOffset => -HabitabilityInnerDiameter / 2;
 
@@ -128,14 +149,19 @@ public class StarMapStarViewModel : MapMarkerViewModel
 
     public IBrush HabitabilityStroke { get; private set; } = Brushes.Transparent;
 
-    public bool ShowHabitabilityRing => Overlay == PlanetOverlayKind.Habitability && HasHabitability && HabitabilityOuterDiameter > 0;
+    public bool ShowHabitabilityRing => Overlay == PlanetOverlayKind.Habitability && HasHabitability && habitabilityOuterRadius > 0;
 
-    /// <summary>The small square the habitability mode adds for a planet with no owner.</summary>
-    public bool ShowUnownedMarker => Overlay == PlanetOverlayKind.Habitability && HasHabitability && IsUnowned;
+    /// <summary>
+    /// The owner flag the habitability mode adds for a planet with an owner
+    /// (client-interface.md, mode 3: "the small mark in that mode is an owner flag drawn on owned
+    /// planets"). The port draws a simplified flag (its exact black block, pole and 7x6 flag
+    /// geometry is not fully recovered in the spec text).
+    /// </summary>
+    public bool ShowOwnerFlag => Overlay == PlanetOverlayKind.Habitability && HasHabitability && IsOwned;
 
-    public double UnownedMarkerSize => PlanetOverlayRules.UnownedMarkerSize;
+    public double OwnerFlagMarkerSize => 3;
 
-    public double UnownedMarkerOffset => -PlanetOverlayRules.UnownedMarkerSize / 2;
+    public double OwnerFlagMarkerOffset => -OwnerFlagMarkerSize / 2;
 
     public bool HasPopulation => populationSteps >= 0;
 
@@ -205,20 +231,21 @@ public class StarMapStarViewModel : MapMarkerViewModel
     }
 
     /// <summary>The bullseye's data (null value = environment unknown).</summary>
-    public void SetHabitability(int? value, HabitabilityRingColour colour, bool isUnowned)
+    public void SetHabitability(int? value, HabitabilityRingColour colour, bool isOwned)
     {
-        IsUnowned = isUnowned;
+        IsOwned = isOwned;
         HasHabitability = value != null;
         if (value == null)
         {
+            habitabilityOuterRadius = 0;
             return;
         }
 
-        HabitabilityOuterDiameter = PlanetOverlayRules.HabitabilityRingRadius(value.Value) * 2;
+        habitabilityOuterRadius = PlanetOverlayRules.HabitabilityRingRadius(value.Value);
         (MediaColor dark, MediaColor bright) = colour switch
         {
             HabitabilityRingColour.Red => (MediaColor.FromRgb(128, 0, 0), MediaColor.FromRgb(255, 0, 0)),
-            HabitabilityRingColour.Olive => (MediaColor.FromRgb(128, 128, 0), MediaColor.FromRgb(255, 255, 0)),
+            HabitabilityRingColour.Yellow => (MediaColor.FromRgb(128, 128, 0), MediaColor.FromRgb(255, 255, 0)),
             _ => (MediaColor.FromRgb(0, 128, 0), MediaColor.FromRgb(0, 255, 0)),
         };
         HabitabilityFill = new SolidColorBrush(dark);
