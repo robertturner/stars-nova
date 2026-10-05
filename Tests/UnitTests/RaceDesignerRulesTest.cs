@@ -160,7 +160,7 @@ namespace Nova.Tests.UnitTests
         [TestCase("Humanoid", "JOAT", 1000, 10, 10, 10, 10, 5, 10)]
         [TestCase("Rabbitoid", "IT", 1000, 10, 9, 17, 10, 9, 10)]
         [TestCase("Insectoid", "WM", 1000, 10, 10, 10, 9, 10, 6)]
-        [TestCase("Nucleotid", "SS", 900, 10, 10, 10, 15, 5, 5)] // stored 3 is below the slot minimum of 5
+        [TestCase("Nucleotid", "SS", 900, 10, 10, 10, 10, 15, 5)] // spec-11 correction: mine output 10, mine cost 15, mines 5
         [TestCase("Silicanoid", "HE", 800, 12, 12, 15, 10, 9, 10)]
         [TestCase("Antetheral", "SD", 700, 11, 10, 18, 10, 10, 10)]
         public void ApplyingANamedPreset_SetsItsEconomyAndPrimaryTrait(string name, string prt, int colonists,
@@ -206,6 +206,133 @@ namespace Nova.Tests.UnitTests
             Assert.IsTrue(RaceDesignerRules.ResearchSlotOrder.All(field => race.ResearchCosts[field] == 100));
             Assert.AreEqual("Surface minerals", race.LeftoverPointTarget);
             Assert.IsFalse(RaceDesignerRules.HasLesserTrait(race, RaceDesignerRules.CheapFactories));
+        }
+
+        [Test]
+        public void ApplyingANamedPreset_WritesItsFullRecordAndDerivedPlural()
+        {
+            Race race = new Race();
+            RacePresets.Apply(RacePresets.All.Single(p => p.Name == "Silicanoid"), race);
+
+            Assert.IsTrue(race.GravityTolerance.Immune && race.TemperatureTolerance.Immune && race.RadiationTolerance.Immune);
+            Assert.AreEqual(6.0, race.GrowthRate);
+            Assert.AreEqual("HE", race.Traits.Primary.Code);
+            Assert.AreEqual(100, race.ResearchCosts[TechLevel.ResearchField.Energy]);
+            Assert.AreEqual(175, race.ResearchCosts[TechLevel.ResearchField.Biotechnology]);
+            Assert.AreEqual("Factories", race.LeftoverPointTarget);
+            Assert.AreEqual("Silicanoid", race.Name);
+            Assert.AreEqual("Silicanoids", race.PluralName, "the preset supplies its name plus the derived 's'");
+        }
+
+        private static Race LoadPreset(string name)
+        {
+            Race race = new Race();
+            RacePresets.LoadRecord(RacePresets.All.Single(p => p.Name == name), race);
+            return race;
+        }
+
+        [Test]
+        public void NamedPresetRecords_CarryTheSpecsBandsGrowthAndTraits()
+        {
+            Race rabbit = LoadPreset("Rabbitoid");
+            AssertBand(rabbit.GravityTolerance, false, 10, 56);
+            AssertBand(rabbit.TemperatureTolerance, false, 35, 81);
+            AssertBand(rabbit.RadiationTolerance, false, 13, 53);
+            Assert.AreEqual(20.0, rabbit.GrowthRate);
+            Assert.AreEqual("IT", rabbit.Traits.Primary.Code);
+            Assert.IsTrue(new[] { "IFE", "TT", "CE", "NAS" }.All(code => RaceDesignerRules.HasLesserTrait(rabbit, code)));
+            Assert.IsFalse(RaceDesignerRules.HasLesserTrait(rabbit, "ARM"));
+            Assert.IsTrue(RaceDesignerRules.HasLesserTrait(rabbit, RaceDesignerRules.CheapFactories), "the Germanium discount");
+            Assert.IsFalse(RaceDesignerRules.HasLesserTrait(rabbit, RaceDesignerRules.ExtraTech));
+            Assert.AreEqual("Defenses", rabbit.LeftoverPointTarget);
+            Assert.AreEqual(RaceDesignerRules.ResearchCostByClass[0], rabbit.ResearchCosts[TechLevel.ResearchField.Energy]);
+            Assert.AreEqual(RaceDesignerRules.ResearchCostByClass[0], rabbit.ResearchCosts[TechLevel.ResearchField.Weapons]);
+            Assert.AreEqual(RaceDesignerRules.ResearchCostByClass[2], rabbit.ResearchCosts[TechLevel.ResearchField.Propulsion]);
+            Assert.AreEqual(RaceDesignerRules.ResearchCostByClass[1], rabbit.ResearchCosts[TechLevel.ResearchField.Construction]);
+            Assert.AreEqual(RaceDesignerRules.ResearchCostByClass[1], rabbit.ResearchCosts[TechLevel.ResearchField.Electronics]);
+            Assert.AreEqual(RaceDesignerRules.ResearchCostByClass[2], rabbit.ResearchCosts[TechLevel.ResearchField.Biotechnology]);
+
+            Race insect = LoadPreset("Insectoid");
+            Assert.IsTrue(insect.GravityTolerance.Immune);
+            AssertBand(insect.TemperatureTolerance, false, 0, 100);
+            AssertBand(insect.RadiationTolerance, false, 70, 100);
+            Assert.AreEqual("WM", insect.Traits.Primary.Code);
+            Assert.AreEqual(9, insect.MineProductionRate);
+            Assert.AreEqual(10, insect.MineBuildCost);
+            Assert.AreEqual(6, insect.OperableMines);
+            Assert.IsTrue(new[] { "ISB", "CE", "RS" }.All(code => RaceDesignerRules.HasLesserTrait(insect, code)));
+
+            Race nucleo = LoadPreset("Nucleotid");
+            Assert.IsTrue(nucleo.GravityTolerance.Immune);
+            AssertBand(nucleo.TemperatureTolerance, false, 12, 88);
+            AssertBand(nucleo.RadiationTolerance, false, 0, 100);
+            Assert.AreEqual("SS", nucleo.Traits.Primary.Code);
+            Assert.AreEqual(10, nucleo.MineProductionRate, "stored mine output 10, not 15");
+            Assert.AreEqual(15, nucleo.MineBuildCost, "stored mine cost 15, not 5");
+            Assert.AreEqual(5, nucleo.OperableMines, "stored mines 5; the old '3' read the leftover choice");
+            Assert.IsTrue(new[] { "ARM", "ISB" }.All(code => RaceDesignerRules.HasLesserTrait(nucleo, code)));
+            Assert.IsFalse(RaceDesignerRules.HasLesserTrait(nucleo, RaceDesignerRules.CheapFactories));
+            Assert.IsTrue(RaceDesignerRules.HasLesserTrait(nucleo, RaceDesignerRules.ExtraTech), "the tech-3 start");
+            Assert.AreEqual("Factories", nucleo.LeftoverPointTarget);
+
+            Race silica = LoadPreset("Silicanoid");
+            Assert.IsTrue(silica.GravityTolerance.Immune && silica.TemperatureTolerance.Immune && silica.RadiationTolerance.Immune);
+            Assert.AreEqual(6.0, silica.GrowthRate);
+            Assert.AreEqual("HE", silica.Traits.Primary.Code);
+            Assert.IsTrue(new[] { "IFE", "UR", "OBRM", "BET" }.All(code => RaceDesignerRules.HasLesserTrait(silica, code)));
+
+            Race anther = LoadPreset("Antetheral");
+            AssertBand(anther.GravityTolerance, false, 0, 30);
+            AssertBand(anther.TemperatureTolerance, false, 0, 100);
+            AssertBand(anther.RadiationTolerance, false, 70, 100);
+            Assert.AreEqual(7.0, anther.GrowthRate);
+            Assert.AreEqual("SD", anther.Traits.Primary.Code);
+            Assert.IsTrue(new[] { "ARM", "MA", "NRS", "CE", "NAS" }.All(code => RaceDesignerRules.HasLesserTrait(anther, code)));
+        }
+
+        [Test]
+        public void PresetPortraitIndices_AreTheSpecs()
+        {
+            Assert.AreEqual(1, RacePresets.Humanoid.PortraitIndex);
+            Assert.AreEqual(12, RacePresets.All.Single(p => p.Name == "Rabbitoid").PortraitIndex);
+            Assert.AreEqual(4, RacePresets.All.Single(p => p.Name == "Insectoid").PortraitIndex);
+            Assert.AreEqual(25, RacePresets.All.Single(p => p.Name == "Nucleotid").PortraitIndex);
+            Assert.AreEqual(5, RacePresets.All.Single(p => p.Name == "Silicanoid").PortraitIndex);
+            Assert.AreEqual(18, RacePresets.All.Single(p => p.Name == "Antetheral").PortraitIndex);
+            Assert.AreEqual(31, RacePresets.All.Single(p => p.Name == "Random").PortraitIndex);
+        }
+
+        [TestCase("Humanoid", 25)]
+        [TestCase("Rabbitoid", 32)]
+        [TestCase("Insectoid", 43)]
+        [TestCase("Nucleotid", 11)]
+        [TestCase("Silicanoid", 9)]
+        [TestCase("Antetheral", 7)]
+        public void NamedPresetAdvantagePoints_MatchTheSpec(string name, int points)
+        {
+            Assert.AreEqual(points, LoadPreset(name).GetAdvantagePoints(), name);
+        }
+
+        [Test]
+        public void RandomPlaceholderRecord_ScoresTwelve()
+        {
+            Race random = LoadPreset("Random");
+            Assert.AreEqual("HE", random.Traits.Primary.Code);
+            Assert.AreEqual(1000, random.ColonistsPerResource);
+            Assert.AreEqual(3, random.MineBuildCost);
+            Assert.AreEqual(15.0, random.GrowthRate);
+            Assert.IsTrue(RacePresets.Random.RandomizeAtUniverseCreation, "trait bit 30");
+            Assert.AreEqual(12, random.GetAdvantagePoints());
+        }
+
+        private static void AssertBand(EnvironmentTolerance tolerance, bool immune, int minimum, int maximum)
+        {
+            Assert.AreEqual(immune, tolerance.Immune);
+            if (!immune)
+            {
+                Assert.AreEqual(minimum, tolerance.MinimumValue);
+                Assert.AreEqual(maximum, tolerance.MaximumValue);
+            }
         }
 
         [Test]

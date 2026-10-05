@@ -320,6 +320,16 @@ namespace Nova.Tests.UnitTests
         }
 
         [Test]
+        public void RaceName_DerivedPlural_AppendsS_UnlessTheNameEndsInSOrSe()
+        {
+            Assert.AreEqual("Humanoids", RaceNameText.Plural("Humanoid", null));
+            Assert.AreEqual("Boss", RaceNameText.Plural("Boss", null), "a name already ending in 's' is used unchanged");
+            Assert.AreEqual("House", RaceNameText.Plural("House", null), "a name already ending in 'se' is used unchanged");
+            Assert.AreEqual("Forces", RaceNameText.Plural("Force", null), "the endings are 's' and 'se' only, not every sibilant + 'e'");
+            Assert.AreEqual("Humanoids", RaceNameText.Plural("Humanoid   ", null), "trailing spaces are removed before the 's'");
+        }
+
+        [Test]
         public void RaceName_SingularFormIsTheStoredName()
         {
             Assert.AreEqual("Humanoid", RaceNameText.Build("Humanoid", "Humanoids", false, false, false));

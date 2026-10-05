@@ -4,26 +4,116 @@ namespace Nova.Client
     using System.Collections.Generic;
     using System.Linq;
 
+    using Nova.Client.Shell;
     using Nova.Common;
 
-    /// <summary>One of the race wizard's eight Identity-stage archetype buttons.</summary>
+    /// <summary>
+    /// One environmental axis of a preset's stored habitability: either the immunity state, or an
+    /// inclusive lower/upper band on the normalized 0-100 scale (race-designer-ui-and-availability.md,
+    /// "The seven preset records"). The centre is always the midpoint, so it is derived.
+    /// </summary>
+    public readonly struct HabitabilityBand
+    {
+        public HabitabilityBand(int minimum, int maximum)
+        {
+            Immune = false;
+            Minimum = minimum;
+            Maximum = maximum;
+        }
+
+        private HabitabilityBand(bool immune)
+        {
+            Immune = immune;
+            Minimum = 0;
+            Maximum = 100;
+        }
+
+        /// <summary>The special full-tolerance state ("immune").</summary>
+        public static HabitabilityBand Immunity { get; } = new HabitabilityBand(true);
+
+        public bool Immune { get; }
+
+        public int Minimum { get; }
+
+        public int Maximum { get; }
+    }
+
+    /// <summary>One of the race wizard's eight Identity-stage archetype buttons and its complete stored record.</summary>
     public sealed class RacePreset
     {
-        public RacePreset(string name, string primaryTrait, params int[] economySlots)
+        public RacePreset(
+            string name,
+            string primaryTrait,
+            HabitabilityBand gravity,
+            HabitabilityBand temperature,
+            HabitabilityBand radiation,
+            double growthRate,
+            int[] economySlots,
+            string[] lesserTraits,
+            bool germaniumDiscount,
+            bool extraTechStart,
+            int leftoverTarget,
+            int[] researchClasses,
+            int portraitIndex,
+            bool randomizeAtUniverseCreation = false)
         {
             Name = name;
             PrimaryTrait = primaryTrait;
+            Gravity = gravity;
+            Temperature = temperature;
+            Radiation = radiation;
+            GrowthRate = growthRate;
             EconomySlots = economySlots;
+            LesserTraits = lesserTraits;
+            GermaniumDiscount = germaniumDiscount;
+            ExtraTechStart = extraTechStart;
+            LeftoverTarget = leftoverTarget;
+            ResearchClasses = researchClasses;
+            PortraitIndex = portraitIndex;
+            RandomizeAtUniverseCreation = randomizeAtUniverseCreation;
         }
 
         /// <summary>The button label (race-designer-ui-and-availability.md, "Identity and archetype stage").</summary>
         public string Name { get; }
 
-        /// <summary>The preset's PRT code; null for Random and Custom.</summary>
+        /// <summary>The preset's PRT code; null for Custom.</summary>
         public string PrimaryTrait { get; }
 
-        /// <summary>Economic slots 0-6 as stored (slot 0 in hundreds of colonists); empty for Random and Custom.</summary>
+        public HabitabilityBand Gravity { get; }
+
+        public HabitabilityBand Temperature { get; }
+
+        public HabitabilityBand Radiation { get; }
+
+        /// <summary>The stored growth rate, in percent.</summary>
+        public double GrowthRate { get; }
+
+        /// <summary>Economic slots 0-6 as stored (slot 0 in hundreds of colonists); empty for Custom.</summary>
         public int[] EconomySlots { get; }
+
+        /// <summary>The lesser-trait bits that are set, as Nova codes in wizard bit order 0-13.</summary>
+        public string[] LesserTraits { get; }
+
+        /// <summary>Trait bit 31 ("factories cost 1 kT less Germanium"), the Germanium-discount checkbox.</summary>
+        public bool GermaniumDiscount { get; }
+
+        /// <summary>Trait bit 29 ("expensive research starts at tech 3, or 4 for JOAT"), the tech-3 checkbox.</summary>
+        public bool ExtraTechStart { get; }
+
+        /// <summary>The leftover-points choice as an index into <see cref="RaceDesignerRules.LeftoverPointTargets"/>.</summary>
+        public int LeftoverTarget { get; }
+
+        /// <summary>Research slots 8-13 as stored cost classes: 0 = 75% extra, 1 = standard, 2 = 50% less.</summary>
+        public int[] ResearchClasses { get; }
+
+        /// <summary>The spec's portrait index (1-32 on the original portrait sheet).</summary>
+        public int PortraitIndex { get; }
+
+        /// <summary>The Random placeholder's trait bit 30 ("randomise at universe creation"). No other preset sets it.</summary>
+        public bool RandomizeAtUniverseCreation { get; }
+
+        /// <summary>True for the six named presets and Random, false for Custom (which has no stored record).</summary>
+        public bool HasRecord => !IsCustom;
 
         public bool IsRandom => Name == RacePresets.RandomName;
 
@@ -36,48 +126,148 @@ namespace Nova.Client
     }
 
     /// <summary>
-    /// The eight Identity-stage archetypes (behavior-specs-10/race-designer-ui-and-availability.md:
+    /// The eight Identity-stage archetypes (race-designer-ui-and-availability.md:
     /// "Humanoid / Rabbitoid / Insectoid / Nucleotid / Silicanoid / Antetheral / Random / Custom")
-    /// and the data the spec gives for them: the seven economic slots and the PRT of the six named
-    /// presets ("The other named presets, as stored"), plus Humanoid's full default column.
+    /// and their complete stored records from "The seven preset records": habitability bands,
+    /// growth rate, PRT, the 14 lesser-trait bits, the two flat-cost checkboxes, the leftover-points
+    /// choice, the seven economy values, the six research classes and the portrait index, with the
+    /// advantage-point totals 25 / 32 / 43 / 11 / 9 / 7 and Random's 12.
     /// </summary>
-    /// <remarks>
-    /// SPEC GAP: the spec says selecting a preset "replaces the draft's race-design fields with that
-    /// preset's complete configuration", but it records only slots 0-6 and the PRT for each named
-    /// preset (and slots 7-13 and the Germanium checkbox for Humanoid alone). The habitability
-    /// bands, growth rate and lesser traits of every preset, and the research classes and
-    /// leftover choice of the five non-Humanoid presets, are not given, so applying a preset leaves
-    /// those draft fields as they were.
-    /// </remarks>
     public static class RacePresets
     {
         public const string RandomName = "Random";
         public const string CustomName = "Custom";
 
-        public static readonly RacePreset Humanoid = new RacePreset("Humanoid", "JOAT", 10, 10, 10, 10, 10, 5, 10);
+        private static readonly HabitabilityBand Immune = HabitabilityBand.Immunity;
+
+        public static readonly RacePreset Humanoid = new RacePreset(
+            "Humanoid",
+            "JOAT",
+            new HabitabilityBand(15, 85),
+            new HabitabilityBand(15, 85),
+            new HabitabilityBand(15, 85),
+            15,
+            new[] { 10, 10, 10, 10, 10, 5, 10 },
+            new string[0],
+            false,
+            false,
+            0,
+            new[] { 1, 1, 1, 1, 1, 1 },
+            1);
+
+        /// <summary>The Random placeholder record (trait bit 30 set; scored at universe generation).</summary>
+        public static readonly RacePreset Random = new RacePreset(
+            RandomName,
+            "HE",
+            new HabitabilityBand(17, 83),
+            new HabitabilityBand(17, 83),
+            new HabitabilityBand(17, 83),
+            15,
+            new[] { 10, 10, 10, 10, 10, 3, 10 },
+            new string[0],
+            false,
+            false,
+            0,
+            new[] { 1, 1, 1, 1, 1, 1 },
+            31,
+            randomizeAtUniverseCreation: true);
 
         /// <summary>All eight, in button order; Random is the 7th (index 6) and Custom the 8th.</summary>
         public static readonly IReadOnlyList<RacePreset> All = new[]
         {
             Humanoid,
-            new RacePreset("Rabbitoid", "IT", 10, 10, 9, 17, 10, 9, 10),
-            new RacePreset("Insectoid", "WM", 10, 10, 10, 10, 9, 10, 6),
-            // Nucleotid's stored "mines per 10,000 colonists" of 3 is below that slot's minimum
-            // of 5; the shared clamp (applied on every store and by the whole-record validation
-            // pass) raises it to 5. Reported as a spec inconsistency.
-            new RacePreset("Nucleotid", "SS", 9, 10, 10, 10, 15, 5, 3),
-            new RacePreset("Silicanoid", "HE", 8, 12, 12, 15, 10, 9, 10),
-            new RacePreset("Antetheral", "SD", 7, 11, 10, 18, 10, 10, 10),
-            new RacePreset(RandomName, null),
-            new RacePreset(CustomName, null),
+            new RacePreset(
+                "Rabbitoid",
+                "IT",
+                new HabitabilityBand(10, 56),
+                new HabitabilityBand(35, 81),
+                new HabitabilityBand(13, 53),
+                20,
+                new[] { 10, 10, 9, 17, 10, 9, 10 },
+                new[] { "IFE", "TT", "CE", "NAS" },
+                true,
+                false,
+                4,
+                new[] { 0, 0, 2, 1, 1, 2 },
+                12),
+            new RacePreset(
+                "Insectoid",
+                "WM",
+                Immune,
+                new HabitabilityBand(0, 100),
+                new HabitabilityBand(70, 100),
+                10,
+                new[] { 10, 10, 10, 10, 9, 10, 6 },
+                new[] { "ISB", "CE", "RS" },
+                false,
+                false,
+                1,
+                new[] { 2, 2, 2, 2, 1, 0 },
+                4),
+            new RacePreset(
+                "Nucleotid",
+                "SS",
+                Immune,
+                new HabitabilityBand(12, 88),
+                new HabitabilityBand(0, 100),
+                10,
+                new[] { 9, 10, 10, 10, 10, 15, 5 },
+                new[] { "ARM", "ISB" },
+                false,
+                true,
+                3,
+                new[] { 0, 0, 0, 0, 0, 0 },
+                25),
+            new RacePreset(
+                "Silicanoid",
+                "HE",
+                Immune,
+                Immune,
+                Immune,
+                6,
+                new[] { 8, 12, 12, 15, 10, 9, 10 },
+                new[] { "IFE", "UR", "OBRM", "BET" },
+                false,
+                false,
+                3,
+                new[] { 1, 1, 2, 2, 1, 0 },
+                5),
+            new RacePreset(
+                "Antetheral",
+                "SD",
+                new HabitabilityBand(0, 30),
+                new HabitabilityBand(0, 100),
+                new HabitabilityBand(70, 100),
+                7,
+                new[] { 7, 11, 10, 18, 10, 10, 10 },
+                new[] { "ARM", "MA", "NRS", "CE", "NAS" },
+                false,
+                false,
+                0,
+                new[] { 2, 0, 2, 2, 2, 2 },
+                18),
+            Random,
+            new RacePreset(
+                CustomName,
+                null,
+                new HabitabilityBand(20, 80),
+                new HabitabilityBand(20, 80),
+                new HabitabilityBand(20, 80),
+                15,
+                new int[0],
+                new string[0],
+                false,
+                false,
+                0,
+                new int[0],
+                0),
         };
 
         /// <summary>
-        /// Applies a named preset to the draft: slots 0-6 through the shared clamp and the PRT;
-        /// for Humanoid also its default research classes (all standard), leftover choice
-        /// (Surface minerals) and Germanium checkbox (off). An empty name gets the preset's name
-        /// as generic identity text (the spec does not give that text; the preset label stands in,
-        /// for the plural too). Custom keeps the draft; Random is <see cref="RandomRaceGenerator"/>.
+        /// Applies a named preset to the draft (its complete stored record, then the preset's name
+        /// and the derived plural where the draft's are empty). Custom keeps the draft. Random is
+        /// skipped here: the designer delegates it to <see cref="RandomRaceGenerator"/>, though its
+        /// placeholder record is available through <see cref="LoadRecord"/>.
         /// </summary>
         public static void Apply(RacePreset preset, Race race)
         {
@@ -86,6 +276,40 @@ namespace Nova.Client
                 return;
             }
 
+            LoadRecord(preset, race);
+
+            if (string.IsNullOrWhiteSpace(race.Name))
+            {
+                race.Name = preset.Name;
+            }
+
+            if (string.IsNullOrWhiteSpace(race.PluralName))
+            {
+                // The spec's identity rule: a preset supplies its name and that name plus "s".
+                race.PluralName = RaceNameText.Plural(preset.Name, null);
+            }
+        }
+
+        /// <summary>
+        /// Writes a preset's complete stored record onto the draft: habitability bands, growth,
+        /// PRT, the 14 lesser-trait bits, the two flat-cost checkboxes, the leftover-points choice,
+        /// the seven economy slots, the six research classes and (via <see cref="PortraitSource"/>)
+        /// the portrait. Custom has no record and leaves the draft alone; the name/plural fields are
+        /// not part of the record and are untouched (see <see cref="Apply"/>).
+        /// </summary>
+        public static void LoadRecord(RacePreset preset, Race race)
+        {
+            if (!preset.HasRecord)
+            {
+                return;
+            }
+
+            ApplyBand(preset.Gravity, race.GravityTolerance);
+            ApplyBand(preset.Temperature, race.TemperatureTolerance);
+            ApplyBand(preset.Radiation, race.RadiationTolerance);
+
+            race.GrowthRate = preset.GrowthRate;
+
             for (int slot = 0; slot < preset.EconomySlots.Length; slot++)
             {
                 RaceDesignerRules.SetSlot(race, slot, preset.EconomySlots[slot]);
@@ -93,18 +317,52 @@ namespace Nova.Client
 
             race.Traits.SetPrimary(preset.PrimaryTrait);
 
-            if (ReferenceEquals(preset, Humanoid))
+            foreach (string code in RaceDesignerRules.LesserTraitOrder)
             {
-                foreach (TechLevel.ResearchField field in RaceDesignerRules.ResearchSlotOrder)
-                {
-                    race.ResearchCosts[field] = 100;
-                }
-
-                race.LeftoverPointTarget = RaceDesignerRules.LeftoverPointTargets[0];
-                RaceDesignerRules.SetLesserTrait(race, RaceDesignerRules.CheapFactories, false);
+                RaceDesignerRules.SetLesserTrait(race, code, false);
             }
 
-            FillEmptyIdentity(race, preset.Name);
+            foreach (string code in preset.LesserTraits)
+            {
+                RaceDesignerRules.SetLesserTrait(race, code, true);
+            }
+
+            RaceDesignerRules.SetLesserTrait(race, RaceDesignerRules.CheapFactories, preset.GermaniumDiscount);
+            RaceDesignerRules.SetLesserTrait(race, RaceDesignerRules.ExtraTech, preset.ExtraTechStart);
+
+            for (int i = 0; i < RaceDesignerRules.ResearchSlotOrder.Length; i++)
+            {
+                race.ResearchCosts[RaceDesignerRules.ResearchSlotOrder[i]] =
+                    RaceDesignerRules.ResearchCostByClass[preset.ResearchClasses[i]];
+            }
+
+            race.LeftoverPointTarget = RaceDesignerRules.LeftoverPointTargets[preset.LeftoverTarget];
+
+            string portrait = PortraitSource(preset.PortraitIndex);
+            if (!string.IsNullOrEmpty(portrait))
+            {
+                race.Icon.Source = portrait;
+            }
+        }
+
+        /// <summary>
+        /// SPEC GAP seam: the preset's portrait index to the icon file name. The spec records the
+        /// index ("The seven preset records": Humanoid 1, Rabbitoid 12, Insectoid 4, Nucleotid 25,
+        /// Silicanoid 5, Antetheral 18, Random 31) but not the portrait sheet's file order, so no
+        /// mapping is applied and the draft's icon is left as it was. The shipped
+        /// DefaultRaces/*.race files cannot supply it either: they disagree (Humanoid 06.jpg,
+        /// Nucleotid 28.jpg, Insectoid 28.jpg, Silicanoid and Antetheral both 11.jpg).
+        /// </summary>
+        public static string PortraitSource(int portraitIndex)
+        {
+            return null;
+        }
+
+        private static void ApplyBand(HabitabilityBand band, EnvironmentTolerance tolerance)
+        {
+            tolerance.Immune = band.Immune;
+            tolerance.MinimumValue = band.Minimum;
+            tolerance.MaximumValue = band.Maximum;
         }
 
         internal static void FillEmptyIdentity(Race race, string text)

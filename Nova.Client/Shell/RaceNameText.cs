@@ -29,23 +29,29 @@ namespace Nova.Client.Shell
     /// and status area": a race's display name from its singular and plural names, parameterised
     /// by singular vs plural, an optional "a"/"an" article "chosen by the name's leading sound",
     /// an optional possessive/adjective suffix, and - when no plural name was set - an automatic
-    /// English plural: append "s", "unless the singular name already ends in "s" or in a
-    /// sibilant-plus-"e" pattern, in which case a different suffix is used").
-    /// SPEC GAP: that "different suffix", the possessive/adjective suffix's text and the
-    /// sibilant set are not given. Stand-ins: <see cref="AlternatePluralSuffix"/> (empty: such a
-    /// name is used unchanged), <see cref="PossessiveSuffix"/> ("'s"), <see cref="Sibilants"/>.
+    /// English plural: append "s" to "the singular name with trailing spaces removed", "unless the
+    /// name already ends in "s" or in "se"" (race-designer-ui-and-availability.md "Identity and
+    /// archetype stage", "Derived plural"). That ending set is exactly "s" and "se", not every
+    /// sibilant + "e".
+    /// SPEC GAP: the suffix used for those two endings, and the possessive/adjective suffix's
+    /// text, are not given. Stand-ins: <see cref="AlternatePluralSuffix"/> (empty: such a name is
+    /// used unchanged), <see cref="PossessiveSuffix"/> ("'s"), <see cref="Sibilants"/> ("s").
     /// Ambiguity: "leading sound" is read as the first letter being a vowel (a, e, i, o, u).
     /// </summary>
     public static class RaceNameText
     {
-        /// <summary>SPEC GAP seam: the plural ending for a name ending in "s" or sibilant + "e".</summary>
+        /// <summary>SPEC GAP seam: the plural ending for a name already ending in "s" or "se".</summary>
         public const string AlternatePluralSuffix = "";
 
         /// <summary>SPEC GAP seam: the possessive/adjective ending.</summary>
         public const string PossessiveSuffix = "'s";
 
-        /// <summary>SPEC GAP seam: the consonants that make "-Xe" a sibilant ending.</summary>
-        public const string Sibilants = "scxzj";
+        /// <summary>
+        /// SPEC GAP seam: the "X" that makes "-Xe" a no-s ending. The spec names exactly one such
+        /// pattern, "se" (race-designer-ui-and-availability.md "Identity and archetype stage",
+        /// "Derived plural"), so this holds only "s"; do not broaden it to every sibilant + "e".
+        /// </summary>
+        public const string Sibilants = "s";
 
         /// <summary>The plural form: the stored plural name, else the automatic plural.</summary>
         public static string Plural(string singular, string plural)
@@ -55,7 +61,8 @@ namespace Nova.Client.Shell
                 return plural.Trim();
             }
 
-            string name = (singular ?? string.Empty).Trim();
+            // "the singular name with trailing spaces removed and an 's' appended"
+            string name = (singular ?? string.Empty).TrimEnd();
             if (name.Length == 0)
             {
                 return name;
