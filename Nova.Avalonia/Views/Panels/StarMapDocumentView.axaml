@@ -377,9 +377,27 @@
                                     <CheckBox Content="Dash overlapping route legs (9)" IsChecked="{Binding ShowRouteOverlap}" />
                                     <CheckBox Content="Planet names (0)" IsChecked="{Binding ShowPlanetNames}" />
                                     <CheckBox Content="Ship counts (Shift+0)" IsChecked="{Binding ShowShipCountBadges}" />
-                                    <TextBlock Text="{Binding ScannerPercentage, StringFormat='Scanner display {0}%'}" Margin="0,6,0,0" />
-                                    <!-- Below 100% the drawn circles grow (radius x 100 / percentage);
-                                         changing it turns the scan circles on. -->
+                                    <TextBlock Text="Scanner display" Margin="0,6,0,0" />
+                                    <!-- The map toolbar's scanner-percentage field (slot 18): an
+                                         editable drop-down pre-filled 100% down to 10% in steps
+                                         of 10, accepting a typed 2-100 as "N%". Enter commits
+                                         and Escape reverts to the last committed value; either
+                                         force-enables the scan circles
+                                         (client-ui-dialog-catalog.md row 9 / client-interface.md
+                                         row 93). Below 100% the drawn circles grow (radius x 100 /
+                                         percentage). The live-value tooltip shows for ~400 ms
+                                         after a change (IsScannerTooltipVisible). -->
+                                    <ComboBox IsEditable="True" HorizontalAlignment="Stretch"
+                                              ItemsSource="{Binding ScannerPercentagePresets}"
+                                              Text="{Binding ScannerPercentageText, Mode=TwoWay}"
+                                              ToolTip.Tip="{Binding ScannerTooltipText}"
+                                              ToolTip.IsOpen="{Binding IsScannerTooltipVisible, Mode=OneWay}"
+                                              ToolTip.ShowDelay="0">
+                                        <ComboBox.KeyBindings>
+                                            <KeyBinding Gesture="Enter" Command="{Binding CommitScannerPercentageCommand}" />
+                                            <KeyBinding Gesture="Escape" Command="{Binding RevertScannerPercentageCommand}" />
+                                        </ComboBox.KeyBindings>
+                                    </ComboBox>
                                     <Slider Minimum="2" Maximum="100" Value="{Binding ScannerPercentage}"
                                             TickFrequency="1" IsSnapToTickEnabled="True" />
                                 </StackPanel>

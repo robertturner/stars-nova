@@ -379,4 +379,67 @@ public class StarMapViewModelTests
         wormholeMarker.SelectCommand.Execute(null);
         Assert.That(selection.Selected, Is.SameAs(wormhole));
     }
+
+    /// <summary>Rows 9/93: the map toolbar's scanner-percentage drop-down is pre-filled 100% down
+    /// to 10% in steps of 10.</summary>
+    [AvaloniaTest]
+    public void ScannerPercentageDropDown_IsPreFilled100DownTo10By10()
+    {
+        (_, _, StarMapDocumentViewModel map) = Open();
+
+        Assert.That(map.ScannerPercentagePresets, Has.Count.EqualTo(10));
+        Assert.That(
+            map.ScannerPercentagePresets.Select(preset => int.Parse(preset.TrimEnd('%'))),
+            Is.EqualTo(new[] { 100, 90, 80, 70, 60, 50, 40, 30, 20, 10 }));
+    }
+
+    /// <summary>Rows 9/93: Enter commits a typed in-range value and force-enables the scan
+    /// circles.</summary>
+    [AvaloniaTest]
+    public void CommitScannerPercentage_TypedValue_ForceEnablesScanCircles()
+    {
+        (_, _, StarMapDocumentViewModel map) = Open();
+        map.ShowScanCircles = false;
+
+        map.ScannerPercentageText = "45";
+        map.CommitScannerPercentageCommand.Execute(null);
+
+        Assert.That(map.ScannerPercentage, Is.EqualTo(45));
+        Assert.That(map.ShowScanCircles, Is.True, "Enter unconditionally turns the overlay on");
+        Assert.That(map.ScannerPercentageText, Is.EqualTo("45%"), "the committed value is shown formatted");
+    }
+
+    /// <summary>Rows 9/93: a typed value outside 2-100 is clamped to the nearest limit.</summary>
+    [AvaloniaTest]
+    public void CommitScannerPercentage_OutOfRange_ClampsToTheRange()
+    {
+        (_, _, StarMapDocumentViewModel map) = Open();
+
+        map.ScannerPercentageText = "1";
+        map.CommitScannerPercentageCommand.Execute(null);
+        Assert.That(map.ScannerPercentage, Is.EqualTo(2), "below the minimum clamps to 2%");
+
+        map.ScannerPercentageText = "500";
+        map.CommitScannerPercentageCommand.Execute(null);
+        Assert.That(map.ScannerPercentage, Is.EqualTo(100), "above the maximum clamps to 100%");
+    }
+
+    /// <summary>Rows 9/93: Escape reverts to the last committed value (a typed, uncommitted value
+    /// is discarded).</summary>
+    [AvaloniaTest]
+    public void EscapeScannerPercentage_RevertsToTheLastCommittedValue()
+    {
+        (_, _, StarMapDocumentViewModel map) = Open();
+
+        map.ScannerPercentageText = "60";
+        map.CommitScannerPercentageCommand.Execute(null);
+        Assume.That(map.ScannerPercentage, Is.EqualTo(60));
+
+        map.ScannerPercentageText = "20";
+        map.RevertScannerPercentageCommand.Execute(null);
+
+        Assert.That(map.ScannerPercentage, Is.EqualTo(60), "Escape does not commit the typed value");
+        Assert.That(map.ScannerPercentageText, Is.EqualTo("60%"));
+        Assert.That(map.ShowScanCircles, Is.True);
+    }
 }

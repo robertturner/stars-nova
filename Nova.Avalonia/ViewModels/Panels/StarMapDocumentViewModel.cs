@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using Avalonia.Media;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using Dock.Model.Mvvm.Controls;
 using Nova.Client;
 using Nova.Client.Map;
+using Nova.Client.Shell;
 using Nova.Common;
 using Nova.Common.Components;
 using Nova.Common.DataStructures;
@@ -298,17 +300,107 @@ public class StarMapDocumentViewModel : Document
         }
     }
 
+    /// <summary>The map toolbar's scanner-percentage field (slot 18): an editable drop-down
+    /// pre-filled 100% down to 10% in steps of 10, accepting a typed 2-100 as "N%"
+    /// (client-ui-dialog-catalog.md row 9; client-interface.md row 93). Enter commits, Escape
+    /// reverts, and either path force-enables the scan-circle overlay.</summary>
+    public IReadOnlyList<string> ScannerPercentagePresets { get; } = BuildScannerPercentagePresets();
+
+    private static IReadOnlyList<string> BuildScannerPercentagePresets()
+    {
+        var presets = new List<string>();
+        for (int percentage = MapViewOptions.MaxScannerPercentage; percentage >= 10; percentage -= 10)
+        {
+            presets.Add(ScannerPercentInput.Format(percentage));
+        }
+
+        return presets;
+    }
+
+    private string scannerPercentageText = ScannerPercentInput.Format(MapViewOptions.MaxScannerPercentage);
+
+    /// <summary>The field's editable text ("N%"). Typing does not commit; Enter commits and
+    /// Escape reverts (see the commands).</summary>
+    public string ScannerPercentageText
+    {
+        get => scannerPercentageText;
+        set => SetProperty(ref scannerPercentageText, value);
+    }
+
+    /// <summary>Enter in the field: commit the typed value, clamped to 2-100 (a non-number keeps
+    /// the stored value), which force-enables the scan circles.</summary>
+    public IRelayCommand CommitScannerPercentageCommand { get; }
+
+    /// <summary>Escape in the field: revert to the last committed value; like Enter it also
+    /// force-enables the scan circles.</summary>
+    public IRelayCommand RevertScannerPercentageCommand { get; }
+
     /// <summary>Scanner display percentage, 2-100 (changing it force-enables the scan circles).
-    /// The spec puts this control in the planet inspector; it is offered here on the map's own
-    /// view-options popup instead, since the inspector is a separate panel.</summary>
+    /// This is the value the drop-down's text and the slider both edit.</summary>
     public int ScannerPercentage
     {
         get => ViewOptions.ScannerPercentage;
         set
         {
+            int before = ViewOptions.ScannerPercentage;
             ViewOptions.ScannerPercentage = value;
+            ScannerPercentageText = ScannerPercentInput.Format(ViewOptions.ScannerPercentage);
             ApplyViewOptions();
+            if (ViewOptions.ScannerPercentage != before)
+            {
+                ShowScannerTooltip();
+            }
         }
+    }
+
+    private bool isScannerTooltipVisible;
+
+    /// <summary>The live-value tooltip's visibility: shown for roughly 400 ms after the value
+    /// last changed (ScannerPercentInput.TooltipWindow, the spec's "roughly a 400ms window",
+    /// client-ui-dialog-catalog.md row 9).</summary>
+    public bool IsScannerTooltipVisible
+    {
+        get => isScannerTooltipVisible;
+        private set => SetProperty(ref isScannerTooltipVisible, value);
+    }
+
+    /// <summary>The live tooltip's text. The spec only says it "shows the live value"; the exact
+    /// wording is this port's, mirrored from the planet inspector's control.</summary>
+    public string ScannerTooltipText => "Scanner display " + ScannerPercentInput.Format(ScannerPercentage);
+
+    private DispatcherTimer? scannerTooltipTimer;
+    private DateTime scannerLastChange = DateTime.MinValue;
+
+    private void CommitScannerPercentage()
+    {
+        ScannerPercentage = ScannerPercentInput.Commit(ScannerPercentageText, ScannerPercentage);
+    }
+
+    private void RevertScannerPercentage()
+    {
+        // Escape: back to the last committed value. Assigning it runs the MapViewOptions setter,
+        // which "unconditionally turns on" the overlay even when the value is unchanged.
+        ScannerPercentage = ScannerPercentage;
+    }
+
+    private void ShowScannerTooltip()
+    {
+        scannerLastChange = DateTime.UtcNow;
+        IsScannerTooltipVisible = true;
+        if (scannerTooltipTimer == null)
+        {
+            scannerTooltipTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+            scannerTooltipTimer.Tick += (_, _) =>
+            {
+                if (!ScannerPercentInput.IsTooltipVisible(scannerLastChange, DateTime.UtcNow))
+                {
+                    IsScannerTooltipVisible = false;
+                    scannerTooltipTimer.Stop();
+                }
+            };
+        }
+
+        scannerTooltipTimer.Start();
     }
 
     /// <summary>Applies a top-row digit key (desktop): 1-6 modes, 7/8/9 scan/minefields/route
@@ -364,6 +456,11 @@ public class StarMapDocumentViewModel : Document
         Title = title;
         this.clientState = clientState;
         this.selection = selection;
+        // ViewOptions is static, so a rebuilt map's field must pick up the value a previous map
+        // (or the inspector) left behind rather than the field initializer's default.
+        scannerPercentageText = ScannerPercentInput.Format(ViewOptions.ScannerPercentage);
+        CommitScannerPercentageCommand = new RelayCommand(CommitScannerPercentage);
+        RevertScannerPercentageCommand = new RelayCommand(RevertScannerPercentage);
         ResetZoomCommand = new RelayCommand(() => ZoomLevel = MapZoom.DefaultLevel);
         // Buttons, not just the mouse-wheel handler in StarMapDocumentView.axaml.cs - a
         // touchscreen never raises a wheel event at all, so without these, zoom was completely
@@ -793,6 +890,7 @@ public class StarMapDocumentViewModel : Document
         OnPropertyChanged(nameof(ShowPlanetNames));
         OnPropertyChanged(nameof(ShowShipCountBadges));
         OnPropertyChanged(nameof(ScannerPercentage));
+        OnPropertyChanged(nameof(ScannerTooltipText));
         OnPropertyChanged(nameof(MinefieldMask));
         OnPropertyChanged(nameof(ShowOwnMinefields));
         OnPropertyChanged(nameof(ShowOtherMinefields));
