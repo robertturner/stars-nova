@@ -62,16 +62,10 @@
             <TextBlock Grid.Column="1" Text="{Binding CompletionTimeText}" />
         </Grid>
 
-        <!-- Every not-yet-available component that further research in the selected target
-             field alone would eventually unlock - ports WinForms ResearchDialog's "Expected
-             Research Benefits" list, including its color legend (brighter/more prominent colors
-             for sooner unlocks). -->
+        <!-- Every component that further research in the selected target field alone would
+             eventually unlock, each with the detail card's status line (research-tech-tree.md §7a);
+             parts the race can never receive are omitted. -->
         <TextBlock Text="Expected research benefits" FontWeight="Bold" Opacity="0.8" Margin="0,16,0,0" />
-        <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,4">
-            <TextBlock Text="Next level" Foreground="LimeGreen" FontSize="11" />
-            <TextBlock Text="2-4 levels away" Foreground="DodgerBlue" FontSize="11" />
-            <TextBlock Text="5+ levels away" Foreground="White" FontSize="11" />
-        </StackPanel>
         <ItemsControl ItemsSource="{Binding Benefits}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="panels:ResearchBenefitRowViewModel">

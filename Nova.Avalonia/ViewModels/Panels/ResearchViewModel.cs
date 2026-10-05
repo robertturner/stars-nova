@@ -38,10 +38,6 @@ public class ResearchViewModel : Tool
 {
     private readonly ClientData clientState;
 
-    private static readonly IBrush BenefitColorNextLevel = Brushes.LimeGreen;
-    private static readonly IBrush BenefitColorNearLevels = Brushes.DodgerBlue;
-    private static readonly IBrush BenefitColorFarLevels = Brushes.White;
-
     private IReadOnlyList<ResearchFieldRowViewModel> fields = Array.Empty<ResearchFieldRowViewModel>();
 
     public IReadOnlyList<ResearchFieldRowViewModel> Fields
@@ -273,24 +269,36 @@ public class ResearchViewModel : Tool
     /// <summary>
     /// Every component not yet available that further research in <paramref name="targetField"/>
     /// alone (holding every other field at its current level) would eventually unlock - not just
-    /// the very next level. Ports WinForms ResearchDialog.PopulateResearchBenefits exactly,
-    /// including its rule that a component needing a higher level in some OTHER, unrelated field
-    /// too is omitted, since researching targetField alone will never unlock it.
-    /// Each row also carries the detail card's single status line (unavailable / available /
-    /// resources still needed / thousands with "k") - see Nova.Client.TechStatusLine.
+    /// the very next level. A component needing a higher level in some OTHER, unrelated field is
+    /// omitted, since researching targetField alone will never unlock it.
+    /// Components the viewing race can never receive are left out: a part a primary or lesser
+    /// trait bars (RaceComponents.IsRestrictedFor), and the one-time battle-gift parts
+    /// (SpecialComponentGrants), which only a battle grant - never research - can hand out.
+    /// Each row carries the detail card's single status line instead of the port's levels-away
+    /// color grade: "Unavailable" (drawn in red), "Available", the research resources still
+    /// needed, or that figure in thousands with a "k" from 100,000 up (behavior-specs-11/
+    /// research-tech-tree.md section 7a, Nova.Client.TechStatusLine).
     /// </summary>
     private static IReadOnlyList<ResearchBenefitRowViewModel> BuildBenefits(TechLevel.ResearchField targetField, TechLevel currentLevel, Race race, TechLevel bankedResources)
     {
         var allComponents = new AllComponents();
         int currentFieldLevel = currentLevel[targetField];
 
-        var benefits = new List<(int LevelsAway, ResearchBenefitRowViewModel Row)>();
+        var benefits = new List<(int StillNeeded, ResearchBenefitRowViewModel Row)>();
 
         foreach (Component component in allComponents.GetAll.Values)
         {
             if (currentLevel.Meets(component.RequiredTech))
             {
                 // Already available - nothing more to research for it.
+                continue;
+            }
+
+            // Parts this race can never receive do not belong on a "what will research unlock"
+            // list: a primary/lesser trait bars them, or they are one of the one-time battle-gift
+            // specials that a grant (never research) is the only way to get.
+            if (RaceComponents.IsRestrictedFor(component, race) || SpecialComponentGrants.IsSpecialGrant(component.Name))
+            {
                 continue;
             }
 
@@ -315,31 +323,21 @@ public class ResearchViewModel : Tool
                 continue;
             }
 
-            IBrush color;
-            if (levelsAway == 1)
-            {
-                color = BenefitColorNextLevel;
-            }
-            else if (levelsAway <= 4)
-            {
-                color = BenefitColorNearLevels;
-            }
-            else
-            {
-                color = BenefitColorFarLevels;
-            }
-
-            string text = component.Name + " " + component.Type;
+            // The detail card's one status line replaces the levels-away grade. A row reads
+            // "Available" even before the levels are bought when banked resources already cover
+            // every still-missing level (TechStatusLine, exactly as the original card does).
             int stillNeeded = TechStatusLine.ForComponent(component, race, currentLevel, bankedResources);
-            benefits.Add((levelsAway, new ResearchBenefitRowViewModel(
-                text,
-                color,
+            bool unavailable = TechStatusLine.KindOf(stillNeeded) == TechStatusLine.Kind.Unavailable;
+
+            benefits.Add((stillNeeded, new ResearchBenefitRowViewModel(
+                component.Name + " " + component.Type,
+                unavailable ? Brushes.Red : Brushes.White,
                 TechStatusLine.Format(stillNeeded),
-                TechStatusLine.KindOf(stillNeeded) == TechStatusLine.Kind.Unavailable)));
+                unavailable)));
         }
 
         return benefits
-            .OrderBy(benefit => benefit.LevelsAway)
+            .OrderBy(benefit => benefit.StillNeeded)
             .Select(benefit => benefit.Row)
             .ToList();
     }
