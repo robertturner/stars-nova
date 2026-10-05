@@ -195,6 +195,7 @@ public class RaceDesignerViewModelTests
     {
         var designer = new RaceDesignerViewModel(LoadHumanoid());
         designer.SelectedPrimaryTrait = designer.PrimaryTraitOptions.First(t => t.Code == "JOAT");
+        Assert.That(designer.CanEditCheapFactories, Is.True, "a non-AR race may toggle the Germanium discount");
         StepTo(designer.FactoryOutputRow, +1);
         StepTo(designer.MineCostRow, -1);
         designer.CheapFactoriesTrait.IsSelected = true;
@@ -211,6 +212,7 @@ public class RaceDesignerViewModelTests
         Assert.That(later.Select(row => row.IsEnabled), Is.All.False);
         Assert.That(designer.ColonistsRow.IsEnabled, Is.True, "row 1 stays editable");
         Assert.That(designer.CheapFactoriesTrait.IsSelected, Is.False, "the Germanium discount is cleared");
+        Assert.That(designer.CanEditCheapFactories, Is.False, "and its checkbox is disabled for Alternate Reality");
 
         int value = designer.MineCostRow.SlotValue;
         designer.MineCostRow.Step(+1, shiftHeld: false);

@@ -341,6 +341,11 @@ public class RaceDesignerViewModel : ViewModelBase
     /// <summary>True when the draft is Alternate Reality (rows 2-7 are locked).</summary>
     public bool IsAlternateReality => RaceDesignerRules.IsAlternateReality(race);
 
+    /// <summary>True while the Germanium-discount (Cheap Factories) checkbox may be toggled:
+    /// never for Alternate Reality, whose economy rows 2-7 are locked, and never in a read-only
+    /// view (race-designer-ui-and-availability.md section 1; spec-11 answer 4.3).</summary>
+    public bool CanEditCheapFactories => IsEditable && !IsAlternateReality;
+
     public IRelayCommand SaveCommand { get; }
 
     public IRelayCommand CancelCommand { get; }
@@ -609,6 +614,7 @@ public class RaceDesignerViewModel : ViewModelBase
                 CheapFactoriesTrait.Refresh();
                 ExtraTechTrait.Refresh();
                 OnPropertyChanged(nameof(IsAlternateReality));
+                OnPropertyChanged(nameof(CanEditCheapFactories));
                 RecalculateTotals();
             }
         }

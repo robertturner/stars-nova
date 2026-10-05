@@ -146,7 +146,7 @@
                             <controls:RaceDesignerStepper DataContext="{Binding FactoryCostRow}" />
                             <controls:RaceDesignerStepper DataContext="{Binding FactoriesOperatedRow}" />
                             <CheckBox Content="{Binding CheapFactoriesTrait.Title}" IsChecked="{Binding CheapFactoriesTrait.IsSelected}"
-                                      ToolTip.Tip="{Binding CheapFactoriesTrait.Description}" IsEnabled="{Binding IsEditable}" />
+                                      ToolTip.Tip="{Binding CheapFactoriesTrait.Description}" IsEnabled="{Binding CanEditCheapFactories}" />
                         </StackPanel>
                     </Border>
                     <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="8">
