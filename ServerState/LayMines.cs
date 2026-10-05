@@ -43,11 +43,9 @@ namespace Nova.Server
         /// <summary>A field holding more than this many mines is never added to: a new field is started.</summary>
         public const int MaxMinesBeforeNewField = 999999;
 
-        /// <summary>The special-object table holds at most this many entries of all kinds.</summary>
-        public const int MaxSpecialObjects = 4049;
-
-        /// <summary>Serial numbers available for minefields (511, as for every special-object type).</summary>
-        public const int MaxMinefieldSerials = 511;
+        /// <summary>Serial numbers available for minefields (511, as for every special-object
+        /// kind; see <see cref="SpecialObjectTable.SerialNumbersPerOwner"/>).</summary>
+        public const int MaxMinefieldSerials = SpecialObjectTable.SerialNumbersPerOwner;
 
         private readonly ServerData serverState;
 
@@ -240,19 +238,15 @@ namespace Nova.Server
 
         /// <summary>
         /// Whether a new field record can be created (turn-generation-engine.md section 3, "Where
-        /// the mines go"; the object-table limits of section 5a): creation fails once the
-        /// special-object table holds more than 4,049 entries of all kinds (here minefields plus
-        /// deep-space wreckage) or all 511 serial numbers for minefields are in use (counted per
-        /// owner here - the spec does not say whether the serials are per owner or per game).
+        /// the mines go"; the object-table limits of section 5a): creation fails once the shared
+        /// special-object table already holds more than 4,049 records of all kinds, or once all 511
+        /// serial numbers for minefields are in use for this owner. See
+        /// <see cref="SpecialObjectTable"/>.
         /// </summary>
         public bool CanCreateField(ushort owner)
         {
-            if (serverState.AllMinefields.Count + serverState.AllDeepSpaceMinerals.Count >= MaxSpecialObjects)
-            {
-                return false;
-            }
-
-            return serverState.AllMinefields.Values.Count(field => field.Owner == owner) < MaxMinefieldSerials;
+            return !SpecialObjectTable.IsFull(serverState)
+                && SpecialObjectTable.CanAllocateMinefield(serverState, owner);
         }
 
         private static string TypeLabel(MinefieldType fieldType)

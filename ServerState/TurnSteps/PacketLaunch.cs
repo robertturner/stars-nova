@@ -44,7 +44,9 @@ namespace Nova.Server.TurnSteps
     ///   an existing packet of the same owner leaving the same planet with the same speed, target
     ///   and class, provided that packet's mass BEFORE the merge is still under 16,300 kT (message
     ///   212; the new minerals are then added with no further test); otherwise a new packet is
-    ///   created at the planet (message 211).</item>
+    ///   created at the planet (message 211), or refused with message 297 when the shared
+    ///   special-object table has no free record (it already holds more than 4,049 records of all
+    ///   kinds, or the owner already has 511 packets of its own); the order is not refunded.</item>
     /// </list>
     /// "Leaving the same planet" is read as "launched from this planet and not yet moved" (a
     /// packet launched this turn, before step 21's half step) - see the report's ambiguity list.
@@ -118,6 +120,16 @@ namespace Nova.Server.TurnSteps
                 Post(serverState, star.Owner, star.Name + " has added " + payloadKilotons
                     + "kT of minerals to the mineral packet bound for " + target.Name + ".");
                 return existing;
+            }
+
+            // Message 297: no free record in the shared special-object table (behavior-specs-11/
+            // production-queue.md 10b). The order is not refunded - the unit was already bought.
+            if (SpecialObjectTable.IsFull(serverState)
+                || !SpecialObjectTable.CanAllocatePacket(serverState, star.Owner))
+            {
+                Post(serverState, star.Owner, star.Name
+                    + " could not launch a mineral packet: no free special-object record is available.");
+                return null;
             }
 
             MineralPacket packet = new MineralPacket();

@@ -578,6 +578,26 @@ namespace Nova.Tests.UnitTests
             Assert.AreEqual(LayMines.MaxMinefieldSerials, serverState.AllMinefields.Count);
             StringAssert.Contains("failed to lay mines this year due to technical difficulties", serverState.AllMessages.Single().Text);
         }
+
+        [Test]
+        public void TheSharedObjectTableCountsPacketsToo()
+        {
+            ServerData serverState = new SimpleServerData();
+            EmpireData owner = new SimpleEmpireData { Id = 1 };
+            serverState.AllEmpires.Add(owner.Id, owner);
+
+            // No minefields or wreckage at all: 4,050 packets alone fill the shared table, which used
+            // to count only minefields plus deep-space wreckage.
+            for (int i = 0; i < SpecialObjectTable.MaxRecordsBeforeAllocation + 1; i++)
+            {
+                MineralPacket packet = new MineralPacket { Key = ((long)0).SetOwner(1).SetId((uint)(i + 1)) };
+                serverState.AllMineralPackets[packet.Key] = packet;
+            }
+
+            Assert.IsTrue(SpecialObjectTable.IsFull(serverState));
+            Assert.IsFalse(new LayMines(serverState).CanCreateField(1),
+                "packets count towards the shared special-object table even with no minefields");
+        }
     }
 
     /// <summary>

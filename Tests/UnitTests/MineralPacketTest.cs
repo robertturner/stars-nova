@@ -590,6 +590,60 @@ namespace Nova.Tests.UnitTests
             Assert.AreEqual(3, packet.OverspeedClass, "2 over the warp-5 driver, plus 1 for Interstellar Traveler");
         }
 
+        // §10b allocation limits: a new packet needs a free record in the shared special-object
+        // table (minefields, packets, salvage, wormholes and the Mystery Trader together). The
+        // allocator refuses once the table already holds more than 4,049 records, or once the owner
+        // already has 511 packets; either failure posts message 297 and the order is not refunded.
+        [Test]
+        public void Launch_RefusesWhenTheSharedSpecialObjectTableIsFull()
+        {
+            ServerData server = PacketWorld("JOAT", out Star origin, out _, out EmpireData empire);
+            for (int i = 0; i < SpecialObjectTable.MaxRecordsBeforeAllocation + 1; i++)
+            {
+                server.AllDeepSpaceMinerals["wreck" + i] = new DeepSpaceMinerals(new NovaPoint(1000 + i, 1000));
+            }
+
+            Assert.IsTrue(SpecialObjectTable.IsFull(server));
+            MineralPacket packet = PacketLaunch.Launch(server, origin, new PacketProductionUnit(empire.Race, PacketMineral.Mixed, false), 1);
+
+            Assert.IsNull(packet);
+            Assert.AreEqual(0, server.AllMineralPackets.Count, "no packet record is created");
+            Assert.That(Texts(server), Has.Some.Contains("no free special-object record"));
+        }
+
+        [Test]
+        public void Launch_AtTheObjectLimit_StillFitsOneMoreRecord()
+        {
+            ServerData server = PacketWorld("JOAT", out Star origin, out _, out EmpireData empire);
+            for (int i = 0; i < SpecialObjectTable.MaxRecordsBeforeAllocation; i++)
+            {
+                server.AllDeepSpaceMinerals["wreck" + i] = new DeepSpaceMinerals(new NovaPoint(1000 + i, 1000));
+            }
+
+            Assert.IsFalse(SpecialObjectTable.IsFull(server), "4,049 is not yet 'more than 4,049'");
+            MineralPacket packet = PacketLaunch.Launch(server, origin, new PacketProductionUnit(empire.Race, PacketMineral.Mixed, false), 1);
+
+            Assert.IsNotNull(packet);
+            Assert.AreEqual(1, server.AllMineralPackets.Count);
+        }
+
+        [Test]
+        public void Launch_RefusesWhenTheOwnerAlreadyHas511Packets()
+        {
+            ServerData server = PacketWorld("JOAT", out Star origin, out Star target, out EmpireData empire);
+            for (int i = 0; i < SpecialObjectTable.SerialNumbersPerOwner; i++)
+            {
+                AddPacket(server, 1, target, new NovaPoint(1000 + i, 1000), 3, 10);
+            }
+
+            Assert.AreEqual(SpecialObjectTable.SerialNumbersPerOwner, server.AllMineralPackets.Count);
+            MineralPacket packet = PacketLaunch.Launch(server, origin, new PacketProductionUnit(empire.Race, PacketMineral.Mixed, false), 1);
+
+            Assert.IsNull(packet, "the owner's 511 packet serial numbers are all in use");
+            Assert.AreEqual(SpecialObjectTable.SerialNumbersPerOwner, server.AllMineralPackets.Count);
+            Assert.That(Texts(server), Has.Some.Contains("no free special-object record"));
+        }
+
         // ------------------------------------------------------------------ orders
 
         [Test]
