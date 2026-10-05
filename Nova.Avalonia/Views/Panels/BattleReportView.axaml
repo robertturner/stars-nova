@@ -10,21 +10,36 @@
                      IsReadOnly="True" AutoGenerateColumns="False" GridLinesVisibility="Horizontal"
                      CanUserSortColumns="True" CanUserResizeColumns="True" SelectionMode="Single">
             <dg:DataGrid.Columns>
-                <dg:DataGridTextColumn Header="Location" Binding="{Binding Location}" />
-                <dg:DataGridTextColumn Header="Starbase Present" Binding="{Binding StarbasePresent}" />
-                <dg:DataGridTextColumn Header="Sides" Binding="{Binding Sides}" />
-                <dg:DataGridTextColumn Header="Units" Binding="{Binding Units}" />
-                <dg:DataGridTextColumn Header="Ours" Binding="{Binding Ours}" />
-                <dg:DataGridTextColumn Header="Theirs" Binding="{Binding Theirs}" />
-                <dg:DataGridTextColumn Header="Unarmed" Binding="{Binding Unarmed}" />
-                <dg:DataGridTextColumn Header="Scout" Binding="{Binding Scout}" />
-                <dg:DataGridTextColumn Header="Warship" Binding="{Binding Warship}" />
-                <dg:DataGridTextColumn Header="Bomber" Binding="{Binding Bomber}" />
-                <dg:DataGridTextColumn Header="Utility" Binding="{Binding Utility}" />
-                <dg:DataGridTextColumn Header="Our Dead" Binding="{Binding OurDead}" />
-                <dg:DataGridTextColumn Header="Their Dead" Binding="{Binding TheirDead}" />
-                <dg:DataGridTextColumn Header="Ours Left" Binding="{Binding OursLeft}" />
-                <dg:DataGridTextColumn Header="Theirs Left" Binding="{Binding TheirsLeft}" />
+                <dg:DataGridTextColumn Header="Location" Binding="{Binding Location}"
+                                       IsVisible="{Binding Columns[0].IsVisible}" />
+                <dg:DataGridTextColumn Header="Starbase Present" Binding="{Binding StarbasePresent}"
+                                       IsVisible="{Binding Columns[1].IsVisible}" />
+                <dg:DataGridTextColumn Header="Sides" Binding="{Binding Sides}"
+                                       IsVisible="{Binding Columns[2].IsVisible}" />
+                <dg:DataGridTextColumn Header="Units" Binding="{Binding Units}"
+                                       IsVisible="{Binding Columns[3].IsVisible}" />
+                <dg:DataGridTextColumn Header="Ours" Binding="{Binding Ours}"
+                                       IsVisible="{Binding Columns[4].IsVisible}" />
+                <dg:DataGridTextColumn Header="Theirs" Binding="{Binding Theirs}"
+                                       IsVisible="{Binding Columns[5].IsVisible}" />
+                <dg:DataGridTextColumn Header="Unarmed" Binding="{Binding Unarmed}"
+                                       IsVisible="{Binding Columns[6].IsVisible}" />
+                <dg:DataGridTextColumn Header="Scout" Binding="{Binding Scout}"
+                                       IsVisible="{Binding Columns[7].IsVisible}" />
+                <dg:DataGridTextColumn Header="Warship" Binding="{Binding Warship}"
+                                       IsVisible="{Binding Columns[8].IsVisible}" />
+                <dg:DataGridTextColumn Header="Bomber" Binding="{Binding Bomber}"
+                                       IsVisible="{Binding Columns[9].IsVisible}" />
+                <dg:DataGridTextColumn Header="Utility" Binding="{Binding Utility}"
+                                       IsVisible="{Binding Columns[10].IsVisible}" />
+                <dg:DataGridTextColumn Header="Our Dead" Binding="{Binding OurDead}"
+                                       IsVisible="{Binding Columns[11].IsVisible}" />
+                <dg:DataGridTextColumn Header="Their Dead" Binding="{Binding TheirDead}"
+                                       IsVisible="{Binding Columns[12].IsVisible}" />
+                <dg:DataGridTextColumn Header="Ours Left" Binding="{Binding OursLeft}"
+                                       IsVisible="{Binding Columns[13].IsVisible}" />
+                <dg:DataGridTextColumn Header="Theirs Left" Binding="{Binding TheirsLeft}"
+                                       IsVisible="{Binding Columns[14].IsVisible}" />
             </dg:DataGrid.Columns>
         </dg:DataGrid>
 

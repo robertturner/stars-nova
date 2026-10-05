@@ -7,18 +7,30 @@
     <dg:DataGrid ItemsSource="{Binding Fleets}" IsReadOnly="True" AutoGenerateColumns="False"
                  GridLinesVisibility="Horizontal" CanUserSortColumns="True" CanUserResizeColumns="True">
         <dg:DataGrid.Columns>
-            <dg:DataGridTextColumn Header="Fleet Name" Binding="{Binding Name}" />
-            <dg:DataGridTextColumn Header="Id" Binding="{Binding Id}" />
-            <dg:DataGridTextColumn Header="Location" Binding="{Binding Location}" />
-            <dg:DataGridTextColumn Header="Warp" Binding="{Binding Warp}" />
-            <dg:DataGridTextColumn Header="Mass" Binding="{Binding Mass}" />
-            <dg:DataGridTextColumn Header="Composition" Binding="{Binding Composition}" />
-            <dg:DataGridTextColumn Header="Number of Ships" Binding="{Binding NumberOfShips}" />
-            <dg:DataGridTextColumn Header="Unarmed" Binding="{Binding Unarmed}" />
-            <dg:DataGridTextColumn Header="Scout" Binding="{Binding Scout}" />
-            <dg:DataGridTextColumn Header="Warship" Binding="{Binding Warship}" />
-            <dg:DataGridTextColumn Header="Bomber" Binding="{Binding Bomber}" />
-            <dg:DataGridTextColumn Header="Utility" Binding="{Binding Utility}" />
+            <dg:DataGridTextColumn Header="Fleet Name" Binding="{Binding Name}"
+                                   IsVisible="{Binding Columns[0].IsVisible}" />
+            <dg:DataGridTextColumn Header="Id" Binding="{Binding Id}"
+                                   IsVisible="{Binding Columns[1].IsVisible}" />
+            <dg:DataGridTextColumn Header="Location" Binding="{Binding Location}"
+                                   IsVisible="{Binding Columns[2].IsVisible}" />
+            <dg:DataGridTextColumn Header="Warp" Binding="{Binding Warp}"
+                                   IsVisible="{Binding Columns[3].IsVisible}" />
+            <dg:DataGridTextColumn Header="Mass" Binding="{Binding Mass}"
+                                   IsVisible="{Binding Columns[4].IsVisible}" />
+            <dg:DataGridTextColumn Header="Composition" Binding="{Binding Composition}"
+                                   IsVisible="{Binding Columns[5].IsVisible}" />
+            <dg:DataGridTextColumn Header="Number of Ships" Binding="{Binding NumberOfShips}"
+                                   IsVisible="{Binding Columns[6].IsVisible}" />
+            <dg:DataGridTextColumn Header="Unarmed" Binding="{Binding Unarmed}"
+                                   IsVisible="{Binding Columns[7].IsVisible}" />
+            <dg:DataGridTextColumn Header="Scout" Binding="{Binding Scout}"
+                                   IsVisible="{Binding Columns[8].IsVisible}" />
+            <dg:DataGridTextColumn Header="Warship" Binding="{Binding Warship}"
+                                   IsVisible="{Binding Columns[9].IsVisible}" />
+            <dg:DataGridTextColumn Header="Bomber" Binding="{Binding Bomber}"
+                                   IsVisible="{Binding Columns[10].IsVisible}" />
+            <dg:DataGridTextColumn Header="Utility" Binding="{Binding Utility}"
+                                   IsVisible="{Binding Columns[11].IsVisible}" />
         </dg:DataGrid.Columns>
     </dg:DataGrid>
 </UserControl>

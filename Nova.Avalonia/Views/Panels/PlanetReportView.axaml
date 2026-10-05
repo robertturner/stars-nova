@@ -7,21 +7,36 @@
     <dg:DataGrid ItemsSource="{Binding Planets}" IsReadOnly="True" AutoGenerateColumns="False"
                  GridLinesVisibility="Horizontal" CanUserSortColumns="True" CanUserResizeColumns="True">
         <dg:DataGrid.Columns>
-            <dg:DataGridTextColumn Header="Planet Name" Binding="{Binding Name}" />
-            <dg:DataGridTextColumn Header="Starbase" Binding="{Binding Starbase}" />
-            <dg:DataGridTextColumn Header="Population" Binding="{Binding Population}" />
-            <dg:DataGridTextColumn Header="Cap" Binding="{Binding Cap}" />
-            <dg:DataGridTextColumn Header="Value" Binding="{Binding Value}" />
-            <dg:DataGridTextColumn Header="Production" Binding="{Binding Production}" />
-            <dg:DataGridTextColumn Header="Mines" Binding="{Binding Mines}" />
-            <dg:DataGridTextColumn Header="Factories" Binding="{Binding Factories}" />
-            <dg:DataGridTextColumn Header="Defense" Binding="{Binding Defenses}" />
-            <dg:DataGridTextColumn Header="Minerals" Binding="{Binding Minerals}" />
-            <dg:DataGridTextColumn Header="Mining Rate" Binding="{Binding MiningRate}" />
-            <dg:DataGridTextColumn Header="Mineral Concentration" Binding="{Binding Concentration}" />
-            <dg:DataGridTextColumn Header="Resources" Binding="{Binding Resources}" />
-            <dg:DataGridTextColumn Header="Driver Destination" Binding="{Binding DriverDestination}" />
-            <dg:DataGridTextColumn Header="Routing Destination" Binding="{Binding RoutingDestination}" />
+            <dg:DataGridTextColumn Header="Planet Name" Binding="{Binding Name}"
+                                   IsVisible="{Binding Columns[0].IsVisible}" />
+            <dg:DataGridTextColumn Header="Starbase" Binding="{Binding Starbase}"
+                                   IsVisible="{Binding Columns[1].IsVisible}" />
+            <dg:DataGridTextColumn Header="Population" Binding="{Binding Population}"
+                                   IsVisible="{Binding Columns[2].IsVisible}" />
+            <dg:DataGridTextColumn Header="Cap" Binding="{Binding Cap}"
+                                   IsVisible="{Binding Columns[3].IsVisible}" />
+            <dg:DataGridTextColumn Header="Value" Binding="{Binding Value}"
+                                   IsVisible="{Binding Columns[4].IsVisible}" />
+            <dg:DataGridTextColumn Header="Production" Binding="{Binding Production}"
+                                   IsVisible="{Binding Columns[5].IsVisible}" />
+            <dg:DataGridTextColumn Header="Mines" Binding="{Binding Mines}"
+                                   IsVisible="{Binding Columns[6].IsVisible}" />
+            <dg:DataGridTextColumn Header="Factories" Binding="{Binding Factories}"
+                                   IsVisible="{Binding Columns[7].IsVisible}" />
+            <dg:DataGridTextColumn Header="Defense" Binding="{Binding Defenses}"
+                                   IsVisible="{Binding Columns[8].IsVisible}" />
+            <dg:DataGridTextColumn Header="Minerals" Binding="{Binding Minerals}"
+                                   IsVisible="{Binding Columns[9].IsVisible}" />
+            <dg:DataGridTextColumn Header="Mining Rate" Binding="{Binding MiningRate}"
+                                   IsVisible="{Binding Columns[10].IsVisible}" />
+            <dg:DataGridTextColumn Header="Mineral Concentration" Binding="{Binding Concentration}"
+                                   IsVisible="{Binding Columns[11].IsVisible}" />
+            <dg:DataGridTextColumn Header="Resources" Binding="{Binding Resources}"
+                                   IsVisible="{Binding Columns[12].IsVisible}" />
+            <dg:DataGridTextColumn Header="Driver Destination" Binding="{Binding DriverDestination}"
+                                   IsVisible="{Binding Columns[13].IsVisible}" />
+            <dg:DataGridTextColumn Header="Routing Destination" Binding="{Binding RoutingDestination}"
+                                   IsVisible="{Binding Columns[14].IsVisible}" />
         </dg:DataGrid.Columns>
     </dg:DataGrid>
 </UserControl>

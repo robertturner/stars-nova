@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using Dock.Model.Mvvm.Controls;
 using Nova.Client;
@@ -15,12 +17,23 @@ namespace Nova.Avalonia.ViewModels.Panels;
 /// same information (who moved where, who shot whom for how much damage against which defence
 /// layer, who was destroyed) without reimplementing the icon/position graphics, consistent with
 /// how other WinForms-specific graphical UI has been simplified elsewhere in this port.
+///
+/// The fifteen-column grid follows behavior-specs-11/client-ui-dialog-catalog.md "Reports"
+/// (dynamic strings 1162-1176) and supports the section's shared per-column show/hide and header
+/// sort/reverse (dynamic strings 1133-1137).
 /// </summary>
 public class BattleReportViewModel : Tool
 {
     private readonly ushort empireId;
+    private readonly ReportTable<BattleReportRowViewModel> table;
 
-    public IReadOnlyList<BattleReportRowViewModel> Battles { get; }
+    public ObservableCollection<BattleReportRowViewModel> Battles => table.Rows;
+
+    public IReadOnlyList<ReportColumn> Columns => table.Columns;
+
+    public string? SortColumnKey => table.SortColumnKey;
+
+    public ReportSortDirection SortDirection => table.SortDirection;
 
     private BattleReportRowViewModel? selectedBattle;
 
@@ -49,14 +62,42 @@ public class BattleReportViewModel : Tool
         Id = id;
         empireId = clientState.EmpireState.Id;
 
-        Battles = clientState.EmpireState.BattleReports
-            .Select(report => new BattleReportRowViewModel(report, empireId))
-            .ToList();
+        IEnumerable<BattleReportRowViewModel> rows = clientState.EmpireState.BattleReports
+            .Select(report => new BattleReportRowViewModel(report, empireId));
+
+        table = new ReportTable<BattleReportRowViewModel>(rows, new (string Key, string Header, Func<BattleReportRowViewModel, string> Value)[]
+        {
+            ("Location", "Location", r => r.Location),
+            ("StarbasePresent", "Starbase Present", r => r.StarbasePresent),
+            ("Sides", "Sides", r => r.Sides),
+            ("Units", "Units", r => r.Units),
+            ("Ours", "Ours", r => r.Ours),
+            ("Theirs", "Theirs", r => r.Theirs),
+            ("Unarmed", "Unarmed", r => r.Unarmed),
+            ("Scout", "Scout", r => r.Scout),
+            ("Warship", "Warship", r => r.Warship),
+            ("Bomber", "Bomber", r => r.Bomber),
+            ("Utility", "Utility", r => r.Utility),
+            ("OurDead", "Our Dead", r => r.OurDead),
+            ("TheirDead", "Their Dead", r => r.TheirDead),
+            ("OursLeft", "Ours Left", r => r.OursLeft),
+            ("TheirsLeft", "Theirs Left", r => r.TheirsLeft),
+        });
 
         // Title carries the row count and a plural marker (client-ui-dialog-catalog.md Reports
         // line 369; the recovered template is in ReportTitles).
-        Title = ReportTitles.Summary("Battle", Battles.Count, "Battle");
+        Title = ReportTitles.Summary("Battle", table.Rows.Count, "Battle");
     }
+
+    public void Sort(string columnKey) => table.Sort(columnKey);
+
+    public void ReverseSort() => table.ReverseSort();
+
+    public void ToggleColumn(string columnKey) => table.ToggleColumn(columnKey);
+
+    public bool IsColumnVisible(string columnKey) => table.Columns
+        .First(column => column.Key == columnKey)
+        .IsVisible;
 
     /// <summary>
     /// Selects the row for a specific BattleReport - used when a Messages panel battle message

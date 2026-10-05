@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using Dock.Model.Mvvm.Controls;
@@ -11,26 +13,60 @@ namespace Nova.Avalonia.ViewModels.Panels;
 /// Read-only table of every other player's known fleet - the spec's fourth report type. The column
 /// set and order follow behavior-specs-11/client-ui-dialog-catalog.md "Reports" (dynamic strings
 /// 1150-1161: fleet name, id, location, warp, mass, composition, number of ships, unarmed, scout,
-/// warship, bomber, utility).
+/// warship, bomber, utility) and support the section's shared per-column show/hide and header
+/// sort/reverse (dynamic strings 1133-1137).
 /// </summary>
 public class OthersFleetReportViewModel : Tool
 {
-    public IReadOnlyList<OthersFleetReportRowViewModel> Fleets { get; }
+    private readonly ReportTable<OthersFleetReportRowViewModel> table;
+
+    public ObservableCollection<OthersFleetReportRowViewModel> Fleets => table.Rows;
+
+    public IReadOnlyList<ReportColumn> Columns => table.Columns;
+
+    public string? SortColumnKey => table.SortColumnKey;
+
+    public ReportSortDirection SortDirection => table.SortDirection;
 
     public OthersFleetReportViewModel(string id, string title, ClientData clientState)
     {
         Id = id;
 
         ushort ownId = clientState.EmpireState.Id;
-        Fleets = clientState.EmpireState.FleetReports.Values
+        IEnumerable<OthersFleetReportRowViewModel> rows = clientState.EmpireState.FleetReports.Values
             .Where(intel => intel.Owner != ownId && !intel.IsStarbase)
-            .Select(intel => new OthersFleetReportRowViewModel(intel))
-            .ToList();
+            .Select(intel => new OthersFleetReportRowViewModel(intel));
+
+        table = new ReportTable<OthersFleetReportRowViewModel>(rows, new (string Key, string Header, Func<OthersFleetReportRowViewModel, string> Value)[]
+        {
+            ("Name", "Fleet Name", r => r.Name),
+            ("Id", "Id", r => r.Id),
+            ("Location", "Location", r => r.Location),
+            ("Warp", "Warp", r => r.Warp),
+            ("Mass", "Mass", r => r.Mass),
+            ("Composition", "Composition", r => r.Composition),
+            ("NumberOfShips", "Number of Ships", r => r.NumberOfShips),
+            ("Unarmed", "Unarmed", r => r.Unarmed),
+            ("Scout", "Scout", r => r.Scout),
+            ("Warship", "Warship", r => r.Warship),
+            ("Bomber", "Bomber", r => r.Bomber),
+            ("Utility", "Utility", r => r.Utility),
+        });
 
         // Title carries the row count and a plural marker (client-ui-dialog-catalog.md Reports
         // line 369; the recovered template is in ReportTitles).
-        Title = ReportTitles.Summary("Others' Fleets", Fleets.Count, "Fleet");
+        Title = ReportTitles.Summary("Others' Fleets", table.Rows.Count, "Fleet");
     }
+
+    public void Sort(string columnKey) => table.Sort(columnKey);
+
+    public void ReverseSort() => table.ReverseSort();
+
+    public void ToggleColumn(string columnKey) => table.ToggleColumn(columnKey);
+
+    public bool IsColumnVisible(string columnKey) => table.Columns
+        .First(column => column.Key == columnKey)
+        .IsVisible;
 }
 
 /// <summary>

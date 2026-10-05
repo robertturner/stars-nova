@@ -4,21 +4,58 @@
              xmlns:dg="using:Avalonia.Controls"
              x:Class="Nova.Avalonia.Views.Panels.FleetReportView"
              x:DataType="panels:FleetReportViewModel">
+    <UserControl.Styles>
+        <!-- The spec's ETA warning colour (client-ui-dialog-catalog.md "Reports" line 355) and the
+             idle/no-useful-orders highlight (line 355); the exact colours are not recovered. -->
+        <Style Selector="TextBlock.etaWarning">
+            <Setter Property="Foreground" Value="OrangeRed" />
+        </Style>
+        <Style Selector="TextBlock.idle">
+            <Setter Property="Foreground" Value="Orange" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+    </UserControl.Styles>
     <dg:DataGrid ItemsSource="{Binding Fleets}" IsReadOnly="True" AutoGenerateColumns="False"
                  GridLinesVisibility="Horizontal" CanUserSortColumns="True" CanUserResizeColumns="True">
         <dg:DataGrid.Columns>
-            <dg:DataGridTextColumn Header="Fleet Name" Binding="{Binding Name}" />
-            <dg:DataGridTextColumn Header="Id" Binding="{Binding Id}" />
-            <dg:DataGridTextColumn Header="Location" Binding="{Binding Location}" />
-            <dg:DataGridTextColumn Header="Destination" Binding="{Binding Destination}" />
-            <dg:DataGridTextColumn Header="ETA" Binding="{Binding Eta}" />
-            <dg:DataGridTextColumn Header="Task" Binding="{Binding Task}" />
-            <dg:DataGridTextColumn Header="Fuel" Binding="{Binding Fuel}" />
-            <dg:DataGridTextColumn Header="Cargo" Binding="{Binding Cargo}" />
-            <dg:DataGridTextColumn Header="Composition" Binding="{Binding Composition}" />
-            <dg:DataGridTextColumn Header="Cloak" Binding="{Binding Cloak}" />
-            <dg:DataGridTextColumn Header="Battle Plan" Binding="{Binding BattlePlan}" />
-            <dg:DataGridTextColumn Header="Mass" Binding="{Binding Mass}" />
+            <dg:DataGridTextColumn Header="Fleet Name" Binding="{Binding Name}"
+                                   IsVisible="{Binding Columns[0].IsVisible}" />
+            <dg:DataGridTextColumn Header="Id" Binding="{Binding Id}"
+                                   IsVisible="{Binding Columns[1].IsVisible}" />
+            <dg:DataGridTextColumn Header="Location" Binding="{Binding Location}"
+                                   IsVisible="{Binding Columns[2].IsVisible}" />
+            <dg:DataGridTextColumn Header="Destination" Binding="{Binding Destination}"
+                                   IsVisible="{Binding Columns[3].IsVisible}" />
+            <dg:DataGridTemplateColumn Header="ETA" IsVisible="{Binding Columns[4].IsVisible}">
+                <dg:DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Eta}" Margin="4,0"
+                                   Classes.etaWarning="{Binding EtaWarning}" />
+                    </DataTemplate>
+                </dg:DataGridTemplateColumn.CellTemplate>
+            </dg:DataGridTemplateColumn>
+            <dg:DataGridTextColumn Header="Task" Binding="{Binding Task}"
+                                   IsVisible="{Binding Columns[5].IsVisible}" />
+            <dg:DataGridTextColumn Header="Fuel" Binding="{Binding Fuel}"
+                                   IsVisible="{Binding Columns[6].IsVisible}" />
+            <dg:DataGridTextColumn Header="Cargo" Binding="{Binding Cargo}"
+                                   IsVisible="{Binding Columns[7].IsVisible}" />
+            <dg:DataGridTextColumn Header="Composition" Binding="{Binding Composition}"
+                                   IsVisible="{Binding Columns[8].IsVisible}" />
+            <dg:DataGridTextColumn Header="Cloak" Binding="{Binding Cloak}"
+                                   IsVisible="{Binding Columns[9].IsVisible}" />
+            <dg:DataGridTextColumn Header="Battle Plan" Binding="{Binding BattlePlan}"
+                                   IsVisible="{Binding Columns[10].IsVisible}" />
+            <dg:DataGridTextColumn Header="Mass" Binding="{Binding Mass}"
+                                   IsVisible="{Binding Columns[11].IsVisible}" />
+            <dg:DataGridTemplateColumn Header="Status" IsVisible="{Binding Columns[12].IsVisible}">
+                <dg:DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Status}" Margin="4,0"
+                                   Classes.idle="{Binding IsIdle}" />
+                    </DataTemplate>
+                </dg:DataGridTemplateColumn.CellTemplate>
+            </dg:DataGridTemplateColumn>
         </dg:DataGrid.Columns>
     </dg:DataGrid>
 </UserControl>
