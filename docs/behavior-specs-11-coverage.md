@@ -175,6 +175,25 @@ terraformed value on a foreign planet (the report carries no original environmen
 to v); the mineral-chart scale selector/persistence (row 90); fleet paths and the fleet filters
 (rows 91-92); the summary pane and bar/owner-flag pixel geometry.
 
+## Update (2026-10-05b) — parallel agent pass (victory setup, race presets, reports, research card, scanner %)
+
+Five items implemented by parallel agents and integrated by the lead (main suite 3191/3191,
+`Nova.Avalonia.Tests` 133 passed / 1 skipped, `Nova.Avalonia.Desktop` builds 0 errors).
+
+| Report item | Fix |
+|---|---|
+| victory rows 2/3 | the Victory setup page exposes exactly seven checkboxes (condition 3 / NumberOfFields has none of its own, keeping only its spinner); every Victory-page spinner steps by 1 and by 5 on Page Up/Down via the `VictorySpinner` attached property (`NewGameViewModelTests.VictoryConditions_ExposeExactlySevenCheckboxes`, `VictorySpinner_StepsByOneNormally_AndByFiveOnPageKeys`). |
+| race-designer rows 7/38/41/42 | `RacePresets` now carries each archetype's complete record (bands/growth/PRT/LRT bits/both checkboxes/leftover/seven economy values/six research classes/portrait index) plus the Random placeholder; Nucleotid corrected to 10/15/5; `RaceNameText.Plural` appends "s" unless the name ends in "s"/"se" (`RaceDesignerRulesTest.NamedPresetRecords_*`, `NamedPresetAdvantagePoints_MatchTheSpec`, `RandomPlaceholderRecord_ScoresTwelve`; `ClientShellTest.RaceName_DerivedPlural_*`). The portrait index -> icon file mapping and the empty-singular numbered label (string 1374) remain spec gaps (named seams). `DefaultRaces/*.race` regeneration (row 20) is not done. |
+| client-ui rows 26/57 | the Planets/Fleets/Battles reports now carry the spec's column sets (Planets 15 incl. cap/production/mining rate/driver/routing destination; Fleets 12 incl. id/composition; Battles 15), a new Others' Fleets report (VM+view+12 columns) is added, and report titles carry the row count; `ReportViewModelTests`. Still open: per-column show/hide, header sort/reverse/hide (strings 1133-1137), the Fleets idle/ETA glyph, and wiring the Others' Fleets panel into the dock/mobile menu. |
+| research rows 34/36 | the Research panel's benefits list drops trait-barred and battle-gift parts and shows the detail-card status line (`TechStatusLine`, red unavailable) instead of the port's 1/2-4/5+ colour grade; the old legend is removed (`ResearchViewModelTests.Benefits_*`, `UnavailableStatus_*`). |
+| client-ui rows 9/93 | the map's scanner-percentage field is now an editable drop-down (100..10 by 10) with typed 2-100 accepted, Enter commits, Escape reverts and either force-enables the scan circles, plus a live tooltip; `StarMapViewModelTests.ScannerPercentage*`. Slot 16 (zoom) and the Player Colors bit 0x2000 remain. |
+
+**Spec gaps surfaced by this pass** (for the questions document): the victory setup's derived
+"enabled-condition count" (6 vs 7) and the year-gate spinner clamp (spec 30-500 vs port 10-10000);
+the race portrait index -> icon mapping; victory string 1374; the report-cell values/format, the
+ship-hull class counts and the routing-destination field (no `Star`/`ShipDesign` backing); and the
+scanner-tooltip wording / preset-commit behaviour.
+
 ## Where spec-11 overturns earlier work
 
 Code (including the three spec-10 implementation passes) that spec-11 now contradicts, plus stand-ins it replaces. Ordered by importance
