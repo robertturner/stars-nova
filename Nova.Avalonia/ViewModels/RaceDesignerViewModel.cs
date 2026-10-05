@@ -176,6 +176,14 @@ public class RaceDesignerViewModel : ViewModelBase
     {
         original = race;
         this.race = RaceDesignerRules.CopyOf(race);
+
+        // race-designer-ui-and-availability.md section 1 / row 3: on opening, an empty race name
+        // is filled with the first preset's caption, "Humanoid" (the plural is left as stored).
+        if (string.IsNullOrEmpty(this.race.Name))
+        {
+            this.race.Name = "Humanoid";
+        }
+
         IsEditable = isEditable;
 
         AllRaceIcons.Restore();

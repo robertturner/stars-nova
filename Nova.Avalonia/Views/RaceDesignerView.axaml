@@ -53,17 +53,17 @@
                          Stacking removes any dependency on available width. -->
                     <StackPanel Spacing="2">
                         <TextBlock Text="Race name" />
-                        <TextBox Text="{Binding Name}" />
+                        <TextBox Text="{Binding Name}" MaxLength="15" />
                     </StackPanel>
 
                     <StackPanel Spacing="2">
                         <TextBlock Text="Plural name" />
-                        <TextBox Text="{Binding PluralName}" />
+                        <TextBox Text="{Binding PluralName}" MaxLength="15" />
                     </StackPanel>
 
                     <StackPanel Spacing="2">
                         <TextBlock Text="Password" />
-                        <TextBox Text="{Binding Password}" PasswordChar="*" />
+                        <TextBox Text="{Binding Password}" PasswordChar="*" MaxLength="16" />
                     </StackPanel>
 
                     <StackPanel Spacing="2">

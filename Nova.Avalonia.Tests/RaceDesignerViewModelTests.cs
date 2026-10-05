@@ -45,6 +45,26 @@ public class RaceDesignerViewModelTests
         }
     }
 
+    /// <summary>Row 3 / 34: an empty race name is filled with "Humanoid" on open; a non-empty
+    /// name is kept, the plural is left as stored, and the original race is untouched until Save.</summary>
+    [AvaloniaTest]
+    public void EmptyRaceName_IsFilledWithHumanoid_OnOpen()
+    {
+        Race blank = LoadHumanoid();
+        blank.Name = string.Empty;
+        blank.PluralName = string.Empty;
+
+        var designer = new RaceDesignerViewModel(blank);
+
+        Assert.That(designer.Name, Is.EqualTo("Humanoid"));
+        Assert.That(designer.PluralName, Is.Empty, "the plural is left as stored");
+        Assert.That(blank.Name, Is.Empty, "the original race is untouched until Save");
+
+        Race named = LoadHumanoid();
+        named.Name = "Vogons";
+        Assert.That(new RaceDesignerViewModel(named).Name, Is.EqualTo("Vogons"));
+    }
+
     /// <summary>Row 10: the Primary Racial Trait is one exclusive choice among ten.</summary>
     [AvaloniaTest]
     public void PrimaryTrait_IsOneExclusiveChoiceAmongTen()
