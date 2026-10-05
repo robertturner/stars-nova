@@ -194,6 +194,25 @@ the race portrait index -> icon mapping; victory string 1374; the report-cell va
 ship-hull class counts and the routing-destination field (no `Star`/`ShipDesign` backing); and the
 scanner-tooltip wording / preset-commit behaviour.
 
+## Update (2026-10-05c) — parallel agent pass 2 (victory view, reports, messages, design rules, map slot 16)
+
+A second wave of five disjoint items (main suite 3207/3207, `Nova.Avalonia.Tests` 158 passed /
+1 skipped, `Nova.Avalonia.Desktop` builds 0 errors). A cross-test leak from the new shared map zoom
+was fixed by resetting `MapViewOptions.ZoomStep` in `TestGame.ResetMapViewOptions`.
+
+| Report item | Fix |
+|---|---|
+| victory row 24 / client-ui row 60 | `VictoryConditionsViewModel` / `VictoryConditionsView` now draw one line per player with the seven met-bit (6-12) check columns and the spec's grey/blue/out shading, plus the nine-line condition list (line 1 = `pct x planets / 100` rounded down; lines 8/9 always black). The met bits come from the client's score records (`ScoreRecord.MetMask`); "out" is the server's four-zero-count test; wording is a placeholder seam. Both `NovaDockFactory` and `MobileMainViewModel` now pass `clientState`. `VictoryConditionsTests` (12). |
+| client-ui row 26 (remaining) | report tables gained per-column show/hide and header sort/reverse, and the Fleets report gained the idle/status glyph + ETA column; `ReportViewModelTests` (16). Gaps: exact glyph/sentinel/ETA formula, and cross-session persistence of column visibility. |
+| client-ui rows 25/53 | the Messages viewer now has the four category-selection controls (category changes refresh the current area) and `Nova.Client.MessageFilter` carries the spec's complete numeric type-to-group map; `ClientUiRulesTest`, `MessagesViewModelTests`. The four categories' names/membership are a named seam (spec does not name them). |
+| save-format row 22 / ship-design row 47 | `DesignCommand.IsValid` rejects replacing an in-use ship design that has ships in existence (scoped to hull designs; starbase replacement still allowed pending a spec answer); a regression test pins that a research gain inside a generation does not reprice a design. `DesignCommandTest` (7), `ShipDesignCoverageTest` (+2). |
+| client-ui rows 93/94 | the zoom step is now `MapViewOptions` slot 16 (driven by View > Zoom) and the Player Colors bit `0x2000` (command 2445) colours planet names/badges; `MapRulesTest`, `StarMapViewModelTests`. Gap: the per-race UI colour table. |
+
+**Spec gaps surfaced by this pass:** the Victory-conditions line wording (strings 938-963/965) and
+whether the eliminated bit rides the score record; the report header/glyph/sentinel wording and the
+ETA formula; the four message categories' names/membership and a numeric `Message.Type`; whether an
+in-use starbase design's replacement is also rejected; and the per-race UI colour table.
+
 ## Where spec-11 overturns earlier work
 
 Code (including the three spec-10 implementation passes) that spec-11 now contradicts, plus stand-ins it replaces. Ordered by importance
