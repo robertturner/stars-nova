@@ -165,7 +165,10 @@ public class NewGameViewModel : ViewModelBase
 
         PlanetsOwned = new VictoryConditionRowViewModel("Owns the following number of planets (%)", GameSettings.Data.PlanetsOwned, 0, 100);
         TechLevels = new VictoryConditionRowViewModel("Attains the following tech level", GameSettings.Data.TechLevels, 0, 10000);
-        NumberOfFields = new VictoryConditionRowViewModel("In the following number of fields", GameSettings.Data.NumberOfFields, 0, 6);
+        // Condition 3 (victory-conditions.md section 1): a secondary magnitude paired with
+        // condition 2 (TechLevels) that has no checkbox of its own - it matters only while
+        // condition 2 is enabled, so the setup screen shows its spinner but no toggle.
+        NumberOfFields = new VictoryConditionRowViewModel("In the following number of fields", GameSettings.Data.NumberOfFields, 0, 6, hasCheckbox: false);
         ProductionCapacity = new VictoryConditionRowViewModel("Has production capacity of (in K resources)", GameSettings.Data.ProductionCapacity, 0, 10000);
         CapitalShips = new VictoryConditionRowViewModel("Number of capital ships", GameSettings.Data.CapitalShips, 0, 10000);
         HighestScore = new VictoryConditionRowViewModel("Has the highest score after (years)", GameSettings.Data.HighestScore, 0, 10000);
@@ -173,10 +176,19 @@ public class NewGameViewModel : ViewModelBase
         // used to sit below its own default, so the slider could never be moved back up to it
         // once touched. 20000 matches the spec's own confirmed real range for this condition.
         TotalScore = new VictoryConditionRowViewModel("Exceeds a score of", GameSettings.Data.TotalScore, 0, 20000);
-        // SecondPlaceScore: VictoryCheck.cs already checks this (a player's score must exceed
-        // the runner-up's score times this factor), but the original WinForms wizard never had
-        // a control for it at all - not merely unwired, genuinely absent from the dialog.
-        SecondPlaceScore = new VictoryConditionRowViewModel("Exceeds second place's score by a factor of", GameSettings.Data.SecondPlaceScore, 0, 100);
+        // Condition 5: "exceeds the second-place race's score by this percentage"
+        // (victory-conditions.md section 1); VictoryCheck.cs reads the value as a percentage.
+        SecondPlaceScore = new VictoryConditionRowViewModel("Exceeds second place's score by (%)", GameSettings.Data.SecondPlaceScore, 0, 100);
+
+        // The screen's rows in display order. Condition 3 (NumberOfFields) rides among them with
+        // no checkbox; the seven rows that have one are the spec's seven setup checkboxes
+        // (victory-conditions.md sections 1 and 3).
+        VictoryConditionRows = new[]
+        {
+            PlanetsOwned, TechLevels, NumberOfFields, ProductionCapacity, CapitalShips,
+            HighestScore, TotalScore, SecondPlaceScore,
+        };
+        VictoryConditions = VictoryConditionRows.Where(row => row.HasCheckbox).ToArray();
     }
 
     public static string ComputeDefaultFolder(string gameName)
@@ -207,6 +219,17 @@ public class NewGameViewModel : ViewModelBase
     public VictoryConditionRowViewModel TotalScore { get; }
 
     public VictoryConditionRowViewModel SecondPlaceScore { get; }
+
+    /// <summary>Every victory-condition row shown on the Victory page, in display order - the
+    /// seven toggleable conditions plus condition 3's paired field-count spinner (which has no
+    /// checkbox).</summary>
+    public IReadOnlyList<VictoryConditionRowViewModel> VictoryConditionRows { get; }
+
+    /// <summary>The seven independently toggleable victory conditions
+    /// (behavior-specs-11/victory-conditions.md sections 1 and 3): the setup screen exposes
+    /// exactly these seven checkboxes. Condition 3 (NumberOfFields) is absent because it has no
+    /// checkbox of its own.</summary>
+    public IReadOnlyList<VictoryConditionRowViewModel> VictoryConditions { get; }
 
     public IRelayCommand AddPlayerCommand { get; }
 
@@ -765,7 +788,7 @@ public class NewGameViewModel : ViewModelBase
     private void ResetToDefaults()
     {
         NewGameSetup.ResetToDefaults(GameSettings.Data, SimplifiedDifficultyIndex);
-        foreach (VictoryConditionRowViewModel row in new[] { PlanetsOwned, TechLevels, NumberOfFields, ProductionCapacity, CapitalShips, HighestScore, TotalScore, SecondPlaceScore })
+        foreach (VictoryConditionRowViewModel row in VictoryConditionRows)
         {
             row.Refresh();
         }

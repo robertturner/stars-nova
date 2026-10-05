@@ -1,7 +1,10 @@
 using System;
 using System.IO;
 using System.Linq;
+using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.NUnit;
+using Avalonia.Input;
 using Nova.Ai;
 using Nova.Avalonia.ViewModels;
 using Nova.Client;
@@ -240,5 +243,60 @@ public class NewGameViewModelTests
         Assert.That(GameSettings.Data.Seed, Is.EqualTo(2024), newGame.StatusMessage);
         string settings = File.ReadAllText(Directory.GetFiles(newGame.GameFolder, "*" + Global.SettingsExtension).Single());
         Assert.That(settings, Does.Contain("2024"));
+    }
+
+    /// <summary>Victory row 2: the New Game Victory page exposes exactly seven condition
+    /// checkboxes. Condition 3 (NumberOfFields) has no checkbox of its own - it is a magnitude
+    /// paired with condition 2 (TechLevels) - so its row is present but not toggleable, and the
+    /// seven toggles are the spec's victory conditions 1, 2 and 4-8
+    /// (behavior-specs-11/victory-conditions.md sections 1 and 3).</summary>
+    [AvaloniaTest]
+    public void VictoryConditions_ExposeExactlySevenCheckboxes()
+    {
+        NewGameViewModel newGame = Open();
+
+        Assert.That(newGame.VictoryConditionRows, Has.Count.EqualTo(8),
+            "seven toggleable conditions plus condition 3's paired field count");
+        Assert.That(newGame.VictoryConditions, Has.Count.EqualTo(7), "exactly seven checkboxes");
+        Assert.That(newGame.VictoryConditionRows.Count(row => row.HasCheckbox), Is.EqualTo(7));
+        Assert.That(newGame.NumberOfFields.HasCheckbox, Is.False, "condition 3 has no checkbox of its own");
+        Assert.That(newGame.VictoryConditions, Does.Not.Contain(newGame.NumberOfFields));
+
+        Assert.That(newGame.VictoryConditions, Is.EquivalentTo(new[]
+        {
+            newGame.PlanetsOwned, newGame.TechLevels, newGame.TotalScore, newGame.SecondPlaceScore,
+            newGame.ProductionCapacity, newGame.CapitalShips, newGame.HighestScore,
+        }));
+    }
+
+    /// <summary>Victory row 3: the page's spinners step by one (arrows / buttons) or by five with
+    /// Page Up / Page Down, repeating while the key is held
+    /// (behavior-specs-11/victory-conditions.md section 1).</summary>
+    [AvaloniaTest]
+    public void VictorySpinner_StepsByOneNormally_AndByFiveOnPageKeys()
+    {
+        Assert.That(VictorySpinner.NormalStep, Is.EqualTo(1));
+        Assert.That(VictorySpinner.PageStep, Is.EqualTo(5));
+
+        Assert.That(VictorySpinner.Stepped(10m, +1, page: false), Is.EqualTo(11m), "one arrow step");
+        Assert.That(VictorySpinner.Stepped(10m, -1, page: false), Is.EqualTo(9m));
+        Assert.That(VictorySpinner.Stepped(10m, +1, page: true), Is.EqualTo(15m), "Page Up/Down steps by five");
+        Assert.That(VictorySpinner.Stepped(10m, -1, page: true), Is.EqualTo(5m));
+
+        var spinner = new NumericUpDown { Minimum = 0m, Maximum = 12m, Value = 3m, Increment = 1m };
+        Window window = Headless.Show(spinner, 200, 120);
+        VictorySpinner.SetPageStepEnabled(spinner, true);
+        spinner.Focus();
+        Headless.Pump();
+
+        window.KeyPress(Key.PageUp, RawInputModifiers.None, PhysicalKey.PageUp, string.Empty);
+        Headless.Pump();
+        Assert.That(spinner.Value, Is.EqualTo(8m), "Page Up adds five");
+
+        window.KeyPress(Key.PageDown, RawInputModifiers.None, PhysicalKey.PageDown, string.Empty);
+        window.KeyPress(Key.PageDown, RawInputModifiers.None, PhysicalKey.PageDown, string.Empty);
+        Headless.Pump();
+        Assert.That(spinner.Value, Is.EqualTo(0m), "clamped at the minimum");
+        window.Close();
     }
 }

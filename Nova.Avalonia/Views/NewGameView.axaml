@@ -228,55 +228,33 @@
                     <TextBlock Text="A player wins once at least this many of the checked conditions are met:" TextWrapping="Wrap" />
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Grid.Column="0" Text="Number of targets to meet" VerticalAlignment="Center" />
-                        <NumericUpDown Grid.Column="1" Value="{Binding TargetsToMeet}" Minimum="1" Maximum="8" FormatString="0" Width="120" />
+                        <NumericUpDown Grid.Column="1" Value="{Binding TargetsToMeet}" Minimum="1" Maximum="8"
+                                       Increment="1" FormatString="0" Width="120" vm:VictorySpinner.PageStepEnabled="True" />
                     </Grid>
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Grid.Column="0" Text="Minimum game time (years)" VerticalAlignment="Center" />
-                        <NumericUpDown Grid.Column="1" Value="{Binding MinimumGameTime}" Minimum="10" Maximum="10000" FormatString="0" Width="120" />
+                        <NumericUpDown Grid.Column="1" Value="{Binding MinimumGameTime}" Minimum="10" Maximum="10000"
+                                       Increment="1" FormatString="0" Width="120" vm:VictorySpinner.PageStepEnabled="True" />
                     </Grid>
 
-                    <StackPanel>
-                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding PlanetsOwned}" Margin="0,4">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
-                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
-                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
-                            </Grid>
-                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding TechLevels}" Margin="0,4">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
-                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
-                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
-                            </Grid>
-                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding NumberOfFields}" Margin="0,4">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
-                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
-                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
-                            </Grid>
-                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding ProductionCapacity}" Margin="0,4">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
-                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
-                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
-                            </Grid>
-                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding CapitalShips}" Margin="0,4">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
-                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
-                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
-                            </Grid>
-                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding HighestScore}" Margin="0,4">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
-                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
-                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
-                            </Grid>
-                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding TotalScore}" Margin="0,4">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
-                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
-                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
-                            </Grid>
-                            <Grid ColumnDefinitions="Auto,*,Auto" DataContext="{Binding SecondPlaceScore}" Margin="0,4">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
-                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
-                                <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0" Width="110" />
-                            </Grid>
-                    </StackPanel>
+                    <!-- The spec's seven toggleable condition rows, plus condition 3
+                         (NumberOfFields), whose HasCheckbox is false (victory-conditions.md
+                         section 1). Every spinner takes the original 1/5 step behaviour
+                         (VictorySpinner): arrows step by one, Page Up/Down by five. -->
+                    <ItemsControl ItemsSource="{Binding VictoryConditionRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:VictoryConditionRowViewModel">
+                                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,4">
+                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" IsVisible="{Binding HasCheckbox}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="4,0" />
+                                    <NumericUpDown Grid.Column="2" Value="{Binding NumericValue}"
+                                                   Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                                                   Increment="1" FormatString="0" Width="110"
+                                                   vm:VictorySpinner.PageStepEnabled="True" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </ScrollViewer>
         </TabItem>
