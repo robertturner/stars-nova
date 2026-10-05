@@ -64,6 +64,27 @@ public partial class ProductionViewModel : Tool
         private set => SetProperty(ref hasColonizedPlanet, value);
     }
 
+    /// <summary>production-queue.md section 10k / client-ui-dialog-catalog.md row 20: the selected
+    /// planet's "contribute only leftover resources to research" flag (the WinForms
+    /// ProductionDialog's own onlyLeftovers checkbox, never carried over here). Changing it queues
+    /// a planet order (OnlyLeftoverCommand) and applies it to the client's copy at once.</summary>
+    public bool OnlyLeftover
+    {
+        get => selectedStar?.OnlyLeftover ?? false;
+        set
+        {
+            if (selectedStar == null || selectedStar.OnlyLeftover == value)
+            {
+                return;
+            }
+
+            if (PlanetOrders.Issue(clientState, PlanetOrders.OnlyLeftoverOrder(selectedStar, value)))
+            {
+                OnPropertyChanged();
+            }
+        }
+    }
+
     private string message = "Select a planet to see its production queue.";
 
     public string Message
@@ -253,6 +274,7 @@ public partial class ProductionViewModel : Tool
                 PlanetName = star.Name;
                 HasPlanet = true;
                 HasColonizedPlanet = star.Colonists > 0;
+                OnPropertyChanged(nameof(OnlyLeftover));
 
                 // production-queue.md 10l: opening the dialog drops every queue entry the catalog
                 // no longer offers (a manual packet on a planet that lost its driver, a scanner

@@ -23,11 +23,13 @@ namespace Nova.Tests.UnitTests
 {
     using System;
     using System.Collections.Generic;
+    using System.Xml;
 
     using NUnit.Framework;
 
     using Nova.Client;
     using Nova.Common;
+    using Nova.Common.Commands;
     using Nova.Common.Components;
     using Nova.Server;
     using Nova.Server.TurnSteps;
@@ -447,6 +449,49 @@ namespace Nova.Tests.UnitTests
 
             Assert.AreEqual(2, star.Mines);
             Assert.AreEqual(90, ProductionCoverageKit.TotalResearch(empire), "Nothing is wasted: 100 - 10 to research");
+        }
+    }
+
+    /// <summary>
+    /// The per-planet "contribute only leftover resources to research" order
+    /// (client-ui-dialog-catalog.md row 20; production-queue.md section 10k): a planet order that
+    /// sets the player's own planet's flag (the WinForms dialog's onlyLeftovers checkbox).
+    /// </summary>
+    [TestFixture]
+    public class OnlyLeftoverCommandTest
+    {
+        [Test]
+        public void SetsAndClearsTheFlag_OnAnOwnedPlanet()
+        {
+            ProductionCoverageKit.OnePlanetGame(ProductionCoverageKit.DefaultRace(), 15, out EmpireData empire, out Star star);
+            Assert.IsFalse(star.OnlyLeftover);
+
+            OnlyLeftoverCommand set = new OnlyLeftoverCommand(star.Name, true);
+            Assert.IsTrue(set.IsValid(empire));
+            set.ApplyToState(empire);
+            Assert.IsTrue(star.OnlyLeftover);
+
+            new OnlyLeftoverCommand(star.Name, false).ApplyToState(empire);
+            Assert.IsFalse(star.OnlyLeftover);
+        }
+
+        [Test]
+        public void RefusesAForeignOrUnknownPlanet()
+        {
+            ProductionCoverageKit.OnePlanetGame(ProductionCoverageKit.DefaultRace(), 15, out EmpireData empire, out _);
+            Assert.IsFalse(new OnlyLeftoverCommand("Nowhere", true).IsValid(empire));
+        }
+
+        [Test]
+        public void RoundTripsThroughXml()
+        {
+            XmlDocument doc = new XmlDocument();
+            OnlyLeftoverCommand original = new OnlyLeftoverCommand("Tierra", true);
+
+            OnlyLeftoverCommand reloaded = new OnlyLeftoverCommand(original.ToXml(doc));
+
+            Assert.AreEqual("Tierra", reloaded.StarKey);
+            Assert.IsTrue(reloaded.OnlyLeftover);
         }
     }
 

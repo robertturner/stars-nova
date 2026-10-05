@@ -106,6 +106,12 @@
 
             <Button Content="Add to Queue" Command="{Binding AddToQueueCommand}" HorizontalAlignment="Left" />
 
+            <!-- production-queue.md section 10k / client-ui-dialog-catalog.md row 20: the WinForms
+                 ProductionDialog's onlyLeftovers checkbox, carried over. -->
+            <CheckBox IsChecked="{Binding OnlyLeftover}" Margin="0,8,0,0">
+                <TextBlock Text="Contribute only leftover resources to research" TextWrapping="Wrap" />
+            </CheckBox>
+
             <!-- One of the four saved production templates (edited in Production Templates),
                  applied in one action - see ProductionViewModel.Templates.cs. -->
             <TextBlock Text="Production template" FontWeight="Bold" Opacity="0.8" Margin="0,12,0,0" />

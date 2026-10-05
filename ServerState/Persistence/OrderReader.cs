@@ -153,6 +153,10 @@ namespace Nova.Server
                                         commands.Push(new PacketDestinationCommand(subnode));
                                         break;
 
+                                    case "onlyleftover":
+                                        commands.Push(new OnlyLeftoverCommand(subnode));
+                                        break;
+
                                     case "detonate":
                                         commands.Push(new DetonateCommand(subnode));
                                         break;

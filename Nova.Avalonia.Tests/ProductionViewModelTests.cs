@@ -86,6 +86,22 @@ public class ProductionViewModelTests
         Assert.That(production.Queue, Has.Count.EqualTo(1));
     }
 
+    /// <summary>client-ui-dialog-catalog.md row 20: the panel carries the per-planet "contribute
+    /// only leftover resources to research" checkbox, queued as a planet order.</summary>
+    [AvaloniaTest]
+    public void OnlyLeftover_TogglesTheFlag_AndQueuesTheOrder()
+    {
+        (ClientData client, SelectionService selection, ProductionViewModel production, Star home) = Open();
+        selection.Selected = home;
+
+        Assert.That(production.OnlyLeftover, Is.False);
+        production.OnlyLeftover = true;
+
+        Assert.That(home.OnlyLeftover, Is.True, "the client's own copy is updated at once");
+        Assert.That(production.OnlyLeftover, Is.True);
+        Assert.That(client.Commands, Has.Some.InstanceOf<OnlyLeftoverCommand>());
+    }
+
     /// <summary>production-queue.md section 6/10k: the auto terraform entry can only be added as an
     /// auto-build order and carries the Min / Max choice.</summary>
     [AvaloniaTest]
