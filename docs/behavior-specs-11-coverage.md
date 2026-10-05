@@ -213,6 +213,50 @@ whether the eliminated bit rides the score record; the report header/glyph/senti
 ETA formula; the four message categories' names/membership and a numeric `Message.Type`; whether an
 in-use starbase design's replacement is also rejected; and the per-race UI colour table.
 
+## Update (2026-10-06) — session consolidation
+
+This session implemented and pushed the following (branch `ui/avalonia-rewrite`), each with focused
+NUnit/Avalonia tests and the coverage rows above:
+
+| Commit | Item |
+|---|---|
+| `ad49262` | fix: ship/starbase production-catalog rows used `design.Id` vs the order's `design.Key`, so Add to Queue silently dropped them (regression tests) |
+| `7464b7f` | #12 shared special-object table + packet allocation limits (message 297, not refunded) |
+| `f768958` | #43 / 4.3 Alternate Reality clears and disables the Germanium-discount checkbox |
+| `7362720` | #20 per-planet "contribute only leftover resources to research" checkbox (`OnlyLeftoverCommand`) |
+| `4c5016a` | #25 Advanced wizard re-seeds the year gate from the galaxy size |
+| `95aa54f` | #3 race identity name/plural 15-char, password 16, empty name -> "Humanoid" |
+| `48377b9` | #44 map planet views and the view-option word |
+| `04e77ec` | #2/#3 victory setup: seven checkboxes + 1/5 spinner steps |
+| `c633a6c` | #7/#38 complete race preset records (Nucleotid 10/15/5) + derived plural |
+| `5e409dd` | #26/#57 report column sets, Others' Fleets report, counted titles |
+| `b95bb09` | #34/#36 research benefits use the detail-card status line |
+| `ed2ba31` | #9/#93 scanner-percentage presets, commit/revert |
+| `26b40a6` | #26 wire the Others' Fleets report into the desktop dock |
+| `dfe47a5` | #24 per-player Victory Conditions view with met-bit check columns |
+| `8e75cbd` | #26 report column show/hide, header sort, Fleets idle/ETA |
+| `ed9aa5c` | #25/#53 message categories + numeric type-to-group filter map |
+| `3fb5109` | #22/#47 reject replacing an in-use design; frozen-price regression tests |
+| `64b2288` | #93/#94 zoom as view-option slot 16 + Player Colors bit 0x2000 |
+| `0660e1d`, `b043a60` | the two parallel-pass coverage records (#2 above) |
+
+**Verification at session close:** main suite **3207/3207**, `Nova.Avalonia.Tests` **158 passed /
+1 skipped**, `Nova.Avalonia.Desktop` builds with 0 errors, signed arm64 APK rebuilt
+(`com.starsnova.avalonia-Signed.apk`, 36,580,355 bytes). The per-file tables above predate these
+passes and remain deliberately stale; the three Update sections plus this consolidation are the
+authoritative inventory.
+
+**Still open (refreshed):** the earlier list stands - step-29 waypoint resynchronisation, #10
+template set-default/append retirement, #20 fuel 39/139, #21 merge/split redistribution, #31
+server-side design caps, the #35 nine-step planet pass and the rest of #37, the AI rows
+#36/#38/#40/#41, #42 planet route, #50 Score window with Switch/timeline, #51 fleet-borne
+terraforming - plus the loose ends surfaced this session: wiring the Others' Fleets report into the
+mobile page set; cross-session persistence of report column visibility; the exact report
+header/glyph/sentinel/ETA wording and formula; the four message categories' names and a numeric
+`Message.Type`; the victory view line wording and the eliminated flag on the score record; the race
+portrait index -> icon mapping and the per-race UI colour table; and `DefaultRaces/*.race`
+regeneration.
+
 ## Where spec-11 overturns earlier work
 
 Code (including the three spec-10 implementation passes) that spec-11 now contradicts, plus stand-ins it replaces. Ordered by importance
